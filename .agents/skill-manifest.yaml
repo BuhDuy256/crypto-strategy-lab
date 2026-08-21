@@ -1,0 +1,25 @@
+schemaVersion: 1
+project: crypto-strategy-lab
+skills:
+  - name: karpathy-guidelines
+    purpose: Keep later implementation changes simple, assumption-aware, surgical, and verifiable.
+    source: Existing repository input; original upstream package is not recorded.
+    license: MIT
+    compatibility:
+      codex: true
+      claude: true
+    destinations:
+      - .agents/skills/karpathy-guidelines
+      - .claude/skills/karpathy-guidelines
+    decision: retain-and-mirror
+  - name: pdf
+    purpose: Extract and visually inspect the authoritative PDF specification and lecture materials.
+    source: https://github.com/openai/skills/tree/49f948faa9258a0c61caceaf225e179651397431/skills/.curated/pdf
+    license: Apache-2.0
+    compatibility:
+      codex: true
+      claude: true
+    destinations:
+      - .agents/skills/pdf
+      - .claude/skills/pdf
+    decision: install

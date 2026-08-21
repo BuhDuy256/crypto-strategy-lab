@@ -1,0 +1,48 @@
+schemaVersion: 1
+lockedAt: 2026-08-21
+skills:
+  - name: karpathy-guidelines
+    sourceRepository: current-repository
+    sourcePath: .claude/skills/karpathy-guidelines
+    version: fde223be44a322eb192dd6f39fa9f3cdadd55e72
+    license: MIT
+    installedBecause: Existing project skill relevant to later implementation discipline; mirrored for Codex parity.
+    destinations:
+      - .agents/skills/karpathy-guidelines
+      - .claude/skills/karpathy-guidelines
+    files:
+      SKILL.md: D8C6D77AB5AAC4BF8BC6882B75E346D308B1BD907FB70B20F0FAD97DA8E33D9F
+    destinationHashes:
+      .agents/skills/karpathy-guidelines/SKILL.md: ADA2BBCEBC34310151B3EC66D6D2F9368F2A210EDF95D60318FCB1FD6BFD9459
+      .claude/skills/karpathy-guidelines/SKILL.md: D8C6D77AB5AAC4BF8BC6882B75E346D308B1BD907FB70B20F0FAD97DA8E33D9F
+    provenanceLimit: Original upstream repository and version were not present in the supplied repository.
+  - name: pdf
+    sourceRepository: https://github.com/openai/skills
+    sourcePath: skills/.curated/pdf
+    version: 49f948faa9258a0c61caceaf225e179651397431
+    license: Apache-2.0
+    installedBecause: The authoritative inputs are PDFs and require text plus visual inspection.
+    destinations:
+      - .agents/skills/pdf
+      - .claude/skills/pdf
+    files:
+      SKILL.md: D108CF2B36355AB37EB5962933F4D09785EC002F3105C506129320209306B9D2
+      LICENSE.txt: 4DD13869245E356246A5B770723247BBB80A8F07A181D1D3D873A1734297CDB9
+      agents/openai.yaml: F8B223E25343559F57E1839CCD849FD1494A9729DA33DA04BB5074B7F80F4887
+      assets/pdf.png: 17DA356D195D4E3FA24F9BECBEE6B8D9E60E13005762B5AB0809C520C76DA6EE
+    destinationHashes:
+      .agents/skills/pdf/SKILL.md: D108CF2B36355AB37EB5962933F4D09785EC002F3105C506129320209306B9D2
+      .agents/skills/pdf/LICENSE.txt: 4DD13869245E356246A5B770723247BBB80A8F07A181D1D3D873A1734297CDB9
+      .agents/skills/pdf/agents/openai.yaml: F8B223E25343559F57E1839CCD849FD1494A9729DA33DA04BB5074B7F80F4887
+      .agents/skills/pdf/assets/pdf.png: 17DA356D195D4E3FA24F9BECBEE6B8D9E60E13005762B5AB0809C520C76DA6EE
+      .claude/skills/pdf/SKILL.md: D108CF2B36355AB37EB5962933F4D09785EC002F3105C506129320209306B9D2
+      .claude/skills/pdf/LICENSE.txt: 4DD13869245E356246A5B770723247BBB80A8F07A181D1D3D873A1734297CDB9
+      .claude/skills/pdf/agents/openai.yaml: F8B223E25343559F57E1839CCD849FD1494A9729DA33DA04BB5074B7F80F4887
+      .claude/skills/pdf/assets/pdf.png: 17DA356D195D4E3FA24F9BECBEE6B8D9E60E13005762B5AB0809C520C76DA6EE
+    scripts: none
+    dependencies:
+      requiredForThisBootstrap:
+        - pdftotext
+        - pdftoppm
+        - pdfplumber
+      installedDuringBootstrap: []

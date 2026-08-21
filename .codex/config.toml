@@ -1,0 +1,4 @@
+# Repository-scoped safety defaults. Codex loads this file only for a trusted project.
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+web_search = "cached"
