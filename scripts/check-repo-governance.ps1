@@ -50,6 +50,10 @@ $requiredFiles = @(
     '.agents/skill-manifest.yaml',
     '.agents/skill-lock.yaml',
     '.agents/architecture-freeze.yaml',
+    '.claude/skills/.gitignore',
+    'skills-lock.json',
+    'docs/agents/issue-tracker.md',
+    'docs/agents/domain.md',
     'docs/architecture/architecture-proposal.md',
     'docs/architecture/architecture-baseline.md',
     'docs/architecture/architecture-baseline-v1.md',
@@ -129,6 +133,23 @@ if ($failures.Count -eq 0) {
     $checks++
     if ($claude.Length -gt 4096 -or $claude -match '# Crypto Strategy Lab - Project Instructions') {
         Add-Failure 'CLAUDE.md appears to duplicate shared policy instead of containing a small platform delta.'
+    }
+
+    $checks += 4
+    if ($agents -notmatch '(?m)^- `improve-codebase-architecture` is MANUAL-ONLY' -or
+        $agents -notmatch 'must not redesign the frozen architecture') {
+        Add-Failure 'AGENTS.md does not preserve the manual-only frozen-architecture guardrail.'
+    }
+    if ($agents -notmatch '(?m)^- `domain-modeling`.*existing `docs/adr/ADR-NNN-\*` convention' -or
+        $agents -notmatch 'must not rewrite accepted ADRs') {
+        Add-Failure 'AGENTS.md does not constrain domain-modeling to existing ADR governance.'
+    }
+    if ($agents -notmatch '(?m)^- `implement` runs only for an explicit implementation request' -or
+        $agents -notmatch 'must not commit or push unless the user explicitly requests') {
+        Add-Failure 'AGENTS.md does not constrain implementation and Git side effects.'
+    }
+    if ($agents -notmatch 'docs/agents/issue-tracker\.md' -or $agents -notmatch 'docs/agents/domain\.md') {
+        Add-Failure 'AGENTS.md does not point to the configured issue-tracker and domain guidance.'
     }
 
     $checks += 5
@@ -258,25 +279,25 @@ if ($failures.Count -eq 0) {
         }
     }
 
-    $skillRoots = @('.agents/skills', '.claude/skills')
+    $canonicalSkillRoot = '.agents/skills'
+    $canonicalSkillRootPath = Join-Path $repoRoot ($canonicalSkillRoot -replace '/', [IO.Path]::DirectorySeparatorChar)
     $skillNames = New-Object System.Collections.Generic.HashSet[string]
-    foreach ($skillRoot in $skillRoots) {
-        $rootPath = Join-Path $repoRoot ($skillRoot -replace '/', [IO.Path]::DirectorySeparatorChar)
-        if (-not (Test-Path -LiteralPath $rootPath -PathType Container)) {
-            Add-Failure "Missing project skill directory: $skillRoot"
-            continue
-        }
-        foreach ($skillDirectory in Get-ChildItem -LiteralPath $rootPath -Directory) {
+    if (-not (Test-Path -LiteralPath $canonicalSkillRootPath -PathType Container)) {
+        Add-Failure "Missing canonical project skill directory: $canonicalSkillRoot"
+    }
+    else {
+        foreach ($skillDirectory in Get-ChildItem -LiteralPath $canonicalSkillRootPath -Directory) {
             [void]$skillNames.Add($skillDirectory.Name)
+            $checks++
             $skillFile = Join-Path $skillDirectory.FullName 'SKILL.md'
             if (-not (Test-Path -LiteralPath $skillFile -PathType Leaf)) {
-                Add-Failure "Installed skill lacks SKILL.md: $skillRoot/$($skillDirectory.Name)"
+                Add-Failure "Installed skill lacks SKILL.md: $canonicalSkillRoot/$($skillDirectory.Name)"
             }
         }
     }
 
     foreach ($skillName in $skillNames) {
-        $checks += 4
+        $checks += 2
         $escapedName = [regex]::Escape($skillName)
         if ($manifest -notmatch "(?m)^\s+- name:\s*$escapedName\s*$") {
             Add-Failure "Installed skill is absent from manifest: $skillName"
@@ -284,10 +305,22 @@ if ($failures.Count -eq 0) {
         if ($lock -notmatch "(?m)^\s+- name:\s*$escapedName\s*$") {
             Add-Failure "Installed skill is absent from lock: $skillName"
         }
-        foreach ($skillRoot in $skillRoots) {
-            $expectedSkillFile = Join-Path $repoRoot (($skillRoot + '/' + $skillName + '/SKILL.md') -replace '/', [IO.Path]::DirectorySeparatorChar)
-            if (-not (Test-Path -LiteralPath $expectedSkillFile -PathType Leaf)) {
-                Add-Failure "Skill is not represented for both agents: $skillRoot/$skillName/SKILL.md"
+    }
+
+    $claudeSkillRoot = Join-Path $repoRoot '.claude\skills'
+    $checks++
+    if (-not (Test-Path -LiteralPath $claudeSkillRoot -PathType Container)) {
+        Add-Failure 'Missing Claude project skill directory: .claude/skills'
+    }
+    else {
+        foreach ($claudeSkillDirectory in Get-ChildItem -LiteralPath $claudeSkillRoot -Directory) {
+            $checks++
+            $claudeSkillFile = Join-Path $claudeSkillDirectory.FullName 'SKILL.md'
+            if (-not (Test-Path -LiteralPath $claudeSkillFile -PathType Leaf)) {
+                Add-Failure "Claude skill representation lacks SKILL.md: .claude/skills/$($claudeSkillDirectory.Name)"
+            }
+            if (-not $skillNames.Contains($claudeSkillDirectory.Name)) {
+                Add-Failure "Claude skill has no canonical .agents copy: $($claudeSkillDirectory.Name)"
             }
         }
     }
@@ -313,6 +346,111 @@ if ($failures.Count -eq 0) {
         if ($actualHash -ne $expectedHash) {
             Add-Failure "Locked skill content changed: $relativePath"
         }
+    }
+
+    $treeLockedEntries = [regex]::Matches(
+        $lock,
+        '(?ms)^  - name:\s*(?<name>[^\r\n]+)\r?\n(?<body>.*?)(?=^  - name:|\z)'
+    )
+    foreach ($treeLockedEntry in $treeLockedEntries) {
+        $entryName = $treeLockedEntry.Groups['name'].Value.Trim()
+        $entryBody = $treeLockedEntry.Groups['body'].Value
+        $treeHashMatch = [regex]::Match($entryBody, '(?m)^    treeSha256:\s*([A-Fa-f0-9]{64})\s*$')
+        if (-not $treeHashMatch.Success) {
+            continue
+        }
+
+        $checks += 3
+        $treeAlgorithmMatch = [regex]::Match($entryBody, '(?m)^    treeHashAlgorithm:\s*(.+?)\s*$')
+        if (-not $treeAlgorithmMatch.Success -or $treeAlgorithmMatch.Groups[1].Value -ne 'sha256-of-sorted-relative-path-tab-lf-normalized-file-sha256-lines') {
+            Add-Failure "Unsupported or missing tree-hash algorithm for skill: $entryName"
+            continue
+        }
+
+        $canonicalDestinationMatch = [regex]::Match($entryBody, '(?m)^    canonicalDestination:\s*(.+?)\s*$')
+        if (-not $canonicalDestinationMatch.Success) {
+            Add-Failure "Tree-locked skill lacks canonical destination: $entryName"
+            continue
+        }
+
+        $canonicalDestination = $canonicalDestinationMatch.Groups[1].Value.Trim()
+        $canonicalPath = Join-Path $repoRoot ($canonicalDestination -replace '/', [IO.Path]::DirectorySeparatorChar)
+        if (-not (Test-Path -LiteralPath $canonicalPath -PathType Container)) {
+            Add-Failure "Tree-locked skill destination does not resolve: $canonicalDestination"
+            continue
+        }
+
+        $treeLines = @(
+            Get-ChildItem -LiteralPath $canonicalPath -Recurse -File |
+                Sort-Object { $_.FullName.Substring($canonicalPath.Length + 1).Replace('\', '/') } |
+                ForEach-Object {
+                    $relativeFile = $_.FullName.Substring($canonicalPath.Length + 1).Replace('\', '/')
+                    $normalizedContent = [IO.File]::ReadAllText($_.FullName).Replace("`r`n", "`n").Replace("`r", "`n")
+                    $fileSha256 = [Security.Cryptography.SHA256]::Create()
+                    try {
+                        $normalizedBytes = [Text.UTF8Encoding]::new($false).GetBytes($normalizedContent)
+                        $fileHash = ([BitConverter]::ToString($fileSha256.ComputeHash($normalizedBytes))).Replace('-', '').ToLowerInvariant()
+                    }
+                    finally {
+                        $fileSha256.Dispose()
+                    }
+                    "$relativeFile`t$fileHash"
+                }
+        )
+        if ($treeLines.Count -eq 0) {
+            Add-Failure "Tree-locked skill contains no files: $entryName"
+            continue
+        }
+
+        $treePayload = [string]::Join("`n", $treeLines) + "`n"
+        $sha256 = [Security.Cryptography.SHA256]::Create()
+        try {
+            $payloadBytes = [Text.UTF8Encoding]::new($false).GetBytes($treePayload)
+            $actualTreeHash = ([BitConverter]::ToString($sha256.ComputeHash($payloadBytes))).Replace('-', '').ToLowerInvariant()
+        }
+        finally {
+            $sha256.Dispose()
+        }
+        if ($actualTreeHash -ne $treeHashMatch.Groups[1].Value.ToLowerInvariant()) {
+            Add-Failure "Locked skill tree changed: $entryName"
+        }
+
+        $sourceRepositoryMatch = [regex]::Match($entryBody, '(?m)^    sourceRepository:\s*(.+?)\s*$')
+        if ($sourceRepositoryMatch.Success -and $sourceRepositoryMatch.Groups[1].Value -eq 'https://github.com/mattpocock/skills') {
+            $checks++
+            if ($entryBody -notmatch '(?m)^    version:\s*[A-Fa-f0-9]{40}\s*$') {
+                Add-Failure "Matt Pocock skill is not pinned to an exact commit: $entryName"
+            }
+        }
+    }
+
+    $checks++
+    try {
+        $cliSkillLock = Read-RepoFile 'skills-lock.json' | ConvertFrom-Json
+        foreach ($treeLockedEntry in $treeLockedEntries) {
+            $entryName = $treeLockedEntry.Groups['name'].Value.Trim()
+            $entryBody = $treeLockedEntry.Groups['body'].Value
+            if ($entryBody -notmatch '(?m)^    sourceRepository:\s*https://github\.com/mattpocock/skills\s*$') {
+                continue
+            }
+            $checks++
+            if ($null -eq $cliSkillLock.skills.$entryName) {
+                Add-Failure "Matt Pocock skill is absent from skills-lock.json: $entryName"
+            }
+        }
+    }
+    catch {
+        Add-Failure "skills-lock.json is not valid JSON: $($_.Exception.Message)"
+    }
+
+    $checks += 2
+    $manualArchitectureSkill = Read-RepoFile '.agents/skills/improve-codebase-architecture/SKILL.md'
+    $manualArchitectureOpenAi = Read-RepoFile '.agents/skills/improve-codebase-architecture/agents/openai.yaml'
+    if ($manualArchitectureSkill -notmatch '(?m)^disable-model-invocation:\s*true\s*$') {
+        Add-Failure 'improve-codebase-architecture is not user-invoked/manual-only in SKILL.md.'
+    }
+    if ($manualArchitectureOpenAi -notmatch '(?s)policy:.*allow_implicit_invocation:\s*false') {
+        Add-Failure 'improve-codebase-architecture permits implicit Codex invocation.'
     }
 
     $markdownFiles = @(

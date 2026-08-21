@@ -23,3 +23,184 @@ skills:
       - .agents/skills/pdf
       - .claude/skills/pdf
     decision: install
+  - name: setup-matt-pocock-skills
+    purpose: Configure the issue tracker and domain-document layout expected by the selected engineering workflows.
+    usefulBecause: It gives to-spec and to-tickets an explicit tracker while keeping domain guidance subordinate to the frozen baseline.
+    source: https://github.com/mattpocock/skills
+    sourcePath: skills/engineering/setup-matt-pocock-skills
+    version: 0ab1b63a410a03d3627979a109c8695de27af954
+    license: MIT
+    compatibility:
+      codex: true
+      claude: true
+    destinations:
+      - .agents/skills/setup-matt-pocock-skills
+    runtimeLinks:
+      - .claude/skills/setup-matt-pocock-skills
+    decision: install-shared
+  - name: tdd
+    purpose: Drive feature and bug work through observable red-green-refactor cycles at public seams.
+    usefulBecause: The proof-oriented architecture requires executable evidence and regression tests during implementation.
+    source: https://github.com/mattpocock/skills
+    sourcePath: skills/engineering/tdd
+    version: 0ab1b63a410a03d3627979a109c8695de27af954
+    license: MIT
+    compatibility:
+      codex: true
+      claude: true
+    destinations:
+      - .agents/skills/tdd
+    runtimeLinks:
+      - .claude/skills/tdd
+    decision: install-shared
+  - name: code-review
+    purpose: Review changes against repository standards and the originating specification in parallel.
+    usefulBecause: It provides separate conformance checks for frozen architecture rules and requested behavior.
+    source: https://github.com/mattpocock/skills
+    sourcePath: skills/engineering/code-review
+    version: 0ab1b63a410a03d3627979a109c8695de27af954
+    license: MIT
+    compatibility:
+      codex: true
+      claude: true
+    destinations:
+      - .agents/skills/code-review
+    runtimeLinks:
+      - .claude/skills/code-review
+    decision: install-shared
+  - name: diagnosing-bugs
+    purpose: Diagnose bugs and performance regressions with a reproducible, instrumented feedback loop.
+    usefulBecause: It supports evidence-based fixes and regression coverage without speculative implementation changes.
+    source: https://github.com/mattpocock/skills
+    sourcePath: skills/engineering/diagnosing-bugs
+    version: 0ab1b63a410a03d3627979a109c8695de27af954
+    license: MIT
+    compatibility:
+      codex: true
+      claude: true
+    destinations:
+      - .agents/skills/diagnosing-bugs
+    runtimeLinks:
+      - .claude/skills/diagnosing-bugs
+    decision: install-shared
+  - name: codebase-design
+    purpose: Design deep implementation modules and testable seams with a consistent vocabulary.
+    usefulBecause: It helps realize accepted module boundaries without introducing new deployment or architecture boundaries.
+    source: https://github.com/mattpocock/skills
+    sourcePath: skills/engineering/codebase-design
+    version: 0ab1b63a410a03d3627979a109c8695de27af954
+    license: MIT
+    compatibility:
+      codex: true
+      claude: true
+    destinations:
+      - .agents/skills/codebase-design
+    runtimeLinks:
+      - .claude/skills/codebase-design
+    decision: install-shared
+  - name: domain-modeling
+    purpose: Sharpen project terminology and capture explicitly approved domain decisions.
+    usefulBecause: Shared vocabulary reduces ambiguity across strategy, experiment, market-data, and news modules.
+    source: https://github.com/mattpocock/skills
+    sourcePath: skills/engineering/domain-modeling
+    version: 0ab1b63a410a03d3627979a109c8695de27af954
+    license: MIT
+    compatibility:
+      codex: true
+      claude: true
+    destinations:
+      - .agents/skills/domain-modeling
+    runtimeLinks:
+      - .claude/skills/domain-modeling
+    decision: install-shared-with-adr-guardrail
+  - name: to-spec
+    purpose: Synthesize an agreed conversation into a reviewable implementation specification.
+    usefulBecause: It turns team decisions into a durable input before coding starts.
+    source: https://github.com/mattpocock/skills
+    sourcePath: skills/engineering/to-spec
+    version: 0ab1b63a410a03d3627979a109c8695de27af954
+    license: MIT
+    compatibility:
+      codex: true
+      claude: true
+    destinations:
+      - .agents/skills/to-spec
+    runtimeLinks:
+      - .claude/skills/to-spec
+    decision: install-shared
+  - name: to-tickets
+    purpose: Split an approved plan or specification into dependency-aware tracer-bullet tickets.
+    usefulBecause: It supports proof-oriented vertical slices while keeping blocking relationships explicit.
+    source: https://github.com/mattpocock/skills
+    sourcePath: skills/engineering/to-tickets
+    version: 0ab1b63a410a03d3627979a109c8695de27af954
+    license: MIT
+    compatibility:
+      codex: true
+      claude: true
+    destinations:
+      - .agents/skills/to-tickets
+    runtimeLinks:
+      - .claude/skills/to-tickets
+    decision: install-shared
+  - name: implement
+    purpose: Orchestrate test-first implementation followed by review and verification.
+    usefulBecause: It provides a repeatable implementation workflow while project policy retains control of Git writes.
+    source: https://github.com/mattpocock/skills
+    sourcePath: skills/engineering/implement
+    version: 0ab1b63a410a03d3627979a109c8695de27af954
+    license: MIT
+    compatibility:
+      codex: true
+      claude: true
+    destinations:
+      - .agents/skills/implement
+    runtimeLinks:
+      - .claude/skills/implement
+    decision: install-shared-with-git-guardrail
+  - name: research
+    purpose: Investigate technical questions against high-trust primary sources and capture cited findings.
+    usefulBecause: Provider, framework, and proof choices will need current authoritative evidence during implementation.
+    source: https://github.com/mattpocock/skills
+    sourcePath: skills/engineering/research
+    version: 0ab1b63a410a03d3627979a109c8695de27af954
+    license: MIT
+    compatibility:
+      codex: true
+      claude: true
+    destinations:
+      - .agents/skills/research
+    runtimeLinks:
+      - .claude/skills/research
+    decision: install-shared
+  - name: writing-for-agents
+    purpose: Write and maintain concise, reliably triggered agent-facing governance documents.
+    usefulBecause: This repository relies on small canonical policies and progressive disclosure instead of duplicated instructions.
+    source: https://github.com/mattpocock/skills
+    sourcePath: skills/productivity/writing-for-agents
+    version: 0ab1b63a410a03d3627979a109c8695de27af954
+    license: MIT
+    compatibility:
+      codex: true
+      claude: true
+    destinations:
+      - .agents/skills/writing-for-agents
+    runtimeLinks:
+      - .claude/skills/writing-for-agents
+    decision: install-shared
+  - name: improve-codebase-architecture
+    purpose: Manually inspect implemented code for deep-module opportunities and report candidates without changing code.
+    usefulBecause: It can surface implementation friction after evidence exists, while the frozen architecture remains authoritative.
+    source: https://github.com/mattpocock/skills
+    sourcePath: skills/engineering/improve-codebase-architecture
+    version: 0ab1b63a410a03d3627979a109c8695de27af954
+    license: MIT
+    compatibility:
+      codex: true
+      claude: true
+    destinations:
+      - .agents/skills/improve-codebase-architecture
+    runtimeLinks:
+      - .claude/skills/improve-codebase-architecture
+    invocation: manual-only
+    decision: install-shared-with-frozen-architecture-guardrail

@@ -2,5 +2,5 @@
 
 ## Claude Code delta
 
-- Load project skills from `.claude/skills/`.
+- Load project skills from `.claude/skills/`; generated Matt Pocock entries link to the canonical `.agents/skills/` copies.
 - Treat `AGENTS.md` as the sole canonical shared project policy; do not duplicate it here or under `.claude/rules/`.

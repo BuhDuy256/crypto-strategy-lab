@@ -1,0 +1,14 @@
+# Matt Pocock skills are canonical under .agents/skills. The skills CLI creates
+# these Claude Code runtime junctions locally; do not commit duplicate contents.
+/code-review/
+/codebase-design/
+/diagnosing-bugs/
+/domain-modeling/
+/implement/
+/improve-codebase-architecture/
+/research/
+/setup-matt-pocock-skills/
+/tdd/
+/to-spec/
+/to-tickets/
+/writing-for-agents/

@@ -46,3 +46,176 @@ skills:
         - pdftoppm
         - pdfplumber
       installedByProjectSetup: []
+  - name: setup-matt-pocock-skills
+    sourceRepository: https://github.com/mattpocock/skills
+    sourcePath: skills/engineering/setup-matt-pocock-skills
+    version: 0ab1b63a410a03d3627979a109c8695de27af954
+    license: MIT
+    installedBecause: Configure GitHub issue tracking and domain-doc consumption for the selected workflows.
+    canonicalDestination: .agents/skills/setup-matt-pocock-skills
+    runtimeLinks:
+      - .claude/skills/setup-matt-pocock-skills
+    installer: npx skills@1.5.23
+    treeHashAlgorithm: sha256-of-sorted-relative-path-tab-lf-normalized-file-sha256-lines
+    treeSha256: 33e51dd9618a641ad39156d4768e86cfc62f5d25a80b618b2a57876562e321d6
+    scripts: none
+    dependencies: none
+  - name: tdd
+    sourceRepository: https://github.com/mattpocock/skills
+    sourcePath: skills/engineering/tdd
+    version: 0ab1b63a410a03d3627979a109c8695de27af954
+    license: MIT
+    installedBecause: Support architecture proofs and regression-safe implementation through public-seam tests.
+    canonicalDestination: .agents/skills/tdd
+    runtimeLinks:
+      - .claude/skills/tdd
+    installer: npx skills@1.5.23
+    treeHashAlgorithm: sha256-of-sorted-relative-path-tab-lf-normalized-file-sha256-lines
+    treeSha256: 47d27e69b98236b58b5b67b9b4f58ad55746f4d73a3713a31d0f52a549cfc0f4
+    scripts: none
+    dependencies: none
+  - name: code-review
+    sourceRepository: https://github.com/mattpocock/skills
+    sourcePath: skills/engineering/code-review
+    version: 0ab1b63a410a03d3627979a109c8695de27af954
+    license: MIT
+    installedBecause: Review implementation independently against project standards and its originating specification.
+    canonicalDestination: .agents/skills/code-review
+    runtimeLinks:
+      - .claude/skills/code-review
+    installer: npx skills@1.5.23
+    treeHashAlgorithm: sha256-of-sorted-relative-path-tab-lf-normalized-file-sha256-lines
+    treeSha256: 34ca707bf88dc6bafcb773eb62cb71d40db96c09633fb11afcac76e14f282d78
+    scripts: none
+    dependencies: none
+  - name: diagnosing-bugs
+    sourceRepository: https://github.com/mattpocock/skills
+    sourcePath: skills/engineering/diagnosing-bugs
+    version: 0ab1b63a410a03d3627979a109c8695de27af954
+    license: MIT
+    installedBecause: Establish a reproducible diagnosis loop before making bug-fix changes.
+    canonicalDestination: .agents/skills/diagnosing-bugs
+    runtimeLinks:
+      - .claude/skills/diagnosing-bugs
+    installer: npx skills@1.5.23
+    treeHashAlgorithm: sha256-of-sorted-relative-path-tab-lf-normalized-file-sha256-lines
+    treeSha256: 6ade1e84069dadd05e91a3030770ff693f1394c0ad9c67cf1b3ecc293bc19382
+    scripts:
+      - scripts/hitl-loop.template.sh
+    dependencies: none
+  - name: codebase-design
+    sourceRepository: https://github.com/mattpocock/skills
+    sourcePath: skills/engineering/codebase-design
+    version: 0ab1b63a410a03d3627979a109c8695de27af954
+    license: MIT
+    installedBecause: Design deep, testable implementation modules inside the accepted logical boundaries.
+    canonicalDestination: .agents/skills/codebase-design
+    runtimeLinks:
+      - .claude/skills/codebase-design
+    installer: npx skills@1.5.23
+    treeHashAlgorithm: sha256-of-sorted-relative-path-tab-lf-normalized-file-sha256-lines
+    treeSha256: 529607fcd4fd3af639760d39d7968612f51827d737e91a97431a8e1819fda311
+    scripts: none
+    dependencies: none
+  - name: domain-modeling
+    sourceRepository: https://github.com/mattpocock/skills
+    sourcePath: skills/engineering/domain-modeling
+    version: 0ab1b63a410a03d3627979a109c8695de27af954
+    license: MIT
+    installedBecause: Maintain precise project vocabulary while deferring architecture decisions to existing ADR governance.
+    canonicalDestination: .agents/skills/domain-modeling
+    runtimeLinks:
+      - .claude/skills/domain-modeling
+    installer: npx skills@1.5.23
+    treeHashAlgorithm: sha256-of-sorted-relative-path-tab-lf-normalized-file-sha256-lines
+    treeSha256: 321835553d4a09e93e35dcaef06fb6ec6c22a745b401ee606afc06618fcc2e0a
+    scripts: none
+    dependencies: none
+    guardrail: Existing ADR format and architecture deviation procedure override the bundled ADR template.
+  - name: to-spec
+    sourceRepository: https://github.com/mattpocock/skills
+    sourcePath: skills/engineering/to-spec
+    version: 0ab1b63a410a03d3627979a109c8695de27af954
+    license: MIT
+    installedBecause: Turn agreed team discussions into durable implementation specifications before coding.
+    canonicalDestination: .agents/skills/to-spec
+    runtimeLinks:
+      - .claude/skills/to-spec
+    installer: npx skills@1.5.23
+    treeHashAlgorithm: sha256-of-sorted-relative-path-tab-lf-normalized-file-sha256-lines
+    treeSha256: ae5e216aef06d63d93ad384202d66868dd022ebc16eb383fe05517d0300cbe97
+    scripts: none
+    dependencies: none
+  - name: to-tickets
+    sourceRepository: https://github.com/mattpocock/skills
+    sourcePath: skills/engineering/to-tickets
+    version: 0ab1b63a410a03d3627979a109c8695de27af954
+    license: MIT
+    installedBecause: Produce dependency-aware vertical implementation tickets from approved specifications.
+    canonicalDestination: .agents/skills/to-tickets
+    runtimeLinks:
+      - .claude/skills/to-tickets
+    installer: npx skills@1.5.23
+    treeHashAlgorithm: sha256-of-sorted-relative-path-tab-lf-normalized-file-sha256-lines
+    treeSha256: c07b2730cccb3c73b30dd6e5a1c3b70b5ac22fef2ce480b0e2a3aa15f866703d
+    scripts: none
+    dependencies: none
+  - name: implement
+    sourceRepository: https://github.com/mattpocock/skills
+    sourcePath: skills/engineering/implement
+    version: 0ab1b63a410a03d3627979a109c8695de27af954
+    license: MIT
+    installedBecause: Orchestrate explicit implementation work through TDD, verification, and review.
+    canonicalDestination: .agents/skills/implement
+    runtimeLinks:
+      - .claude/skills/implement
+    installer: npx skills@1.5.23
+    treeHashAlgorithm: sha256-of-sorted-relative-path-tab-lf-normalized-file-sha256-lines
+    treeSha256: 3c7c6d02c94cf2e01d0706a3e5d87eeabfae5d21aceffbd7edbd9509652b8c89
+    scripts: none
+    dependencies: none
+    guardrail: Commit and push require a separate explicit user request.
+  - name: research
+    sourceRepository: https://github.com/mattpocock/skills
+    sourcePath: skills/engineering/research
+    version: 0ab1b63a410a03d3627979a109c8695de27af954
+    license: MIT
+    installedBecause: Gather current primary-source evidence for technical and architecture-proof questions.
+    canonicalDestination: .agents/skills/research
+    runtimeLinks:
+      - .claude/skills/research
+    installer: npx skills@1.5.23
+    treeHashAlgorithm: sha256-of-sorted-relative-path-tab-lf-normalized-file-sha256-lines
+    treeSha256: 585c3ee24b724e6c8c88c3c2b8e326deecdfadfb5e561ea2a7e02516afd83b05
+    scripts: none
+    dependencies: none
+  - name: writing-for-agents
+    sourceRepository: https://github.com/mattpocock/skills
+    sourcePath: skills/productivity/writing-for-agents
+    version: 0ab1b63a410a03d3627979a109c8695de27af954
+    license: MIT
+    installedBecause: Keep shared agent governance concise, discoverable, and non-duplicative.
+    canonicalDestination: .agents/skills/writing-for-agents
+    runtimeLinks:
+      - .claude/skills/writing-for-agents
+    installer: npx skills@1.5.23
+    treeHashAlgorithm: sha256-of-sorted-relative-path-tab-lf-normalized-file-sha256-lines
+    treeSha256: ea4999592b85b322e0ee4f7db4619272f18766fcfbfb013e8995befa706745a4
+    scripts: none
+    dependencies: none
+  - name: improve-codebase-architecture
+    sourceRepository: https://github.com/mattpocock/skills
+    sourcePath: skills/engineering/improve-codebase-architecture
+    version: 0ab1b63a410a03d3627979a109c8695de27af954
+    license: MIT
+    installedBecause: Manually report implementation deepening opportunities without changing the frozen architecture.
+    canonicalDestination: .agents/skills/improve-codebase-architecture
+    runtimeLinks:
+      - .claude/skills/improve-codebase-architecture
+    installer: npx skills@1.5.23
+    treeHashAlgorithm: sha256-of-sorted-relative-path-tab-lf-normalized-file-sha256-lines
+    treeSha256: 1e7d6581ab930bf24b5503955b0c892d2b85b63dd1d493728e5e543a85380e41
+    scripts: none
+    dependencies: none
+    invocation: manual-only
+    guardrail: Analysis may not redesign or override frozen baseline v1.1 or accepted ADRs.

@@ -80,9 +80,22 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-repo-governanc
 
 During implementation, also run the relevant tests and the architecture proofs affected by the change. Proof definitions live in `docs/validation/architecture-proof-plan.md`.
 
-## Project skills
+## Agent skills
 
-- Codex project skills live under `.agents/skills/`.
-- Claude project skills live under `.claude/skills/`.
+### Issue tracker
+
+Project specifications and tickets are tracked in GitHub Issues. See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+This is a single-context repository. Read the frozen baseline, accepted ADRs, and official requirements before any optional glossary material. See `docs/agents/domain.md`.
+
+### Installation and safeguards
+
+- The canonical repository-local skill copy is `.agents/skills/`; `.claude/skills/` may contain generated links to that shared copy rather than duplicate files.
 - Every installed project skill must be represented in `.agents/skill-manifest.yaml` and `.agents/skill-lock.yaml`.
 - Do not install, upgrade, or execute a third-party skill before inspecting its instructions, scripts, dependencies, license, and pinned provenance.
+- Matt Pocock skills are subordinate to this file, the frozen baseline, accepted ADRs, and the architecture deviation procedure.
+- `improve-codebase-architecture` is MANUAL-ONLY and analysis-only unless the user separately authorizes a change. It may surface candidates but must not redesign the frozen architecture or override accepted ADRs.
+- `domain-modeling` may refine project vocabulary, but it must use the existing `docs/adr/ADR-NNN-*` convention and architecture deviation procedure. It must not rewrite accepted ADRs or redefine frozen architecture decisions.
+- `implement` runs only for an explicit implementation request and must not commit or push unless the user explicitly requests those Git actions.
