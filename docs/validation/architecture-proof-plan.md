@@ -3,6 +3,8 @@
 Validation Status: PENDING IMPLEMENTATION PROOFS
 Baseline: [`architecture-baseline.md`](../architecture/architecture-baseline.md) v1.1
 
+Visual index: [Proof Coverage Map](../diagrams/10-proof-coverage-map.md). The proof definitions in this file remain authoritative.
+
 ## Purpose
 
 Architecture claims are useful only when observable changes/failures demonstrate them. Each proof below defines later implementation evidence. Numerical performance thresholds remain calibration items because the official sources provide no target hardware or accepted latency/throughput values.

@@ -2,7 +2,13 @@
 
 ## Current mode
 
-IMPLEMENTATION AGAINST FROZEN ARCHITECTURE
+PROJECT MODE: IMPLEMENTATION AGAINST FROZEN ARCHITECTURE
+
+ARCHITECTURE STATUS: FROZEN v1.1
+
+VALIDATION STATUS: PENDING IMPLEMENTATION PROOFS
+
+IMPLEMENTATION STATUS: NOT STARTED
 
 Architecture baseline v1.1 is FROZEN with validation status PENDING IMPLEMENTATION PROOFS. Application work may begin only when a separate user request explicitly asks for implementation; frozen means normative, not empirically proven.
 
@@ -13,8 +19,6 @@ Architecture baseline v1.1 is FROZEN with validation status PENDING IMPLEMENTATI
 3. Official project sources in `docs/requirements/`
 4. Project coding and test conventions established during implementation
 5. Agent judgment
-
-`references/BOOTSTRAP-init.md` defines the completed bootstrap process; it does not override the frozen baseline during implementation.
 
 ## Architecture invariants
 

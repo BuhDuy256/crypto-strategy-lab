@@ -27,10 +27,24 @@ function Read-RepoFile {
     return [IO.File]::ReadAllText((Join-Path $script:repoRoot $RelativePath))
 }
 
+$requiredDiagramFiles = @(
+    'docs/diagrams/README.md',
+    'docs/diagrams/01-problem-tree.md',
+    'docs/diagrams/02-decision-tree.md',
+    'docs/diagrams/03-system-context.md',
+    'docs/diagrams/04-container-runtime-view.md',
+    'docs/diagrams/05-module-boundaries.md',
+    'docs/diagrams/06-experiment-backtest-flow.md',
+    'docs/diagrams/07-realtime-market-flow.md',
+    'docs/diagrams/08-news-sentiment-flow.md',
+    'docs/diagrams/09-reproducibility-provenance-map.md',
+    'docs/diagrams/10-proof-coverage-map.md'
+)
+
 $requiredFiles = @(
+    'README.md',
     'AGENTS.md',
     'CLAUDE.md',
-    'BOOTSTRAP.md',
     '.codex/config.toml',
     '.claude/settings.json',
     '.agents/skill-manifest.yaml',
@@ -41,13 +55,49 @@ $requiredFiles = @(
     'docs/architecture/architecture-baseline-v1.md',
     'docs/adr/ADR-009-technology-realization.md',
     'docs/validation/architecture-proof-plan.md'
-)
+) + $requiredDiagramFiles
 
 foreach ($requiredFile in $requiredFiles) {
     [void](Assert-File $requiredFile)
 }
 
+$obsoleteDirectories = @(
+    ('ref' + 'erences'),
+    ('tr' + 'ash')
+)
+foreach ($obsoleteDirectory in $obsoleteDirectories) {
+    $checks++
+    if (Test-Path -LiteralPath (Join-Path $repoRoot $obsoleteDirectory)) {
+        Add-Failure "Obsolete process directory exists: $obsoleteDirectory"
+    }
+}
+
+$obsoleteFilePatterns = @(
+    ('BOOT' + 'STRAP*.md'),
+    ('NEXT_' + 'PROMPT*.md'),
+    ('HAND' + 'OFF*.md')
+)
+$artifactSearchRoots = @(Get-ChildItem -LiteralPath $repoRoot -Force | Where-Object { $_.Name -ne '.git' })
+foreach ($obsoleteFilePattern in $obsoleteFilePatterns) {
+    $checks++
+    $obsoleteMatches = @(
+        $artifactSearchRoots |
+            ForEach-Object {
+                if ($_.PSIsContainer) {
+                    Get-ChildItem -LiteralPath $_.FullName -File -Recurse -Force -Filter $obsoleteFilePattern
+                }
+                elseif ($_.Name -like $obsoleteFilePattern) {
+                    $_
+                }
+            }
+    )
+    if ($obsoleteMatches.Count -gt 0) {
+        Add-Failure "Obsolete process artifact exists: $($obsoleteMatches[0].FullName)"
+    }
+}
+
 if ($failures.Count -eq 0) {
+    $readme = Read-RepoFile 'README.md'
     $agents = Read-RepoFile 'AGENTS.md'
     $claude = Read-RepoFile 'CLAUDE.md'
     $baseline = Read-RepoFile 'docs/architecture/architecture-baseline.md'
@@ -55,10 +105,20 @@ if ($failures.Count -eq 0) {
     $manifest = Read-RepoFile '.agents/skill-manifest.yaml'
     $lock = Read-RepoFile '.agents/skill-lock.yaml'
     $freeze = Read-RepoFile '.agents/architecture-freeze.yaml'
+    $diagramReadme = Read-RepoFile 'docs/diagrams/README.md'
+    $proofPlan = Read-RepoFile 'docs/validation/architecture-proof-plan.md'
 
     $checks++
-    if ($agents -notmatch '(?m)^IMPLEMENTATION AGAINST FROZEN ARCHITECTURE\s*$') {
+    if ($agents -notmatch '(?m)^PROJECT MODE: IMPLEMENTATION AGAINST FROZEN ARCHITECTURE\s*$' -or
+        $agents -notmatch '(?m)^ARCHITECTURE STATUS: FROZEN v1\.1\s*$' -or
+        $agents -notmatch '(?m)^VALIDATION STATUS: PENDING IMPLEMENTATION PROOFS\s*$' -or
+        $agents -notmatch '(?m)^IMPLEMENTATION STATUS: NOT STARTED\s*$') {
         Add-Failure 'AGENTS.md is not in implementation-against-frozen-architecture mode.'
+    }
+
+    $checks++
+    if ($agents -notmatch '(?s)## Normative source hierarchy.*?docs/architecture/architecture-baseline\.md.*?docs/adr/.*?docs/requirements/') {
+        Add-Failure 'AGENTS.md does not preserve the architecture source-of-truth hierarchy.'
     }
 
     $checks++
@@ -69,6 +129,33 @@ if ($failures.Count -eq 0) {
     $checks++
     if ($claude.Length -gt 4096 -or $claude -match '# Crypto Strategy Lab - Project Instructions') {
         Add-Failure 'CLAUDE.md appears to duplicate shared policy instead of containing a small platform delta.'
+    }
+
+    $checks += 5
+    if ($readme -notmatch 'Architecture:\*\* `FROZEN v1\.1`' -or
+        $readme -notmatch 'Validation:\*\* `PENDING IMPLEMENTATION PROOFS`' -or
+        $readme -notmatch 'Implementation:\*\* `NOT STARTED`') {
+        Add-Failure 'README.md does not state the current architecture, validation, and implementation status.'
+    }
+    if ($readme -notmatch 'Modular Monolith with selectively separated process roles') {
+        Add-Failure 'README.md does not summarize the selected architecture style.'
+    }
+    if ($readme -notmatch 'docs/diagrams/README\.md' -or $readme -notmatch 'architecture-baseline\.md') {
+        Add-Failure 'README.md does not link the diagram entry point and normative baseline.'
+    }
+    if ($readme -notmatch 'ADR-001' -or $readme -notmatch 'ADR-009') {
+        Add-Failure 'README.md does not provide the required ADR index.'
+    }
+    if ($readme -notmatch 'Walking Skeleton' -or $readme -notmatch 'architecture proof-oriented vertical slice') {
+        Add-Failure 'README.md does not identify the review-ready next phase.'
+    }
+
+    $checks += 2
+    if ($diagramReadme -notmatch 'architecture-baseline\.md' -or $diagramReadme -notmatch 'architecture-proposal\.md') {
+        Add-Failure 'Diagram README does not link back to the architecture source documents.'
+    }
+    if ($proofPlan -notmatch 'diagrams/10-proof-coverage-map\.md') {
+        Add-Failure 'Architecture proof plan does not link to the proof coverage map.'
     }
 
     $checks++
@@ -229,21 +316,51 @@ if ($failures.Count -eq 0) {
     }
 
     $markdownFiles = @(
-        (Join-Path $repoRoot 'docs\architecture\architecture-proposal.md'),
-        (Join-Path $repoRoot 'docs\architecture\architecture-baseline.md'),
-        (Join-Path $repoRoot 'docs\architecture\architecture-baseline-v1.md'),
-        (Join-Path $repoRoot 'docs\validation\architecture-proof-plan.md')
-    ) + @($adrFiles.FullName)
+        (Join-Path $repoRoot 'README.md'),
+        (Join-Path $repoRoot 'AGENTS.md'),
+        (Join-Path $repoRoot 'CLAUDE.md')
+    ) + @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'docs') -Filter '*.md' -File -Recurse | ForEach-Object { $_.FullName })
 
     foreach ($markdownFile in $markdownFiles) {
         $text = [IO.File]::ReadAllText($markdownFile)
-        foreach ($linkMatch in [regex]::Matches($text, '\]\((?!https?://)([^)#]+\.md)(?:#[^)]*)?\)')) {
+        foreach ($linkMatch in [regex]::Matches($text, '\]\((?!https?://|mailto:|#)([^)#]+)(?:#[^)]*)?\)')) {
             $checks++
             $link = [Uri]::UnescapeDataString($linkMatch.Groups[1].Value)
             $target = [IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $markdownFile) ($link -replace '/', [IO.Path]::DirectorySeparatorChar)))
-            if (-not (Test-Path -LiteralPath $target -PathType Leaf)) {
+            if (-not (Test-Path -LiteralPath $target)) {
                 Add-Failure "Broken Markdown reference in $([IO.Path]::GetFileName($markdownFile)): $link"
             }
+        }
+    }
+
+    $processTerms = @(
+        ('BOOT' + 'STRAP(?:-init)?\.md'),
+        ('NEXT_' + 'PROMPT[^\\/\r\n]*'),
+        ('HAND' + 'OFF(?:-[0-9]+)?\.md'),
+        ('ref' + 'erences[\\/]'),
+        ('tr' + 'ash[\\/]'),
+        ('boot' + 'strap' + ' phase'),
+        ('architecture boot' + 'strap' + ' prompt')
+    )
+    $processReferencePattern = '(?i)(' + ($processTerms -join '|') + ')'
+    $textExtensions = @('.md', '.yaml', '.yml', '.json', '.toml', '.ps1')
+    $operationalTextFiles = @(
+        $artifactSearchRoots |
+            ForEach-Object {
+                if ($_.PSIsContainer) {
+                    Get-ChildItem -LiteralPath $_.FullName -File -Recurse -Force |
+                        Where-Object { $textExtensions -contains $_.Extension }
+                }
+                elseif ($textExtensions -contains $_.Extension) {
+                    $_
+                }
+            }
+    )
+    foreach ($operationalTextFile in $operationalTextFiles) {
+        $checks++
+        $operationalText = [IO.File]::ReadAllText($operationalTextFile.FullName)
+        if ($operationalText -match $processReferencePattern) {
+            Add-Failure "Obsolete process reference in $($operationalTextFile.FullName): $($Matches[0])"
         }
     }
 }
@@ -259,5 +376,5 @@ if ($failures.Count -gt 0) {
 Write-Host "Repository governance PASSED ($checks checks)." -ForegroundColor Green
 $validatedVersion = if ($baselineVersionMatch.Success) { $baselineVersionMatch.Groups[1].Value } else { 'UNKNOWN' }
 $validatedStatus = if ($validationStatusMatch.Success) { $validationStatusMatch.Groups[1].Value } else { 'UNKNOWN' }
-Write-Host "Baseline: FROZEN $validatedVersion; validation: $validatedStatus; ADRs, references, skills, locks, and freeze hash are consistent."
+Write-Host "Baseline: FROZEN $validatedVersion; validation: $validatedStatus; ADRs, diagrams, links, skills, locks, and freeze hash are consistent."
 exit 0

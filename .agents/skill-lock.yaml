@@ -41,8 +41,8 @@ skills:
       .claude/skills/pdf/assets/pdf.png: 17DA356D195D4E3FA24F9BECBEE6B8D9E60E13005762B5AB0809C520C76DA6EE
     scripts: none
     dependencies:
-      requiredForThisBootstrap:
+      requiredForPdfTasks:
         - pdftotext
         - pdftoppm
         - pdfplumber
-      installedDuringBootstrap: []
+      installedByProjectSetup: []

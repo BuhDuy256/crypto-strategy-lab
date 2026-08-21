@@ -5,6 +5,8 @@ Validation Status: PENDING IMPLEMENTATION PROOFS
 Decision date: 2026-08-21
 Traceability convention: `P-*` problem, `QA-*` quality scenario, `D-*` decision, `ADR-*` record, `ARC-*` architecture element, `PROOF-*` validation proof.
 
+**Diagram-first guide:** start with the [diagram index](../diagrams/README.md), [Problem Tree](../diagrams/01-problem-tree.md), and [Decision Tree](../diagrams/02-decision-tree.md). These diagrams summarize this reasoning without replacing it.
+
 Baseline v1.1 preserves the v1 architecture reasoning and supersedes only its technology realization and the clarified delivery/result-acceptance semantics. The exact frozen v1 baseline remains at [`architecture-baseline-v1.md`](architecture-baseline-v1.md).
 
 ## 1. Purpose and scope
@@ -22,8 +24,7 @@ Authority is applied only to what each source actually contains.
 | 1 | [`Crypto Strategy Lab - Do an cuoi ky.pdf`](../requirements/Crypto%20Strategy%20Lab%20%E2%80%93%20%C4%90%E1%BB%93%20%C3%A1n%20cu%E1%BB%91i%20k%E1%BB%B3.pdf) | Goals, required modules, MVP, change/failure questions, deliverables | Technology selection, unstated numeric targets, production deployment |
 | 2 | [`KienTrucDoAn_slide.pdf`](../requirements/KienTrucDoAn_slide.pdf) | Architecture method, quality scenarios, trade-off framing, candidate patterns | Its explicitly labeled candidate topology or illustrative technologies as mandates |
 | 3 | [`sample-ui/`](../requirements/sample-ui/) | Visible layout, labels, and illustrative flows | Business rules, validation, acceptance criteria, numerical defaults |
-| 4 | [`BOOTSTRAP-init.md`](../../references/BOOTSTRAP-init.md) | Required bootstrap process and artifacts | Product behavior beyond the official project sources |
-| 5 | Current primary technology documentation | Evidence that selected tools support the required realization | Project requirements |
+| 4 | Current primary technology documentation | Evidence that selected tools support the required realization | Project requirements |
 
 The two PDFs were extracted in full and representative requirements, diagrams, MVP, deliverables, architecture-method, trade-off, and ADR pages were visually inspected. The three UI images were visually inspected separately.
 
@@ -77,7 +78,6 @@ The two PDFs were extracted in full and representative requirements, diagrams, M
 - **CONSTRAINT C-04:** The search loop must not be an uncontrolled infinite loop.
 - **CONSTRAINT C-05:** Strategy evaluation is separate from strategy implementation.
 - **CONSTRAINT C-06:** The source explicitly leaves frameworks, database, broker, ML model, and search technology to the team; no source mandates microservices, Kafka, Kubernetes, CQRS, or Event Sourcing.
-- **CONSTRAINT C-07:** Bootstrap may create governance and validation scripts but must stop before application coding.
 
 ## 6. Assumptions
 
