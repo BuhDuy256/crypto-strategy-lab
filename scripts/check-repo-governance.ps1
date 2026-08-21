@@ -54,6 +54,7 @@ $requiredFiles = @(
     'skills-lock.json',
     'docs/agents/issue-tracker.md',
     'docs/agents/domain.md',
+    'docs/agents/development-workflow.md',
     'docs/architecture/architecture-proposal.md',
     'docs/architecture/architecture-baseline.md',
     'docs/architecture/architecture-baseline-v1.md',
@@ -135,7 +136,7 @@ if ($failures.Count -eq 0) {
         Add-Failure 'CLAUDE.md appears to duplicate shared policy instead of containing a small platform delta.'
     }
 
-    $checks += 4
+    $checks += 5
     if ($agents -notmatch '(?m)^- `improve-codebase-architecture` is MANUAL-ONLY' -or
         $agents -notmatch 'must not redesign the frozen architecture') {
         Add-Failure 'AGENTS.md does not preserve the manual-only frozen-architecture guardrail.'
@@ -151,8 +152,11 @@ if ($failures.Count -eq 0) {
     if ($agents -notmatch 'docs/agents/issue-tracker\.md' -or $agents -notmatch 'docs/agents/domain\.md') {
         Add-Failure 'AGENTS.md does not point to the configured issue-tracker and domain guidance.'
     }
+    if ($agents -notmatch 'docs/agents/development-workflow\.md') {
+        Add-Failure 'AGENTS.md does not point to the project development workflow.'
+    }
 
-    $checks += 5
+    $checks += 6
     if ($readme -notmatch 'Architecture:\*\* `FROZEN v1\.1`' -or
         $readme -notmatch 'Validation:\*\* `PENDING IMPLEMENTATION PROOFS`' -or
         $readme -notmatch 'Implementation:\*\* `NOT STARTED`') {
@@ -169,6 +173,9 @@ if ($failures.Count -eq 0) {
     }
     if ($readme -notmatch 'Walking Skeleton' -or $readme -notmatch 'architecture proof-oriented vertical slice') {
         Add-Failure 'README.md does not identify the review-ready next phase.'
+    }
+    if ($readme -notmatch 'docs/agents/development-workflow\.md') {
+        Add-Failure 'README.md does not link the project development workflow.'
     }
 
     $checks += 2

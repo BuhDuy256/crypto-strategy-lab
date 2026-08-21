@@ -104,6 +104,12 @@ Cross-module access uses exported application/domain ports. A logical module is 
 - [ADR-008 — Realtime Delivery and Market Recovery](docs/adr/ADR-008-realtime-delivery-recovery.md)
 - [ADR-009 — Technology Realization for Baseline v1.1](docs/adr/ADR-009-technology-realization.md)
 
+## Development workflow
+
+Future work follows a gated path from research/problem evidence to specification, architecture conformance, implementation tickets, TDD implementation, two-axis code review, and architecture proof. Architecture constraints apply throughout rather than as a one-time design step.
+
+The [Development Workflow](docs/agents/development-workflow.md) identifies the repository-local skill, authoritative inputs, artifact, validation or human gate, next phase, and freeze constraint for each step. The [Architecture Proof Plan](docs/validation/architecture-proof-plan.md) remains authoritative for implementation evidence: `FROZEN` is not `PROVEN`.
+
 ## What the team should review now
 
 - [ ] Are module responsibilities and data ownership clear?

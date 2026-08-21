@@ -82,6 +82,10 @@ During implementation, also run the relevant tests and the architecture proofs a
 
 ## Agent skills
 
+### Development workflow
+
+For research, specification, architecture-conformance, ticketing, implementation, review, bug diagnosis, or architecture-proof work, follow `docs/agents/development-workflow.md`. It routes each phase to the installed skills and names the required authoritative inputs and gates.
+
 ### Issue tracker
 
 Project specifications and tickets are tracked in GitHub Issues. See `docs/agents/issue-tracker.md`.
