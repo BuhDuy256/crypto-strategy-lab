@@ -1,0 +1,87 @@
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+body {
+  margin: 0;
+}
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid #d8dee4;
+}
+
+.app-title {
+  font-weight: 600;
+  font-size: 1.1rem;
+}
+
+.app-body {
+  display: flex;
+  flex: 1;
+}
+
+.app-nav ul {
+  list-style: none;
+  margin: 0;
+  padding: 1rem 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 12rem;
+  border-right: 1px solid #d8dee4;
+}
+
+.app-nav a {
+  display: block;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.375rem;
+  text-decoration: none;
+  color: inherit;
+}
+
+.app-nav a.active {
+  background: #e7ecf3;
+  font-weight: 600;
+}
+
+.app-content {
+  flex: 1;
+  padding: 1.5rem;
+}
+
+.health-status {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+}
+
+.health-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: #9aa4af;
+}
+
+.health-status[data-health="ok"] .health-dot {
+  background: #2ea043;
+}
+
+.health-status[data-health="unreachable"] .health-dot {
+  background: #d1242f;
+}
+
+.placeholder-note {
+  color: #57606a;
+}
