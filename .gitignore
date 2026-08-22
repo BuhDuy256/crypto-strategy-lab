@@ -1,0 +1,3 @@
+/trash
+.scratch/checkpoints/*.md
+!.scratch/checkpoints/TEMPLATE.md

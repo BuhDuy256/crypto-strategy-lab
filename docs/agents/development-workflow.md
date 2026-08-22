@@ -30,6 +30,28 @@ Architecture constraints apply in every phase. `FROZEN` means normative for impl
 
 When behavior is broken, throwing, failing, or slow, use `diagnosing-bugs` before choosing a fix. The required input is the exact user-visible symptom plus a reproducible environment or redacted artifact. Produce a tight red-capable loop, a minimized reproduction, and a falsifiable diagnosis. Add a fix and regression test only when the user request authorizes a fix, then resume review and any affected proof.
 
+## Active-work checkpoint
+
+Distinct from the phase router above (which document/artifact a task needs next) and from architecture conformance (whether a design choice fits the frozen baseline): this covers progress *within* the TDD/implementation phase when a session ends before a ticket is done.
+
+```text
+Implementation / TDD
+   │
+   ├── completed → review
+   │
+   └── interrupted / session ending
+           ↓
+       checkpoint active work (.scratch/checkpoints/<ticket-ref>.md)
+           ↓
+       fresh session
+           ↓
+       reconcile checkpoint + git + ticket
+           ↓
+       resume implementation
+```
+
+The checkpoint is advisory active-work state, not a project-phase or architecture artifact. See `AGENTS.md`'s Implementation discipline section for the write/resume/staleness rules and [`.scratch/checkpoints/TEMPLATE.md`](../../.scratch/checkpoints/TEMPLATE.md) for the schema.
+
 ## Artifact conventions
 
 Use existing strong examples before adding a template. Include only traceability fields that apply; never fabricate an identifier to fill a form.

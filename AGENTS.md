@@ -1,5 +1,10 @@
 # Crypto Strategy Lab - Project Instructions
 
+## Language and communication rules
+
+- Chat/conversational responses: communicate with the user in Vietnamese. Use English only for proper nouns, technology names, or specialized technical terms where a Vietnamese translation would be confusing. Do not excessively mix English and Vietnamese in everyday sentences; keep the language natural and consistent to minimize the user's cognitive load.
+- File generation/file outputs: any output intended to be saved as a file (code, documentation, configurations, etc.) must be written entirely in 100% English, using plain, basic, and simple vocabulary. Avoid complex, archaic, or overly formal words so the content stays accessible.
+
 ## Current mode
 
 PROJECT MODE: IMPLEMENTATION AGAINST FROZEN ARCHITECTURE
@@ -69,6 +74,15 @@ If implementation reveals a conflict:
 - Never overwrite versioned strategy, dataset, model, engine, or experiment inputs used by completed runs.
 - Make retries, cancellation, pause/resume, outbox publication, and projection updates observable and testable.
 - Keep CPU-heavy backtests in separate BullMQ worker processes, never in NestJS request or WebSocket execution.
+- Commit at ticket boundaries and review each ticket's coherent diff (`code-review` skill) before starting the next unblocked ticket. Committing and pushing still require a separate explicit user request (see the `implement` guardrail below).
+
+### Active-work checkpoints
+
+A ticket that spans more than one session uses a compact, local checkpoint instead of relying on the previous chat:
+
+- **Ending an unfinished session:** if a named ticket is still unfinished, create or update `.scratch/checkpoints/<ticket-ref>.md` from `.scratch/checkpoints/TEMPLATE.md`. Capture only durable active-work state — decisions and assumptions already accepted, work already done, validation already run and its result, the current failure and suspected cause, blockers, and the exact next action. Never dump the conversation transcript.
+- **Resuming:** when asked to continue a named ticket, read its checkpoint if one exists, inspect the current Git/worktree state, and re-read the authoritative ticket/spec as needed. Reconcile the checkpoint against that live state and continue from the next valid action rather than redoing prior reasoning.
+- **Staleness:** the checkpoint is advisory active-work state, not authoritative architecture or requirement truth. When it disagrees with live Git or ticket state, trust the live state and update or delete the checkpoint. Delete the checkpoint once the ticket passes its normal review/acceptance boundary.
 
 ## Required verification
 
