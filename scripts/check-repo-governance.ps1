@@ -89,6 +89,7 @@ $requiredFiles = @(
     'AGENTS.md',
     'CLAUDE.md',
     'CODING_STANDARDS.md',
+    'docker-compose.yml',
     'implementation-plan/README.md',
     'implementation-plan/VERSIONS.md',
     'implementation-plan/TRACKING.md',
@@ -296,6 +297,44 @@ if ($missingRequiredFiles -eq 0) {
     }
     if ($planReadme -notmatch 'Do not run `to-tickets` over a\s+slice') {
         Add-Failure 'Implementation plan does not state the plan-slice work-unit rule.'
+    }
+
+    # The two run paths must stay stated where a new member's assistant reads them, and
+    # the version gate must stay a condition of every Definition of Demoable. These are
+    # deliberately static text and presence checks. Whether the Compose topology is
+    # actually correct for a version is a runtime question, and it belongs to that
+    # version's integration gate, not to a validator that has to stay fast and offline.
+    # This never starts Docker, and it never compares Compose services against a
+    # version's role list, because VERSIONS.md is the only source for that mapping.
+    $versions = Read-RepoFile 'implementation-plan/VERSIONS.md'
+
+    $checks += 3
+    if ($agents -notmatch 'Docker Compose is the authoritative' -or
+        $agents -notmatch 'host commands whenever that is faster') {
+        Add-Failure 'AGENTS.md does not state the host-development versus Compose-integration run paths.'
+    }
+    if ($agents -notmatch 'not integration-demo ready merely because host-based tests pass' -and
+        $agents -notmatch 'not integration-demo ready merely because host tests pass') {
+        Add-Failure 'AGENTS.md does not state the Compose integration gate for a completed version.'
+    }
+    if ($agents -notmatch 'must not start containers or services that belong only to a later version') {
+        Add-Failure 'AGENTS.md does not forbid starting a later version''s services early.'
+    }
+
+    $checks += 2
+    if ($versions -notmatch '(?m)^## Compose integration gate \(every version\)\s*$') {
+        Add-Failure 'VERSIONS.md does not carry the Compose integration gate that every Definition of Demoable relies on.'
+    }
+    if ($versions -notmatch 'no service that belongs only to a later version') {
+        Add-Failure 'VERSIONS.md Compose integration gate does not forbid a later version''s services.'
+    }
+
+    $checks += 2
+    if ($readme -notmatch 'docker compose up --build') {
+        Add-Failure 'README.md does not document the full-system Docker Compose command.'
+    }
+    if ($readme -notmatch '(?m)^## Two run paths\s*$') {
+        Add-Failure 'README.md does not name the host-development and full-system run paths.'
     }
 
     # Version advancement stays a user decision, and assignment alone never authorizes it.

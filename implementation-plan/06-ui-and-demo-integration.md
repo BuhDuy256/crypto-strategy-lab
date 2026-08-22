@@ -186,12 +186,13 @@ which is what criteria 4 and 7 protect.
 
 ## DEMO-01 - Run documentation and version demo script
 
-**Version:** V1 · **Priority:** CRIT · **Effort:** S
+**Version:** V1 · **Priority:** CRIT · **Effort:** M
 
 **Outcome**
 The root `README.md` covers install, run, architecture, and demo, and a demo script
 document holds the current version's numbered walkthrough. A clean checkout reaches a
-working demo by following the README alone.
+working demo by following the README alone, with one documented Docker Compose
+command bringing up the whole topology the version needs.
 
 **Why this slice exists**
 The deliverables list requires a README covering install, run, architecture, and
@@ -213,10 +214,18 @@ current, rather than something reconstructed under pressure at the end.
 - Nothing in the demo may depend on a value that is not in configuration.
 - The architecture section links to the frozen baseline, the diagram index, and the
   ADR list rather than restating them.
+- The Compose topology contains only the roles the current version requires. Adding a
+  later version's service early is a plan violation, not a convenience. The role list
+  per version is in
+  [`VERSIONS.md`](VERSIONS.md#compose-integration-gate-every-version).
+- Host development stays fully supported. The Compose path is added beside the
+  existing host commands, never in place of them.
 
 **Expected change surface**
 The root `README.md` install, run, architecture, and demo sections, a demo script
-document, and any convenience command that starts the whole topology.
+document, one Dockerfile that the backend process roles and the frontend build from,
+application services added to the existing `docker-compose.yml` beside `postgres`,
+and the environment wiring those services need.
 
 **Acceptance criteria**
 1. A clean checkout reaches a running system by following the README alone.
@@ -226,13 +235,33 @@ document, and any convenience command that starts the whole topology.
 4. Any required backfill or seed step is a documented command, not a manual action.
 5. The architecture section links rather than restates.
 6. A person who has not seen the project before can complete the demo.
+7. One documented command - `docker compose up --build`, or another single command the
+   README names - brings up the version's whole required topology from a clean
+   checkout: infrastructure services, backend process roles, and the frontend, with
+   configuration already wired. Startup dependencies and health checks are used where
+   they genuinely help and nowhere else.
+8. The Compose topology contains no service that belongs only to a later version.
+9. `.env.example` covers both run paths, including the values that differ between a
+   process on the host and the same process in a container.
+10. The README names the two paths and says which question each answers: host commands
+    for coding and debugging, Compose for full-system integration and demo.
 
 **Validation**
-Perform the whole path on a clean checkout, ideally on a second machine or a fresh
-container. Record where it breaks and fix the documentation, not the reader.
+Perform the whole path on a clean checkout, ideally on a second machine. Bring the
+topology up with the documented Compose command, confirm every required role is
+running and healthy and that no later-version service is present, then walk the
+version's demo scenario on that topology. Record where it breaks and fix the
+documentation, not the reader. Evidence goes in this slice's Evidence cell in
+[`TRACKING.md`](TRACKING.md), and in [`JOURNAL.md`](JOURNAL.md) when the run produced
+durable history.
 
 **Out of scope**
-Deployment to a server, packaging for distribution, recorded video.
+Deployment to a server, packaging for distribution, recorded video. Also deliberately
+out of scope, because this is a demo and integration convenience rather than
+production deployment engineering: Kubernetes, service mesh, production
+orchestration, deployment pipelines, container image hardening, autoscaling, separate
+per-environment Compose stacks, running the test suite or the quality commands inside
+containers, and containerizing a later version's services early.
 
 **Proof relevance**
 Routine, but the documented commands become the environment record several proof runs
@@ -242,8 +271,14 @@ cite.
 
 `DEMO-01` is completed once in V1 and then **updated as an exit criterion of every
 later version**. Each version's Definition of Demoable includes walking its own demo
-scenario on a clean checkout, which means the README and the demo script must be
-current. That update is part of the version's final slice, not a new slice each time.
+scenario on a clean checkout, which means the README, the demo script, and the Compose
+topology must be current. That update is part of the version's final slice, not a new
+slice each time.
+
+This is why the Compose path has no slice of its own. A version that adds a process
+role - the market ingest process in V4, the news worker in V5, the outbox dispatcher
+and BullMQ workers in V6 - adds it to the Compose topology here, when that role
+actually exists.
 
 ---
 

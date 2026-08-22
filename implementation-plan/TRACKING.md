@@ -175,7 +175,7 @@ more than one session.
 | EXP-11 | REQ | S | Visualization annotation capture | TODO | EXP-10, STRAT-01 | | | [03](03-experiment-backtest-evaluation.md) |
 | UI-04 | CRIT | M | Backtest page with metrics and trades | TODO | EXP-10, MKT-05 | | | [06](06-ui-and-demo-integration.md) |
 | UI-05 | REQ | M | Signal and trade visualization | TODO | UI-04, EXP-11 | | | [06](06-ui-and-demo-integration.md) |
-| DEMO-01 | CRIT | S | Run documentation and V1 demo script | TODO | UI-04, UI-05 | | | [06](06-ui-and-demo-integration.md) |
+| DEMO-01 | CRIT | M | Run documentation, Compose topology, and V1 demo script | TODO | UI-04, UI-05 | | | [06](06-ui-and-demo-integration.md) |
 
 ## V1 proof
 

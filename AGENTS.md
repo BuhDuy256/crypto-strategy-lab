@@ -83,6 +83,26 @@ If implementation reveals a conflict:
 - Follow `CODING_STANDARDS.md` for naming, TypeScript usage, module surfaces, error handling, logging, validation placement, migrations, tests, formatting, and commit messages. It records conventions this codebase already uses; it does not create architecture rules.
 - Commit at slice boundaries and review each slice's coherent diff (`code-review` skill) before starting the next unblocked slice. Committing and pushing still require a separate explicit user request (see the `implement` guardrail below).
 
+### Local development and full-system integration
+
+Two run paths exist, and they answer different questions. Neither replaces the other.
+
+- **Host development path.** Run services directly with `pnpm` or the repository's normal host commands whenever that is faster for coding, testing, debugging, hot reload, or focused slice work. This is the default while a slice is being built. Nothing requires a command, a test, or a coding session to run inside a container.
+- **Full-system integration and demo path.** Docker Compose is the authoritative way to assemble a whole product version. Every completed version must bring up the complete process topology that version requires, from a clean checkout, through the documented Compose command.
+
+```text
+coding / debugging            -> host pnpm commands are allowed
+integration / version demo    -> Docker Compose is the canonical full-system path
+```
+
+Three rules follow from that split:
+
+- **A version is not integration-demo ready merely because host tests pass.** Its assembled topology must also come up through the documented Compose path. This is the Compose integration gate in [`implementation-plan/VERSIONS.md`](implementation-plan/VERSIONS.md), and it complements unit and integration tests, boundary tests, the Definition of Demoable, and architecture proofs rather than replacing any of them.
+- **Version N must not start containers or services that belong only to a later version.** The Compose topology grows with the roadmap. Do not add Redis, BullMQ, outbox infrastructure, news services, or any other later-version machinery early just to have one large Compose file. `VERSIONS.md` is the only source for which roles a version requires.
+- **Do not bypass the gate because the application worked on your own machine.** "It runs here" is not evidence about the assembled system, which is exactly the failure this gate exists to catch.
+
+`DEMO-01` in [`implementation-plan/06-ui-and-demo-integration.md`](implementation-plan/06-ui-and-demo-integration.md) owns building and updating the Compose path, once in V1 and then as an exit criterion of every later version. Compose validation evidence is recorded through the existing `TRACKING.md` and `JOURNAL.md` conventions; there is no separate log.
+
 ### The implementation work unit
 
 For Crypto Strategy Lab implementation, **the plan slice is the work unit**. Do not run `to-tickets` over a slice: the slice already carries an outcome, dependencies, architecture constraints, acceptance criteria, and validation. Mirror one slice into a GitHub issue only when the user explicitly asks for tracker visibility, and then one issue per slice. `to-spec` and `to-tickets` remain available for work that is not a planned slice.
@@ -119,7 +139,7 @@ Before starting a new product version, verify from the repository that V(N) actu
 
 1. every required slice of V(N) is `DONE` in `TRACKING.md` **and** present in code;
 2. every condition in V(N)'s Definition of Demoable in `VERSIONS.md` passes;
-3. V(N)'s demo scenario runs end to end on a clean checkout;
+3. V(N)'s demo scenario runs end to end on a clean checkout, on the topology brought up through the documented Docker Compose path;
 4. V(N)'s required architecture proofs/evidence are recorded;
 5. Git, code, and tests agree with what the tracker claims.
 

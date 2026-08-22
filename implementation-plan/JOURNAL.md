@@ -214,3 +214,62 @@ avoiding duplication no longer applies; the decision below replaces it.
 **Ending state**
 
 - 14 skills, 43 files each, identical across all three trees (`diff -r` clean).
+
+### 2026-08-22 — V1 — Docker Compose integration gate (no slice)
+
+**Decisions**
+
+- Two run paths are now explicit. Host `pnpm` commands stay the normal way to build a
+  slice; Docker Compose is the authoritative way to assemble a whole product version.
+  Nothing forces a command, a test, or a coding session into a container. The rule is
+  declared once in `AGENTS.md` under "Local development and full-system integration".
+- The version-completion gate lives in `VERSIONS.md` as "Compose integration gate
+  (every version)", stated once instead of copied into six Definition-of-Demoable
+  lists. It complements the existing tests, boundary tests, and `PROOF-*` evidence and
+  replaces none of them.
+- `DEMO-01` owns building the Compose path rather than a new slice. It already recurs
+  as an exit criterion of every version, which is exactly what a topology that grows
+  with the roadmap needs; a new slice would have needed its own recurrence rule and
+  the growth would have scattered into `WS-03`, `MKT-06`, and `NEWS-02`. Its effort
+  moved `S` to `M` to pay for the Dockerfile and the application services. Slice count
+  is unchanged at 62 required.
+- `CODING_STANDARDS.md` and `docs/agents/development-workflow.md` were deliberately
+  left alone. The standards file records code conventions and says it never creates
+  architecture rules; the workflow router routes phases to skills, and a version exit
+  gate is not a phase. Stating the rule there would have created a third and fourth
+  copy of it.
+- The governance validator gained eight static checks only: `docker-compose.yml` must
+  exist, and the rule must still be stated in `AGENTS.md`, `VERSIONS.md`, and
+  `README.md`. It deliberately does not start Docker and does not compare Compose
+  services against a version's role list, because `VERSIONS.md` is the only source for
+  that mapping and any such check would false-fail throughout V1.
+
+**Deviations / debt**
+
+- The full-system path does not exist yet, by design. `docker-compose.yml` still
+  starts PostgreSQL only, which is what the completed setup slices needed. Nothing is
+  containerized until `DEMO-01`, because before `EXP-05` and `UI-04` there is no
+  assembled system to bring up. The cost is that container problems surface late in
+  V1; accepted, since containerizing an empty shell proves nothing.
+- `.env.example` still carries `POSTGRES_HOST=localhost`, correct for the host path
+  and wrong for a container reaching PostgreSQL by service name. `DEMO-01` resolves it
+  by supplying the value in the Compose service rather than by editing `.env`.
+- The V1-to-V6 role table in the gate is a summary, not a source. If the review of
+  `deviation-proposal-001` rejects the deviation, `SETUP-08`, `WS-02`, and `EXP-12`
+  move into V1 and V1's row gains Redis.
+
+**Validation**
+
+- Governance validator: 1020 checks, only the three pre-existing, unrelated findings
+  about the untracked scratch directory.
+- Negative tests: removing `docker-compose.yml` reports the missing required file;
+  breaking each of the seven text anchors in `AGENTS.md`, `VERSIONS.md`, and
+  `README.md` produces seven distinct named failures. All anchors restored afterwards
+  and the validator returned to the three pre-existing findings.
+
+**Problems worth remembering**
+
+- `SETUP-01` through `SETUP-06` were not touched and their acceptance criteria were
+  not rewritten. `SETUP-02` had already required the Compose file to be structured so
+  later versions can add services without rewriting it, so this gate continues that
+  slice rather than contradicting it.
