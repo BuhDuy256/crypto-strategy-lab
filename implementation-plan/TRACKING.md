@@ -14,26 +14,61 @@ Read [`README.md`](README.md) first. Version scope and demo contracts are in
 
 ## V1 - Backtesting Lab
 
-**Nothing is implemented.** The repository is documentation only: no `apps/`, no
-`packages/`, no lock file.
+All six V1 setup slices (`SETUP-01` through `SETUP-06`) are done. The platform
+foundation exists: pnpm workspace, PostgreSQL topology, a NestJS API with the five
+module boundaries and structured logging, module-owned migrations, automated
+architecture boundary tests, and a React SPA shell with a typed API client. All
+work is uncommitted in the working tree.
 
-**Start here: `SETUP-01`.**
+**Continue here: `MKT-01` or `STRAT-01`** (both newly `READY`; independent
+branches, no shared files).
 
 | | |
 |---|---|
 | Target version | **V1 - Backtesting Lab** |
 | V1 slices | 25 |
-| V1 `DONE` | 0 |
-| V1 `READY` | 1 (`SETUP-01`) |
+| V1 `DONE` | 6 (`SETUP-01` through `SETUP-06`) |
+| V1 `READY` | 2 (`MKT-01`, `STRAT-01`) |
 | V1 `IN_PROGRESS` | 0 |
 | V1 `BLOCKED` | 2 (`EXP-02` execution defaults, `EXP-04` architecture review) |
-| V1 `TODO` | 22 |
+| V1 `TODO` | 17 |
 | V1 demo readiness | Not yet - see V1's Definition of Demoable in `VERSIONS.md` |
 
 **Do not start a V2 or later slice**, even if its dependencies are satisfied.
 Finishing V1 makes the project demoable; starting V2 early does not.
 
-**Last reviewed:** 2026-08-22, against commit `cdac819` with a clean working tree.
+**Last reviewed:** 2026-08-22, against commit `87d2108` plus uncommitted `SETUP-01`
+through `SETUP-06` work, clean otherwise.
+
+**Foundation integration gate (2026-08-22):** after all six slices landed, the
+whole stack was brought up together and re-verified as one system, beyond each
+slice's own validation:
+- `pnpm install`, `pnpm run typecheck`, `pnpm run lint`, `pnpm run test` (33
+  tests / 10 files, DB-backed tests included) all pass together.
+- PostgreSQL: `docker compose up -d` reaches healthy; a row survives both a
+  container restart and (separately, per `SETUP-04`) a full recreate.
+- Config fail-fast: unsetting `POSTGRES_HOST` and loading the config throws a
+  clear named-variable error.
+- Migrations: `migrate` from empty creates exactly `market`/`strategy`/
+  `experiment`/`news`; a second `migrate` is a no-op; `migrate:reset` empties
+  the database; re-`migrate` restores it.
+- API: starts without Postgres running, `/health` returns `{"status":"ok"}`;
+  a request without `x-request-id` gets one generated, a request carrying one
+  keeps it; structured log lines show timestamp/level/`api`/module graph
+  (all five modules present); `enableShutdownHooks(["SIGTERM","SIGINT"])`
+  confirmed releasing port 3000 cleanly on signal.
+- Architecture boundary test passes against the full real tree (not just
+  fixtures) with all `apps/web` and `apps/backend` code present.
+- SPA: dev server serves all 5 routes (200), `/api/health` through the dev
+  proxy returns `{"status":"ok"}`, production build succeeds (34 modules,
+  ~74 KB gzip).
+- Governance validator: 34 checks, 1 finding — a pre-existing, untracked
+  `trash/` directory that predates this session and is unrelated to any
+  `SETUP-*` slice; no new finding introduced by any of the six slices.
+- All Docker containers/volumes and dev-server/API processes started for
+  validation were stopped/cleaned up afterward; working tree left exactly as
+  the six slices produced it (uncommitted, per instruction — committing
+  requires a separate explicit request).
 
 ---
 
@@ -118,19 +153,19 @@ more than one session.
 
 | ID | Priority | Effort | Slice | Status | Depends on | Blocker | Evidence | Plan |
 |---|---|---|---|---|---|---|---|---|
-| SETUP-01 | CRIT | S | Workspace, TypeScript, quality commands | **READY** | - | | | [00](00-setup-and-walking-skeleton.md) |
-| SETUP-02 | CRIT | S | PostgreSQL topology and configuration | TODO | SETUP-01 | | | [00](00-setup-and-walking-skeleton.md) |
-| SETUP-03 | CRIT | M | NestJS API, module skeleton, logging | TODO | SETUP-01, SETUP-02 | | | [00](00-setup-and-walking-skeleton.md) |
-| SETUP-04 | CRIT | M | Migrations and module-owned schemas | TODO | SETUP-02, SETUP-03 | | | [00](00-setup-and-walking-skeleton.md) |
-| SETUP-05 | CRIT | M | Architecture boundary tests | TODO | SETUP-03, SETUP-04 | | | [00](00-setup-and-walking-skeleton.md) |
-| SETUP-06 | REQ | M | React SPA workspace and shell | TODO | SETUP-01, SETUP-03 | | | [00](00-setup-and-walking-skeleton.md) |
-| MKT-01 | CRIT | M | Candle contract, provider port, contract suite | TODO | SETUP-05 | | | [01](01-market-and-realtime.md) |
+| SETUP-01 | CRIT | S | Workspace, TypeScript, quality commands | **DONE** | - | | pnpm workspace (`apps/{backend,web}`, `packages/api-contracts`), root `pnpm install`/`typecheck`/`lint`/`test` all pass; failure detection proven for typecheck (TS2322) and lint (`no-unused-vars`) then reverted; `pnpm-lock.yaml` committed-ready; strict TS on; commands documented in root `README.md` | [00](00-setup-and-walking-skeleton.md) |
+| SETUP-02 | CRIT | S | PostgreSQL topology and configuration | **DONE** | SETUP-01 | | Docker Compose `postgres:16-alpine` service, named volume, healthcheck; row survives both container restart and full recreate; `.env.example` with 5 documented vars, no secrets; typed fail-fast config loader in `apps/backend/src/platform/config.ts` with 5 passing tests plus manual missing-var proof; typecheck/lint/test all pass; topology torn down clean | [00](00-setup-and-walking-skeleton.md) |
+| SETUP-03 | CRIT | M | NestJS API, module skeleton, logging | **DONE** | SETUP-01, SETUP-02 | | Express-based Nest app (`apps/backend/src/main.api.ts`); five modules (`ApiModule`, `MarketModule`, `StrategyModule`, `ExperimentModule`, `NewsModule`) each with a single-surface `index.ts`, zero cross-module imports; `/health` endpoint; global `ValidationPipe`; structured JSON/pretty logger with request id via `AsyncLocalStorage`, proven by manual curl with/without `x-request-id` and by tests; clean SIGTERM shutdown verified manually; module-graph test in `app.module.test.ts`; typecheck/lint/test (18 tests, 7 files) all pass; governance validator has only the pre-existing unrelated `trash` finding | [00](00-setup-and-walking-skeleton.md) |
+| SETUP-04 | CRIT | M | Migrations and module-owned schemas | **DONE** | SETUP-02, SETUP-03 | | Hand-rolled SQL-first migration runner over `apps/backend/migrations/*.sql`, tracked in `public._migrations`; first migration creates exactly the `market`/`strategy`/`experiment`/`news` schemas, no tables; `pnpm run migrate` idempotent (proven by running twice against an empty DB), `pnpm run migrate:reset` proven to empty the DB; `platform/database.ts` connection provider reads only from `platform/config.ts` (no literals); `platform/test-database.ts` gives Vitest isolated schema state; schema-ownership table in README; typecheck/lint/test (20 tests, 8 files, DB-backed) all pass; governance validator has only the pre-existing unrelated `trash` finding | [00](00-setup-and-walking-skeleton.md) |
+| SETUP-05 | CRIT | M | Architecture boundary tests | **DONE** | SETUP-03, SETUP-04 | | Hand-rolled regex import scanner + pure rule engine (`apps/backend/src/architecture/{boundary-rules,scan-source-tree,boundary.test}.ts`) encoding all 6 rules (index-only access, allowed edges, domain purity, platform isolation, no internal reach, web/backend isolation incl. future `messaging-contracts`); each rule proven with a temporary violating fixture (clear per-file/import/rule failure message), then reverted — tree confirmed clean afterward; runs automatically in `pnpm run test` (27 tests, 9 files); typecheck/lint pass; governance validator has only the pre-existing unrelated `trash` finding | [00](00-setup-and-walking-skeleton.md) |
+| SETUP-06 | REQ | M | React SPA workspace and shell | **DONE** | SETUP-01, SETUP-03 | | Vite+React+TypeScript SPA in `apps/web` with `react-router-dom` shell (5 routes: Backtest/Realtime/Strategy Engine/Discovery/News, placeholder content except Backtest which is also placeholder-level per V1 scope — real content is `UI-04`); dev proxy `/api` -> backend; single typed API client `apps/web/src/api/client.ts` (`getHealth()`), `HealthResponse` type added to `packages/api-contracts`; live health shown in header, proven with backend+dev-server running (`{"status":"ok"}` via proxy); client-side navigation proven by `App.test.tsx` (no remount across all 5 links); production build succeeds (34 modules, ~74 KB gzip); typecheck covers `apps/web`; boundary test still passes with the new `apps/web` tree; governance validator has only the pre-existing unrelated `trash` finding | [00](00-setup-and-walking-skeleton.md) |
+| MKT-01 | CRIT | M | Candle contract, provider port, contract suite | **READY** | SETUP-05 | | | [01](01-market-and-realtime.md) |
 | MKT-02 | CRIT | M | Binance historical adapter | TODO | MKT-01 | | | [01](01-market-and-realtime.md) |
 | MKT-03 | CRIT | M | Candle persistence with immutable revisions | TODO | MKT-02, SETUP-04 | | | [01](01-market-and-realtime.md) |
 | MKT-04 | REQ | S | Candle history endpoint | TODO | MKT-03, SETUP-06 | | | [01](01-market-and-realtime.md) |
 | MKT-05 | REQ | M | Single candlestick chart | TODO | MKT-04 | | | [01](01-market-and-realtime.md) |
 | MKT-10 | CRIT | S | Dataset snapshot and manifest | TODO | MKT-03 | | | [01](01-market-and-realtime.md) |
-| STRAT-01 | REQ | M | Strategy contract, descriptor, registry, annotations | TODO | SETUP-05 | | | [02](02-strategy-and-composition.md) |
+| STRAT-01 | REQ | M | Strategy contract, descriptor, registry, annotations | **READY** | SETUP-05 | | | [02](02-strategy-and-composition.md) |
 | STRAT-02 | REQ | M | Indicator primitives and the first strategy | TODO | STRAT-01 | | | [02](02-strategy-and-composition.md) |
 | EXP-01 | CRIT | M | Immutable run specification | TODO | MKT-10, STRAT-02 | | | [03](03-experiment-backtest-evaluation.md) |
 | EXP-02 | CRIT | L | Deterministic backtester | **BLOCKED** | EXP-01 | Execution model defaults not supplied | | [03](03-experiment-backtest-evaluation.md) |

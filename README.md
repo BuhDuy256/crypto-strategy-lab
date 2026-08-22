@@ -123,8 +123,112 @@ The [Development Workflow](docs/agents/development-workflow.md) identifies the r
 
 Open product/configuration choices remain intentionally undecided: ranking weights and tie-breaking; capital, fee, slippage, fill, sizing, and stop defaults; concrete news providers and sentiment model; measurable performance targets and test hardware; authentication; and retention. The team should confirm or schedule these decisions rather than allowing hidden implementation defaults.
 
+## Development commands
+
+The repository is a pnpm workspace (`apps/*`, `packages/*`) with TypeScript in strict mode, ESLint, and Vitest. Run these from the repository root:
+
+| Command | Purpose |
+|---|---|
+| `pnpm install` | Install dependencies for all workspace packages. |
+| `pnpm run typecheck` | Type-check every workspace package with `tsc --noEmit`. |
+| `pnpm run lint` | Lint the repository with ESLint. |
+| `pnpm run test` | Run the Vitest test suite. |
+| `pnpm run migrate` | Apply every pending database migration (safe to run twice). |
+| `pnpm run migrate:reset` | Drop the module-owned schemas and return the database to empty. |
+
+## Local setup
+
+V1 needs durable storage only, so local setup starts PostgreSQL through Docker Compose. Redis is not started yet; it arrives with the live fan-out slice (V4).
+
+### 1. Configure environment variables
+
+```powershell
+cp .env.example .env
+```
+
+`.env.example` lists every variable the system reads, with a safe placeholder for each — no real secret. Edit `.env` if you want different local values; `.env` is git-ignored and never committed.
+
+### 2. Start PostgreSQL
+
+```powershell
+docker compose up -d
+```
+
+This starts one PostgreSQL container (service `postgres` in `docker-compose.yml`), using the variables from `.env`, with a named volume (`postgres_data`) so data survives container restarts.
+
+### 3. Check health
+
+```powershell
+docker compose ps
+```
+
+The `postgres` service should show `healthy` once its healthcheck (`pg_isready`) passes. `docker compose logs postgres` shows startup output if it does not.
+
+### 4. Stop the topology
+
+```powershell
+docker compose down
+```
+
+Data persists in the `postgres_data` volume across `docker compose down` / `up`. Add `-v` only if you intend to permanently delete local data.
+
+### 5. Run database migrations
+
+```powershell
+pnpm run migrate
+```
+
+This applies every pending migration under `apps/backend/migrations/` in filename
+order, tracking what it has applied in a `public._migrations` table so re-running the
+command is a no-op for migrations already applied. The first migration
+(`0001_create_module_schemas.sql`) creates one empty PostgreSQL schema per
+data-owning module. No tables exist yet; each schema gets its tables from the slice
+that owns that data.
+
+| Schema | Owning module |
+|---|---|
+| `market` | Market Data (`ARC-MARKET`) |
+| `strategy` | Strategy (`ARC-STRATEGY`) |
+| `experiment` | Experiment (`ARC-EXPERIMENT`) |
+| `news` | News Intelligence (`ARC-NEWS`) |
+
+Only the owning module writes to its schema; see `docs/architecture/architecture-baseline.md`,
+sections "Data ownership" and "Persistence rules".
+
+To return the database to an empty state (drops the four schemas and the migrations
+tracking table):
+
+```powershell
+pnpm run migrate:reset
+```
+
+Database-backed tests use the same reset-then-migrate sequence through
+`apps/backend/src/platform/test-database.ts`, so each test run gets isolated, clean
+schema state with no manual steps. Point `.env` at a dedicated test database before
+running `pnpm run test` if you do not want tests touching your local dev database.
+
+### How the backend config loader works
+
+`apps/backend/src/platform/config.ts` exports `loadConfig()`, a typed loader that reads the same PostgreSQL variables from `.env.example` out of `process.env`. It is fully typed (no `any`, no silent `undefined`) and fails fast: a missing or blank required variable, or an invalid port, throws an error naming that exact variable instead of letting the app start with a bad config. See `apps/backend/src/platform/config.test.ts` for the loader's expected behavior. Nothing in the API process (below) imports this loader yet; that wiring arrives in a later slice.
+
+### Starting the API process
+
+The API process is a NestJS HTTP server exposing a health endpoint. It does not need PostgreSQL running.
+
+```powershell
+pnpm run start:api
+```
+
+This runs `apps/backend/src/main.api.ts` (the entry command for the API/WebSocket process role) via `tsx`. Once it logs that it is listening, check it:
+
+```powershell
+curl http://localhost:3000/health
+```
+
+Every request gets an `x-request-id` header on the response: the inbound header's value if the request sent one, otherwise a freshly generated one. Log lines are structured records with a timestamp, level, process role, and that request identifier; they print pretty in development and as raw JSON when `NODE_ENV=production`. Stop the process with Ctrl+C (`SIGINT`) or `SIGTERM`; it shuts down cleanly.
+
 ## Next phase
 
 Implementation against the frozen baseline, starting with a Walking Skeleton / architecture proof-oriented vertical slice.
 
-No application implementation is included in the current repository state.
+Setup slice `SETUP-01` (workspace, TypeScript, and quality commands) is complete; `apps/` and `packages/` currently hold placeholder packages only. Setup slice `SETUP-02` (PostgreSQL topology, `.env.example`, and the typed backend config loader) is complete. Setup slice `SETUP-03` (NestJS API skeleton, the five frozen module boundaries, and structured logging) is complete. Setup slice `SETUP-04` (database migrations and the four module-owned schemas) is complete. Domain implementation has not started.

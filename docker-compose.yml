@@ -1,0 +1,33 @@
+# Local development topology for Crypto Strategy Lab.
+#
+# V1 needs durable storage only, so this file starts PostgreSQL.
+# Redis is added by a later slice (V4 live fan-out); when that happens,
+# add a "redis" service below without rewriting the "postgres" service.
+#
+# Usage:
+#   1. cp .env.example .env
+#   2. docker compose up -d
+#   3. docker compose ps   (wait for "healthy")
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: crypto-strategy-lab-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  postgres_data:

@@ -1,3 +1,13 @@
 /trash
 .scratch/checkpoints/*.md
 !.scratch/checkpoints/TEMPLATE.md
+
+# Node / pnpm
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.pnpm-store/
+
+# Local environment values (copy from .env.example)
+.env
