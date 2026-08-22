@@ -20,7 +20,7 @@ true; keep conversation out of them.
 | Implementation status | `IN PROGRESS` |
 | Current target version | **V1 - Backtesting Lab** |
 | Previous version | None. V1 is the first product version, so no prior version has to be verified. |
-| Last verified commit | `a46dd38` - `feat(setup): complete V1 platform foundation (SETUP-01 through SETUP-06)` |
+| Last verified commit | `b55a9d4` - `feat(governance): add Docker Compose integration gate for version demos` |
 | Last verified on | 2026-08-22 |
 | Last tag | None. No version tag exists yet; `v1.0-demo` is the user's to create once V1's Definition of Demoable passes. |
 | V1 slices | 25 (`DONE` 6, `READY` 2, `IN_PROGRESS` 0, `BLOCKED` 2, `TODO` 15) |
