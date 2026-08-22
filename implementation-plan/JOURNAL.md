@@ -273,3 +273,37 @@ avoiding duplication no longer applies; the decision below replaces it.
   not rewritten. `SETUP-02` had already required the Compose file to be structured so
   later versions can add services without rewriting it, so this gate continues that
   slice rather than contradicting it.
+
+### 2026-08-22 — V1 — `.env` is not loaded by any command (no slice)
+
+**Problems worth remembering**
+
+- Nothing in the repository loads `.env`. `dotenv` is not a dependency, `vitest.config.ts`
+  declares no `env` block and no setup file, and `platform/config.ts` reads
+  `process.env` directly. So copying `.env.example` to `.env` does not put the values
+  anywhere a process can see them. `pnpm run test`, `pnpm run migrate`, and
+  `pnpm run start:api` all need the variables exported into the shell first.
+- The documentation says otherwise. The root `README.md` "Local setup" step 1,
+  `.env.example`'s own header, and the comment at the top of `database.test.ts` all
+  imply the copy is enough. On a clean checkout with Docker running,
+  `pnpm run test` still fails with `Missing required environment variable
+  "POSTGRES_HOST"` from `platform/config.ts`.
+- Verified during this session: with PostgreSQL healthy but the variables only in
+  `.env`, 1 test file fails and 31 of 33 tests run. After exporting `.env` into the
+  shell, all 33 tests in 10 files pass. The code is correct; the documented path is
+  incomplete.
+- Left unfixed on purpose. `SETUP-02` and `SETUP-04` are `DONE`, and closing this
+  means either adding a `.env` loader or correcting the documented commands, which is
+  an implementation decision for the user rather than a silent edit to completed
+  slices. Whoever picks it up should also decide which of the two paths in
+  `AGENTS.md` it belongs to, since the Compose path will supply these values through
+  service environment rather than through `.env`.
+- This is exactly the class of gap the Compose integration gate exists to catch: every
+  slice's own validation passed, and the assembled clean-checkout path still did not
+  work.
+
+**Validation**
+
+- At `b55a9d4`: `pnpm run typecheck` and `pnpm run lint` clean; `pnpm run test` 33
+  passed / 10 files with `.env` exported and PostgreSQL healthy; governance validator
+  1020 checks with only the three pre-existing unrelated findings.
