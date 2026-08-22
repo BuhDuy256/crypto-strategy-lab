@@ -134,3 +134,83 @@ deviation, and no surprise, does not need an entry. `TRACKING.md` already covers
 **Ending state**
 
 - Governance and workflow documents updated. No application code touched.
+
+### 2026-08-22 — V1 — cross-tool agent support (no slice)
+
+**Decisions**
+
+- Shared policy stays in `AGENTS.md` alone, for every assistant, not only Claude Code
+  and Codex. A tool that reads its own instruction file is pointed at `AGENTS.md`
+  instead of getting a copy; duplicated policy drifts and then two members' assistants
+  follow different rules.
+- Skills get a tool-independent fallback: every skill is plain Markdown at
+  `.agents/skills/<name>/SKILL.md`, and an assistant with no skill system opens the
+  file the phase router names. No per-tool skill wiring was added.
+
+**Deviations / debt**
+
+- `README.md` claimed "Codex reads `.agents/skills/` directly and needs no bootstrap
+  step". That was never verified and is probably wrong: `.codex/` holds only
+  `config.toml`, there is no `.codex/skills/`, and the manifest's `codex: true` records
+  content compatibility, not a discovery mechanism. The claim is removed.
+
+**Problems worth remembering**
+
+- **Open question:** how Codex CLI actually discovers project skills, and whether it
+  needs its own bootstrap like `.claude/skills/`. Until someone answers it, assume
+  Codex loads no skill automatically and relies on the plain-Markdown fallback. The
+  governance validator checks the Claude side only; extending it to Codex depends on
+  that answer.
+
+**Ending state**
+
+- `AGENTS.md`, `README.md`, `CLAUDE.md`, and the validator's bootstrap hint updated.
+  Validator: 858 checks, only the pre-existing untracked scratch directory reported.
+
+### 2026-08-22 — V1 — skills committed for both assistants (no slice)
+
+Supersedes the two entries above on how skills are distributed. Their reasoning about
+avoiding duplication no longer applies; the decision below replaces it.
+
+**Decisions**
+
+- Skills are now committed three times: `.agents/skills/` canonical, plus mirrors at
+  `.claude/skills/` and `.codex/skills/`. A clone needs no setup step and both
+  assistants load the same set. This closes the open Codex question without answering
+  it: `.codex/skills/` is where Codex looks, so how it discovers skills stopped
+  mattering.
+- Duplication was accepted because the drift objection is handled by tooling, not by
+  discipline. The lock already carried a per-skill `treeSha256` over LF-normalized
+  content; the validator now recomputes it for each mirror and fails on any drift or
+  missing mirror. Cross-platform safe, because the hash normalizes line endings.
+- The earlier design (canonical plus local links) was rejected on one concrete
+  failure: the links were absolute paths into this machine's checkout, so moving or
+  renaming the repository directory broke all twelve silently. A per-clone bootstrap
+  step is also a step a teammate will skip.
+- The lock and manifest were unified on one scheme, `canonicalDestination` plus
+  `mirrors` plus `treeSha256`. The per-file `destinationHashes` variant that only
+  `karpathy-guidelines` and `pdf` used is gone; those two now carry tree hashes like
+  every other skill.
+
+**Deviations / debt**
+
+- Cost accepted: editing a skill means editing three copies plus one lock hash.
+  Acceptable because these skills are pinned to upstream commit `0ab1b63` and are not
+  expected to change during this project. If they start changing often, write a small
+  sync script rather than relaxing the check.
+- `.claude/skills/karpathy-guidelines/SKILL.md` was CRLF while the canonical copy was
+  LF, so the two were never byte-identical. Re-copying from canonical fixed it. The
+  tree hash normalizes line endings, so this class of mismatch cannot fail the build
+  spuriously again.
+
+**Validation**
+
+- Governance validator: 1000 checks, only the pre-existing untracked scratch directory
+  reported. All 14 `treeSha256` values verify against the canonical trees.
+- Negative tests: appending a line to `.codex/skills/tdd/SKILL.md` reports that mirror
+  out of sync; removing `.claude/skills/research` reports the skill missing and names
+  the assistant that will not load it.
+
+**Ending state**
+
+- 14 skills, 43 files each, identical across all three trees (`diff -r` clean).

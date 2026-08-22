@@ -33,6 +33,43 @@ function Read-RepoFile {
     return [IO.File]::ReadAllText((Join-Path $script:repoRoot $RelativePath))
 }
 
+function Get-SkillTreeHash {
+    # Content identity of one skill directory: every file's SHA-256 over
+    # LF-normalized UTF-8, keyed by sorted relative path. Normalizing means a
+    # Windows checkout and a Linux checkout of the same content agree, so the
+    # same hash pins the canonical copy and both mirrors.
+    param([string]$Path)
+    $lines = @(
+        Get-ChildItem -LiteralPath $Path -Recurse -File |
+            Sort-Object { $_.FullName.Substring($Path.Length + 1).Replace('\', '/') } |
+            ForEach-Object {
+                $relativeFile = $_.FullName.Substring($Path.Length + 1).Replace('\', '/')
+                $normalizedContent = [IO.File]::ReadAllText($_.FullName).Replace("`r`n", "`n").Replace("`r", "`n")
+                $fileSha256 = [Security.Cryptography.SHA256]::Create()
+                try {
+                    $normalizedBytes = [Text.UTF8Encoding]::new($false).GetBytes($normalizedContent)
+                    $fileHash = ([BitConverter]::ToString($fileSha256.ComputeHash($normalizedBytes))).Replace('-', '').ToLowerInvariant()
+                }
+                finally {
+                    $fileSha256.Dispose()
+                }
+                "$relativeFile`t$fileHash"
+            }
+    )
+    if ($lines.Count -eq 0) {
+        return $null
+    }
+    $treePayload = [string]::Join("`n", $lines) + "`n"
+    $sha256 = [Security.Cryptography.SHA256]::Create()
+    try {
+        $payloadBytes = [Text.UTF8Encoding]::new($false).GetBytes($treePayload)
+        return ([BitConverter]::ToString($sha256.ComputeHash($payloadBytes))).Replace('-', '').ToLowerInvariant()
+    }
+    finally {
+        $sha256.Dispose()
+    }
+}
+
 $requiredDiagramFiles = @(
     'docs/diagrams/README.md',
     'docs/diagrams/01-problem-tree.md',
@@ -62,7 +99,6 @@ $requiredFiles = @(
     '.agents/skill-manifest.yaml',
     '.agents/skill-lock.yaml',
     '.agents/architecture-freeze.yaml',
-    '.claude/skills/.gitignore',
     'skills-lock.json',
     'docs/agents/issue-tracker.md',
     'docs/agents/domain.md',
@@ -441,64 +477,42 @@ if ($missingRequiredFiles -eq 0) {
         }
     }
 
-    # .agents/skills is the tracked source of truth. .claude/skills is a local runtime
-    # representation of the same set, so a fresh clone has to bootstrap it. Check both
-    # directions, otherwise a Claude environment that is missing most project skills
-    # passes silently and its sessions quietly work without them.
-    $claudeSkillRoot = Join-Path $repoRoot '.claude\skills'
-    $bootstrapHint = 'Bootstrap it from .agents/skills (see README.md, "Bootstrap Claude skills").'
-    $checks++
-    if (-not (Test-Path -LiteralPath $claudeSkillRoot -PathType Container)) {
-        Add-Failure "Missing Claude project skill directory: .claude/skills. $bootstrapHint"
-    }
-    else {
-        foreach ($claudeSkillDirectory in Get-ChildItem -LiteralPath $claudeSkillRoot -Directory) {
-            $checks++
-            $claudeSkillFile = Join-Path $claudeSkillDirectory.FullName 'SKILL.md'
-            if (-not (Test-Path -LiteralPath $claudeSkillFile -PathType Leaf)) {
-                Add-Failure "Claude skill representation lacks SKILL.md: .claude/skills/$($claudeSkillDirectory.Name)"
-            }
-            if (-not $skillNames.Contains($claudeSkillDirectory.Name)) {
-                Add-Failure "Claude skill has no canonical .agents copy: $($claudeSkillDirectory.Name)"
-            }
-        }
-
-        $missingClaudeSkills = New-Object System.Collections.Generic.List[string]
-        foreach ($skillName in ($skillNames | Sort-Object)) {
-            $checks++
-            $claudeSkillFile = Join-Path (Join-Path $claudeSkillRoot $skillName) 'SKILL.md'
-            if (-not (Test-Path -LiteralPath $claudeSkillFile -PathType Leaf)) {
-                [void]$missingClaudeSkills.Add($skillName)
-            }
-        }
-        if ($missingClaudeSkills.Count -gt 0) {
-            Add-Failure (
-                "Claude environment is missing $($missingClaudeSkills.Count) project skill(s) under .claude/skills: " +
-                ($missingClaudeSkills -join ', ') + ". $bootstrapHint"
-            )
-        }
-    }
-
-    $lockedDestinations = [regex]::Matches(
-        $lock,
-        '(?m)^\s{6}(\.(?:agents|claude)/skills/[^:]+):\s*([A-Fa-f0-9]{64})\s*$'
-    )
-    $checks++
-    if ($lockedDestinations.Count -eq 0) {
-        Add-Failure 'Skill lock contains no destination content hashes.'
-    }
-    foreach ($lockedDestination in $lockedDestinations) {
+    # .agents/skills is the canonical, tracked skill set. .claude/skills and
+    # .codex/skills are committed mirrors of it, so a clone needs no bootstrap step
+    # and both assistants load the same skills. Every mirror must exist and match the
+    # canonical content exactly; drift is a build failure, not a convention.
+    $mirrorRoots = @('.claude/skills', '.codex/skills')
+    foreach ($mirrorRoot in $mirrorRoots) {
+        $mirrorRootPath = Join-Path $repoRoot ($mirrorRoot -replace '/', [IO.Path]::DirectorySeparatorChar)
         $checks++
-        $relativePath = $lockedDestination.Groups[1].Value
-        $expectedHash = $lockedDestination.Groups[2].Value.ToUpperInvariant()
-        $path = Join-Path $repoRoot ($relativePath -replace '/', [IO.Path]::DirectorySeparatorChar)
-        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
-            Add-Failure "Locked skill file does not resolve: $relativePath"
+        if (-not (Test-Path -LiteralPath $mirrorRootPath -PathType Container)) {
+            Add-Failure "Missing project skill mirror directory: $mirrorRoot"
             continue
         }
-        $actualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash
-        if ($actualHash -ne $expectedHash) {
-            Add-Failure "Locked skill content changed: $relativePath"
+        foreach ($mirrorDirectory in Get-ChildItem -LiteralPath $mirrorRootPath -Directory) {
+            $checks += 2
+            if (-not (Test-Path -LiteralPath (Join-Path $mirrorDirectory.FullName 'SKILL.md') -PathType Leaf)) {
+                Add-Failure "Skill mirror lacks SKILL.md: $mirrorRoot/$($mirrorDirectory.Name)"
+            }
+            if (-not $skillNames.Contains($mirrorDirectory.Name)) {
+                Add-Failure "Skill mirror has no canonical .agents copy: $mirrorRoot/$($mirrorDirectory.Name)"
+            }
+        }
+    }
+
+    foreach ($skillName in ($skillNames | Sort-Object)) {
+        $canonicalSkillPath = Join-Path $canonicalSkillRootPath $skillName
+        $canonicalTreeHash = Get-SkillTreeHash $canonicalSkillPath
+        foreach ($mirrorRoot in $mirrorRoots) {
+            $checks++
+            $mirrorPath = Join-Path $repoRoot (($mirrorRoot + '/' + $skillName) -replace '/', [IO.Path]::DirectorySeparatorChar)
+            if (-not (Test-Path -LiteralPath $mirrorPath -PathType Container)) {
+                Add-Failure "Skill is missing from $mirrorRoot and that assistant will not load it: $skillName"
+                continue
+            }
+            if ((Get-SkillTreeHash $mirrorPath) -ne $canonicalTreeHash) {
+                Add-Failure "Skill mirror is out of sync with $canonicalSkillRoot/$($skillName): $mirrorRoot/$skillName"
+            }
         }
     }
 
@@ -534,37 +548,24 @@ if ($missingRequiredFiles -eq 0) {
             continue
         }
 
-        $treeLines = @(
-            Get-ChildItem -LiteralPath $canonicalPath -Recurse -File |
-                Sort-Object { $_.FullName.Substring($canonicalPath.Length + 1).Replace('\', '/') } |
-                ForEach-Object {
-                    $relativeFile = $_.FullName.Substring($canonicalPath.Length + 1).Replace('\', '/')
-                    $normalizedContent = [IO.File]::ReadAllText($_.FullName).Replace("`r`n", "`n").Replace("`r", "`n")
-                    $fileSha256 = [Security.Cryptography.SHA256]::Create()
-                    try {
-                        $normalizedBytes = [Text.UTF8Encoding]::new($false).GetBytes($normalizedContent)
-                        $fileHash = ([BitConverter]::ToString($fileSha256.ComputeHash($normalizedBytes))).Replace('-', '').ToLowerInvariant()
-                    }
-                    finally {
-                        $fileSha256.Dispose()
-                    }
-                    "$relativeFile`t$fileHash"
-                }
-        )
-        if ($treeLines.Count -eq 0) {
+        $actualTreeHash = Get-SkillTreeHash $canonicalPath
+        if ($null -eq $actualTreeHash) {
             Add-Failure "Tree-locked skill contains no files: $entryName"
             continue
         }
 
-        $treePayload = [string]::Join("`n", $treeLines) + "`n"
-        $sha256 = [Security.Cryptography.SHA256]::Create()
-        try {
-            $payloadBytes = [Text.UTF8Encoding]::new($false).GetBytes($treePayload)
-            $actualTreeHash = ([BitConverter]::ToString($sha256.ComputeHash($payloadBytes))).Replace('-', '').ToLowerInvariant()
+        # Every skill must declare both mirrors, so nothing can be tracked as
+        # canonical-only and quietly go missing for one of the two assistants.
+        $checks++
+        $declaredMirrors = [regex]::Matches($entryBody, '(?m)^      - (\.(?:claude|codex)/skills/[^
+]+)\s*$') |
+            ForEach-Object { $_.Groups[1].Value.Trim() }
+        foreach ($expectedMirror in @(".claude/skills/$entryName", ".codex/skills/$entryName")) {
+            if ($declaredMirrors -notcontains $expectedMirror) {
+                Add-Failure "Skill lock does not declare mirror ${expectedMirror}: $entryName"
+            }
         }
-        finally {
-            $sha256.Dispose()
-        }
+
         if ($actualTreeHash -ne $treeHashMatch.Groups[1].Value.ToLowerInvariant()) {
             Add-Failure "Locked skill tree changed: $entryName"
         }

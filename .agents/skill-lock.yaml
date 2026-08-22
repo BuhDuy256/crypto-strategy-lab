@@ -7,14 +7,12 @@ skills:
     version: fde223be44a322eb192dd6f39fa9f3cdadd55e72
     license: MIT
     installedBecause: Existing project skill relevant to later implementation discipline; mirrored for Codex parity.
-    destinations:
-      - .agents/skills/karpathy-guidelines
+    canonicalDestination: .agents/skills/karpathy-guidelines
+    mirrors:
       - .claude/skills/karpathy-guidelines
-    files:
-      SKILL.md: D8C6D77AB5AAC4BF8BC6882B75E346D308B1BD907FB70B20F0FAD97DA8E33D9F
-    destinationHashes:
-      .agents/skills/karpathy-guidelines/SKILL.md: ADA2BBCEBC34310151B3EC66D6D2F9368F2A210EDF95D60318FCB1FD6BFD9459
-      .claude/skills/karpathy-guidelines/SKILL.md: D8C6D77AB5AAC4BF8BC6882B75E346D308B1BD907FB70B20F0FAD97DA8E33D9F
+      - .codex/skills/karpathy-guidelines
+    treeHashAlgorithm: sha256-of-sorted-relative-path-tab-lf-normalized-file-sha256-lines
+    treeSha256: fc7a293736c29c4c7a7686a2a3a619838cc4f6ec440437ea614d31fabe95f928
     provenanceLimit: Original upstream repository and version were not present in the supplied repository.
   - name: pdf
     sourceRepository: https://github.com/openai/skills
@@ -22,23 +20,12 @@ skills:
     version: 49f948faa9258a0c61caceaf225e179651397431
     license: Apache-2.0
     installedBecause: The authoritative inputs are PDFs and require text plus visual inspection.
-    destinations:
-      - .agents/skills/pdf
+    canonicalDestination: .agents/skills/pdf
+    mirrors:
       - .claude/skills/pdf
-    files:
-      SKILL.md: D108CF2B36355AB37EB5962933F4D09785EC002F3105C506129320209306B9D2
-      LICENSE.txt: 4DD13869245E356246A5B770723247BBB80A8F07A181D1D3D873A1734297CDB9
-      agents/openai.yaml: F8B223E25343559F57E1839CCD849FD1494A9729DA33DA04BB5074B7F80F4887
-      assets/pdf.png: 17DA356D195D4E3FA24F9BECBEE6B8D9E60E13005762B5AB0809C520C76DA6EE
-    destinationHashes:
-      .agents/skills/pdf/SKILL.md: D108CF2B36355AB37EB5962933F4D09785EC002F3105C506129320209306B9D2
-      .agents/skills/pdf/LICENSE.txt: 4DD13869245E356246A5B770723247BBB80A8F07A181D1D3D873A1734297CDB9
-      .agents/skills/pdf/agents/openai.yaml: F8B223E25343559F57E1839CCD849FD1494A9729DA33DA04BB5074B7F80F4887
-      .agents/skills/pdf/assets/pdf.png: 17DA356D195D4E3FA24F9BECBEE6B8D9E60E13005762B5AB0809C520C76DA6EE
-      .claude/skills/pdf/SKILL.md: D108CF2B36355AB37EB5962933F4D09785EC002F3105C506129320209306B9D2
-      .claude/skills/pdf/LICENSE.txt: 4DD13869245E356246A5B770723247BBB80A8F07A181D1D3D873A1734297CDB9
-      .claude/skills/pdf/agents/openai.yaml: F8B223E25343559F57E1839CCD849FD1494A9729DA33DA04BB5074B7F80F4887
-      .claude/skills/pdf/assets/pdf.png: 17DA356D195D4E3FA24F9BECBEE6B8D9E60E13005762B5AB0809C520C76DA6EE
+      - .codex/skills/pdf
+    treeHashAlgorithm: sha256-of-sorted-relative-path-tab-lf-normalized-file-sha256-lines
+    treeSha256: 7e3943a066aef11dd74dc114ebcced0799fd08a270cfc226324f0acb6fe76822
     scripts: none
     dependencies:
       requiredForPdfTasks:
@@ -53,8 +40,9 @@ skills:
     license: MIT
     installedBecause: Configure GitHub issue tracking and domain-doc consumption for the selected workflows.
     canonicalDestination: .agents/skills/setup-matt-pocock-skills
-    runtimeLinks:
+    mirrors:
       - .claude/skills/setup-matt-pocock-skills
+      - .codex/skills/setup-matt-pocock-skills
     installer: npx skills@1.5.23
     treeHashAlgorithm: sha256-of-sorted-relative-path-tab-lf-normalized-file-sha256-lines
     treeSha256: 33e51dd9618a641ad39156d4768e86cfc62f5d25a80b618b2a57876562e321d6
@@ -67,8 +55,9 @@ skills:
     license: MIT
     installedBecause: Support architecture proofs and regression-safe implementation through public-seam tests.
     canonicalDestination: .agents/skills/tdd
-    runtimeLinks:
+    mirrors:
       - .claude/skills/tdd
+      - .codex/skills/tdd
     installer: npx skills@1.5.23
     treeHashAlgorithm: sha256-of-sorted-relative-path-tab-lf-normalized-file-sha256-lines
     treeSha256: 47d27e69b98236b58b5b67b9b4f58ad55746f4d73a3713a31d0f52a549cfc0f4
@@ -81,8 +70,9 @@ skills:
     license: MIT
     installedBecause: Review implementation independently against project standards and its originating specification.
     canonicalDestination: .agents/skills/code-review
-    runtimeLinks:
+    mirrors:
       - .claude/skills/code-review
+      - .codex/skills/code-review
     installer: npx skills@1.5.23
     treeHashAlgorithm: sha256-of-sorted-relative-path-tab-lf-normalized-file-sha256-lines
     treeSha256: 34ca707bf88dc6bafcb773eb62cb71d40db96c09633fb11afcac76e14f282d78
@@ -95,8 +85,9 @@ skills:
     license: MIT
     installedBecause: Establish a reproducible diagnosis loop before making bug-fix changes.
     canonicalDestination: .agents/skills/diagnosing-bugs
-    runtimeLinks:
+    mirrors:
       - .claude/skills/diagnosing-bugs
+      - .codex/skills/diagnosing-bugs
     installer: npx skills@1.5.23
     treeHashAlgorithm: sha256-of-sorted-relative-path-tab-lf-normalized-file-sha256-lines
     treeSha256: 6ade1e84069dadd05e91a3030770ff693f1394c0ad9c67cf1b3ecc293bc19382
@@ -110,8 +101,9 @@ skills:
     license: MIT
     installedBecause: Design deep, testable implementation modules inside the accepted logical boundaries.
     canonicalDestination: .agents/skills/codebase-design
-    runtimeLinks:
+    mirrors:
       - .claude/skills/codebase-design
+      - .codex/skills/codebase-design
     installer: npx skills@1.5.23
     treeHashAlgorithm: sha256-of-sorted-relative-path-tab-lf-normalized-file-sha256-lines
     treeSha256: 529607fcd4fd3af639760d39d7968612f51827d737e91a97431a8e1819fda311
@@ -124,8 +116,9 @@ skills:
     license: MIT
     installedBecause: Maintain precise project vocabulary while deferring architecture decisions to existing ADR governance.
     canonicalDestination: .agents/skills/domain-modeling
-    runtimeLinks:
+    mirrors:
       - .claude/skills/domain-modeling
+      - .codex/skills/domain-modeling
     installer: npx skills@1.5.23
     treeHashAlgorithm: sha256-of-sorted-relative-path-tab-lf-normalized-file-sha256-lines
     treeSha256: 321835553d4a09e93e35dcaef06fb6ec6c22a745b401ee606afc06618fcc2e0a
@@ -139,8 +132,9 @@ skills:
     license: MIT
     installedBecause: Turn agreed team discussions into durable implementation specifications before coding.
     canonicalDestination: .agents/skills/to-spec
-    runtimeLinks:
+    mirrors:
       - .claude/skills/to-spec
+      - .codex/skills/to-spec
     installer: npx skills@1.5.23
     treeHashAlgorithm: sha256-of-sorted-relative-path-tab-lf-normalized-file-sha256-lines
     treeSha256: ae5e216aef06d63d93ad384202d66868dd022ebc16eb383fe05517d0300cbe97
@@ -153,8 +147,9 @@ skills:
     license: MIT
     installedBecause: Produce dependency-aware vertical implementation tickets from approved specifications.
     canonicalDestination: .agents/skills/to-tickets
-    runtimeLinks:
+    mirrors:
       - .claude/skills/to-tickets
+      - .codex/skills/to-tickets
     installer: npx skills@1.5.23
     treeHashAlgorithm: sha256-of-sorted-relative-path-tab-lf-normalized-file-sha256-lines
     treeSha256: c07b2730cccb3c73b30dd6e5a1c3b70b5ac22fef2ce480b0e2a3aa15f866703d
@@ -167,8 +162,9 @@ skills:
     license: MIT
     installedBecause: Orchestrate explicit implementation work through TDD, verification, and review.
     canonicalDestination: .agents/skills/implement
-    runtimeLinks:
+    mirrors:
       - .claude/skills/implement
+      - .codex/skills/implement
     installer: npx skills@1.5.23
     treeHashAlgorithm: sha256-of-sorted-relative-path-tab-lf-normalized-file-sha256-lines
     treeSha256: 3c7c6d02c94cf2e01d0706a3e5d87eeabfae5d21aceffbd7edbd9509652b8c89
@@ -182,8 +178,9 @@ skills:
     license: MIT
     installedBecause: Gather current primary-source evidence for technical and architecture-proof questions.
     canonicalDestination: .agents/skills/research
-    runtimeLinks:
+    mirrors:
       - .claude/skills/research
+      - .codex/skills/research
     installer: npx skills@1.5.23
     treeHashAlgorithm: sha256-of-sorted-relative-path-tab-lf-normalized-file-sha256-lines
     treeSha256: 585c3ee24b724e6c8c88c3c2b8e326deecdfadfb5e561ea2a7e02516afd83b05
@@ -196,8 +193,9 @@ skills:
     license: MIT
     installedBecause: Keep shared agent governance concise, discoverable, and non-duplicative.
     canonicalDestination: .agents/skills/writing-for-agents
-    runtimeLinks:
+    mirrors:
       - .claude/skills/writing-for-agents
+      - .codex/skills/writing-for-agents
     installer: npx skills@1.5.23
     treeHashAlgorithm: sha256-of-sorted-relative-path-tab-lf-normalized-file-sha256-lines
     treeSha256: ea4999592b85b322e0ee4f7db4619272f18766fcfbfb013e8995befa706745a4
@@ -210,8 +208,9 @@ skills:
     license: MIT
     installedBecause: Manually report implementation deepening opportunities without changing the frozen architecture.
     canonicalDestination: .agents/skills/improve-codebase-architecture
-    runtimeLinks:
+    mirrors:
       - .claude/skills/improve-codebase-architecture
+      - .codex/skills/improve-codebase-architecture
     installer: npx skills@1.5.23
     treeHashAlgorithm: sha256-of-sorted-relative-path-tab-lf-normalized-file-sha256-lines
     treeSha256: 1e7d6581ab930bf24b5503955b0c892d2b85b63dd1d493728e5e543a85380e41
