@@ -1,14 +1,17 @@
 # Crypto Strategy Lab
 
-Crypto Strategy Lab is an architecture-first platform for crypto market data, strategy experimentation, backtesting, candidate search/evaluation, and leaderboard analysis. It also includes an isolated news/sentiment capability and is designed around extensibility, failure isolation, and reproducible experiment results. The repository currently contains the accepted architecture and validation plan; application code has not been started.
+Crypto Strategy Lab is an architecture-first platform for crypto market data, strategy experimentation, backtesting, candidate search/evaluation, and leaderboard analysis. It also includes an isolated news/sentiment capability and is designed around extensibility, failure isolation, and reproducible experiment results. The repository contains the accepted architecture and validation plan, plus the implementation built against it so far.
 
 ## Current project status
 
 - **Architecture:** `FROZEN v1.1`
 - **Validation:** `PENDING IMPLEMENTATION PROOFS`
-- **Implementation:** `NOT STARTED`
+- **Implementation:** `IN PROGRESS`
+- **Current product version:** `V1`
 
 `FROZEN ≠ PROVEN`: the baseline is normative for implementation, but its proof obligations still require implementation evidence.
+
+Implementation status and current product version are separate facts. The first says whether application work has begun; the second names the only product version anyone is authorized to build right now. Both are set by the team, never advanced by a coding agent. Live slice state is in [`implementation-plan/TRACKING.md`](implementation-plan/TRACKING.md).
 
 ## Architecture at a glance
 
@@ -32,6 +35,18 @@ crypto-strategy-lab/
 ├── README.md
 ├── AGENTS.md
 ├── CLAUDE.md
+├── CODING_STANDARDS.md
+├── implementation-plan/
+│   ├── README.md
+│   ├── VERSIONS.md
+│   ├── TRACKING.md
+│   ├── JOURNAL.md
+│   └── 00-... to 07-... (slices, by architectural area)
+├── apps/
+│   ├── backend/
+│   └── web/
+├── packages/
+│   └── api-contracts/
 ├── .agents/
 │   ├── architecture-freeze.yaml
 │   ├── skill-manifest.yaml
@@ -106,9 +121,62 @@ Cross-module access uses exported application/domain ports. A logical module is 
 
 ## Development workflow
 
-Future work follows a gated path from research/problem evidence to specification, architecture conformance, implementation tickets, TDD implementation, two-axis code review, and architecture proof. Architecture constraints apply throughout rather than as a one-time design step.
+Work follows a gated path from research/problem evidence to specification, architecture conformance, TDD implementation, two-axis code review, and architecture proof. Architecture constraints apply throughout rather than as a one-time design step.
 
-The [Development Workflow](docs/agents/development-workflow.md) identifies the repository-local skill, authoritative inputs, artifact, validation or human gate, next phase, and freeze constraint for each step. The [Architecture Proof Plan](docs/validation/architecture-proof-plan.md) remains authoritative for implementation evidence: `FROZEN` is not `PROVEN`.
+The [Development Workflow](docs/agents/development-workflow.md) identifies the repository-local skill, authoritative inputs, artifact, validation or human gate, next phase, and freeze constraint for each step. [`CODING_STANDARDS.md`](CODING_STANDARDS.md) says how the code itself is written. The [Architecture Proof Plan](docs/validation/architecture-proof-plan.md) remains authoritative for implementation evidence: `FROZEN` is not `PROVEN`.
+
+## How implementation work is organized
+
+The plan is **organized by architectural area, not one file per version**. A product version is a set of slices spread across several area files.
+
+| File | What it tells you |
+|---|---|
+| [`implementation-plan/README.md`](implementation-plan/README.md) | How the plan works, and how to pick and finish work. **Start here.** |
+| [`implementation-plan/VERSIONS.md`](implementation-plan/VERSIONS.md) | What V1 to V6 must achieve, which slices belong to each, and each version's Definition of Demoable |
+| [`implementation-plan/TRACKING.md`](implementation-plan/TRACKING.md) | The one authoritative current-state view: target version, per-slice status, blockers, next allowed action |
+| [`implementation-plan/JOURNAL.md`](implementation-plan/JOURNAL.md) | Durable history: decisions taken, deviations and debt handed forward, validation results worth remembering |
+| `implementation-plan/00-...` to `07-...` | Slice definitions, grouped by architectural area |
+| `.scratch/checkpoints/<slice-id>.md` | Where an unfinished slice stopped. **Local and git-ignored**: it never reaches another team member |
+
+Owning a version means owning that version's slices, wherever they live. Someone assigned V2 owns V2's slices, not the whole of `02-strategy-and-composition.md`.
+
+Two rules that keep sequential work honest:
+
+- **Being assigned V(N+1) does not authorize starting V(N+1).** The previous version must actually have passed its slices, Definition of Demoable, demo scenario, and required proofs, verified in Git and code, not just in the tracker.
+- **No agent creates a version tag or advances the current product version.** Those stay explicit human decisions.
+
+## Taking over the project
+
+1. Clone, then `pnpm install`.
+2. Bootstrap Claude skills (below) if you use Claude Code.
+3. Tell your AI assistant:
+
+   > Read the repository AI/development instructions and continue the current authorized product version.
+
+`AGENTS.md` (which `CLAUDE.md` imports) is the entry point, and it routes to the plan, the tracker, the journal, and the coding standards. You should not have to paste project context from a previous member's chat.
+
+If you end a session with a slice unfinished, the checkpoint file stays on your machine, so leave the part others need in tracked state: the slice marked `IN_PROGRESS` in `TRACKING.md` with one line on where it stopped, and any lasting decision or problem in `JOURNAL.md`.
+
+### Bootstrap Claude skills
+
+`.agents/skills/` is the Git-tracked source of truth for project skills, and both Claude Code and Codex use that same set. Claude Code discovers skills under `.claude/skills/`, which is deliberately **not** duplicated into Git, so each clone links it once:
+
+```powershell
+Get-ChildItem .agents/skills -Directory | ForEach-Object {
+    $link = Join-Path '.claude/skills' $_.Name
+    if (-not (Test-Path -LiteralPath $link)) {
+        New-Item -ItemType Junction -Path $link -Target $_.FullName | Out-Null
+    }
+}
+```
+
+Windows needs Developer Mode or an elevated shell to create a junction; copying each directory works too, but do not commit the copies. Verify with:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-repo-governance.ps1
+```
+
+The validator names every project skill your Claude environment is missing. Codex reads `.agents/skills/` directly and needs no bootstrap step.
 
 ## What the team should review now
 
@@ -229,6 +297,8 @@ Every request gets an `x-request-id` header on the response: the inbound header'
 
 ## Next phase
 
-Implementation against the frozen baseline, starting with a Walking Skeleton / architecture proof-oriented vertical slice.
+Implementation against the frozen baseline continues as a Walking Skeleton / architecture proof-oriented vertical slice inside **V1 - Backtesting Lab**.
 
-Setup slice `SETUP-01` (workspace, TypeScript, and quality commands) is complete; `apps/` and `packages/` currently hold placeholder packages only. Setup slice `SETUP-02` (PostgreSQL topology, `.env.example`, and the typed backend config loader) is complete. Setup slice `SETUP-03` (NestJS API skeleton, the five frozen module boundaries, and structured logging) is complete. Setup slice `SETUP-04` (database migrations and the four module-owned schemas) is complete. Domain implementation has not started.
+All six V1 setup slices (`SETUP-01` through `SETUP-06`) are complete: pnpm workspace and quality commands, PostgreSQL topology and the typed config loader, the NestJS API skeleton with the five frozen module boundaries and structured logging, module-owned migrations, automated architecture boundary tests, and the React SPA shell with a typed API client. Domain implementation has not started; `MKT-01` and `STRAT-01` are the next available slices.
+
+[`implementation-plan/TRACKING.md`](implementation-plan/TRACKING.md) is authoritative for what is done and what may be started next. This section is a summary and can lag; the tracker cannot. 

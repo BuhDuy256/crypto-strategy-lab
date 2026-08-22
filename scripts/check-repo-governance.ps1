@@ -6,6 +6,11 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $failures = New-Object System.Collections.Generic.List[string]
 $checks = 0
 
+# A missing required file is the only kind of failure that has to stop the deep
+# checks, because those read those files. Every other finding is reported alongside
+# them, so one unrelated problem never hides the rest of the rule set.
+$missingRequiredFiles = 0
+
 function Add-Failure {
     param([string]$Message)
     $script:failures.Add($Message)
@@ -17,6 +22,7 @@ function Assert-File {
     $path = Join-Path $script:repoRoot $RelativePath
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         Add-Failure "Missing required file: $RelativePath"
+        $script:missingRequiredFiles++
         return $false
     }
     return $true
@@ -45,6 +51,12 @@ $requiredFiles = @(
     'README.md',
     'AGENTS.md',
     'CLAUDE.md',
+    'CODING_STANDARDS.md',
+    'implementation-plan/README.md',
+    'implementation-plan/VERSIONS.md',
+    'implementation-plan/TRACKING.md',
+    'implementation-plan/JOURNAL.md',
+    '.scratch/checkpoints/TEMPLATE.md',
     '.codex/config.toml',
     '.claude/settings.json',
     '.agents/skill-manifest.yaml',
@@ -82,7 +94,13 @@ $obsoleteFilePatterns = @(
     ('NEXT_' + 'PROMPT*.md'),
     ('HAND' + 'OFF*.md')
 )
-$artifactSearchRoots = @(Get-ChildItem -LiteralPath $repoRoot -Force | Where-Object { $_.Name -ne '.git' })
+# Scan the repository's own files only. Installed dependencies and build output are
+# not project artifacts, and their contents produce false obsolete-process matches.
+$excludedScanRoots = @('.git', 'node_modules', 'dist', 'coverage', '.pnpm-store')
+$artifactSearchRoots = @(
+    Get-ChildItem -LiteralPath $repoRoot -Force |
+        Where-Object { $excludedScanRoots -notcontains $_.Name }
+)
 foreach ($obsoleteFilePattern in $obsoleteFilePatterns) {
     $checks++
     $obsoleteMatches = @(
@@ -101,7 +119,7 @@ foreach ($obsoleteFilePattern in $obsoleteFilePatterns) {
     }
 }
 
-if ($failures.Count -eq 0) {
+if ($missingRequiredFiles -eq 0) {
     $readme = Read-RepoFile 'README.md'
     $agents = Read-RepoFile 'AGENTS.md'
     $claude = Read-RepoFile 'CLAUDE.md'
@@ -116,9 +134,34 @@ if ($failures.Count -eq 0) {
     $checks++
     if ($agents -notmatch '(?m)^PROJECT MODE: IMPLEMENTATION AGAINST FROZEN ARCHITECTURE\s*$' -or
         $agents -notmatch '(?m)^ARCHITECTURE STATUS: FROZEN v1\.1\s*$' -or
-        $agents -notmatch '(?m)^VALIDATION STATUS: PENDING IMPLEMENTATION PROOFS\s*$' -or
-        $agents -notmatch '(?m)^IMPLEMENTATION STATUS: NOT STARTED\s*$') {
+        $agents -notmatch '(?m)^VALIDATION STATUS: PENDING IMPLEMENTATION PROOFS\s*$') {
         Add-Failure 'AGENTS.md is not in implementation-against-frozen-architecture mode.'
+    }
+
+    # Implementation status and current product version are separate facts, so the
+    # target version can advance without changing status vocabulary. Both are set by
+    # the user; the validator only checks that each states one allowed value.
+    $checks++
+    $agentsImplementationStatus = [regex]::Match($agents, '(?m)^IMPLEMENTATION STATUS: (NOT STARTED|IN PROGRESS|COMPLETE)\s*$')
+    if (-not $agentsImplementationStatus.Success) {
+        Add-Failure 'AGENTS.md does not state a valid IMPLEMENTATION STATUS (NOT STARTED, IN PROGRESS, or COMPLETE).'
+    }
+
+    $checks++
+    $agentsProductVersion = [regex]::Match($agents, '(?m)^CURRENT PRODUCT VERSION: (NONE|V[1-9][0-9]*)\s*$')
+    if (-not $agentsProductVersion.Success) {
+        Add-Failure 'AGENTS.md does not state a CURRENT PRODUCT VERSION (NONE or V<n>).'
+    }
+    elseif ($agentsImplementationStatus.Success) {
+        $checks++
+        $statusValue = $agentsImplementationStatus.Groups[1].Value
+        $versionValue = $agentsProductVersion.Groups[1].Value
+        if ($statusValue -eq 'NOT STARTED' -and $versionValue -ne 'NONE') {
+            Add-Failure "AGENTS.md says implementation has not started but names product version $versionValue."
+        }
+        if ($statusValue -ne 'NOT STARTED' -and $versionValue -eq 'NONE') {
+            Add-Failure "AGENTS.md says implementation status $statusValue but names no current product version."
+        }
     }
 
     $checks++
@@ -159,8 +202,9 @@ if ($failures.Count -eq 0) {
     $checks += 6
     if ($readme -notmatch 'Architecture:\*\* `FROZEN v1\.1`' -or
         $readme -notmatch 'Validation:\*\* `PENDING IMPLEMENTATION PROOFS`' -or
-        $readme -notmatch 'Implementation:\*\* `NOT STARTED`') {
-        Add-Failure 'README.md does not state the current architecture, validation, and implementation status.'
+        $readme -notmatch 'Implementation:\*\* `(?:NOT STARTED|IN PROGRESS|COMPLETE)`' -or
+        $readme -notmatch 'Current product version:\*\* `(?:NONE|V[1-9][0-9]*)`') {
+        Add-Failure 'README.md does not state the current architecture, validation, implementation status, and product version.'
     }
     if ($readme -notmatch 'Modular Monolith with selectively separated process roles') {
         Add-Failure 'README.md does not summarize the selected architecture style.'
@@ -176,6 +220,89 @@ if ($failures.Count -eq 0) {
     }
     if ($readme -notmatch 'docs/agents/development-workflow\.md') {
         Add-Failure 'README.md does not link the project development workflow.'
+    }
+
+    $checks += 2
+    if ($agentsImplementationStatus.Success -and
+        $readme -notmatch ('Implementation:\*\* `' + [regex]::Escape($agentsImplementationStatus.Groups[1].Value) + '`')) {
+        Add-Failure 'README.md implementation status does not match AGENTS.md.'
+    }
+    if ($agentsProductVersion.Success -and
+        $readme -notmatch ('Current product version:\*\* `' + [regex]::Escape($agentsProductVersion.Groups[1].Value) + '`')) {
+        Add-Failure 'README.md current product version does not match AGENTS.md.'
+    }
+
+    # A fresh session must be able to reach the implementation plan from the entry
+    # points alone, and must find the same work-unit rule wherever it is stated.
+    $planReadme = Read-RepoFile 'implementation-plan/README.md'
+    $tracking = Read-RepoFile 'implementation-plan/TRACKING.md'
+    $journal = Read-RepoFile 'implementation-plan/JOURNAL.md'
+    $workflow = Read-RepoFile 'docs/agents/development-workflow.md'
+    $standards = Read-RepoFile 'CODING_STANDARDS.md'
+
+    $checks += 3
+    if ($agents -notmatch 'implementation-plan/README\.md') {
+        Add-Failure 'AGENTS.md does not point to the implementation plan entry point.'
+    }
+    if ($agents -notmatch 'implementation-plan/TRACKING\.md') {
+        Add-Failure 'AGENTS.md does not point to the implementation tracker.'
+    }
+    if ($readme -notmatch 'implementation-plan/README\.md' -or $readme -notmatch 'implementation-plan/TRACKING\.md') {
+        Add-Failure 'README.md does not point to the implementation plan and tracker.'
+    }
+
+    $checks += 3
+    if ($agents -notmatch 'the plan slice is the work unit' -or $agents -notmatch 'Do not run `to-tickets` over a slice') {
+        Add-Failure 'AGENTS.md does not state the plan-slice work-unit rule.'
+    }
+    if ($workflow -notmatch 'the plan slice is the work unit' -or $workflow -notmatch 'Do not run `to-tickets` over a slice') {
+        Add-Failure 'Development workflow does not state the plan-slice work-unit rule.'
+    }
+    if ($planReadme -notmatch 'Do not run `to-tickets` over a\s+slice') {
+        Add-Failure 'Implementation plan does not state the plan-slice work-unit rule.'
+    }
+
+    # Version advancement stays a user decision, and assignment alone never authorizes it.
+    $checks += 3
+    if ($agents -notmatch 'does not authorize implementing V\(N\+1\)' -or $agents -notmatch 'V\(N\+1\) NOT AUTHORIZED') {
+        Add-Failure 'AGENTS.md does not state the version authorization invariant.'
+    }
+    if ($planReadme -notmatch 'does not authorize implementing V\(N\+1\)' -or $planReadme -notmatch 'V\(N\+1\) NOT AUTHORIZED') {
+        Add-Failure 'Implementation plan does not state the version authorization invariant.'
+    }
+    if ($agents -notmatch 'never advances' -or $agents -notmatch 'never creates a version tag') {
+        Add-Failure 'AGENTS.md does not reserve version advancement and tagging for the user.'
+    }
+
+    # The tracker header is the single current-state view; it must carry its fields.
+    $trackingHeaderFields = @(
+        'Implementation status',
+        'Current target version',
+        'Previous version',
+        'Last verified commit',
+        'Next allowed action'
+    )
+    foreach ($trackingHeaderField in $trackingHeaderFields) {
+        $checks++
+        if ($tracking -notmatch ('(?m)^\|\s*' + [regex]::Escape($trackingHeaderField) + '\s*\|')) {
+            Add-Failure "TRACKING.md current-state header is missing the field: $trackingHeaderField"
+        }
+    }
+
+    $checks += 2
+    if ($tracking -notmatch 'JOURNAL\.md') {
+        Add-Failure 'TRACKING.md does not reference the implementation journal.'
+    }
+    if ($journal -notmatch '(?m)^## What must never go here\s*$') {
+        Add-Failure 'JOURNAL.md does not state what must never be recorded in it.'
+    }
+
+    $checks += 2
+    if ($standards -notmatch 'It never creates architecture rules') {
+        Add-Failure 'CODING_STANDARDS.md does not stay subordinate to the frozen architecture.'
+    }
+    if ($workflow -notmatch 'CODING_STANDARDS\.md' -or $agents -notmatch 'CODING_STANDARDS\.md') {
+        Add-Failure 'Coding standards are not referenced from the agent entry points.'
     }
 
     $checks += 2
@@ -314,10 +441,15 @@ if ($failures.Count -eq 0) {
         }
     }
 
+    # .agents/skills is the tracked source of truth. .claude/skills is a local runtime
+    # representation of the same set, so a fresh clone has to bootstrap it. Check both
+    # directions, otherwise a Claude environment that is missing most project skills
+    # passes silently and its sessions quietly work without them.
     $claudeSkillRoot = Join-Path $repoRoot '.claude\skills'
+    $bootstrapHint = 'Bootstrap it from .agents/skills (see README.md, "Bootstrap Claude skills").'
     $checks++
     if (-not (Test-Path -LiteralPath $claudeSkillRoot -PathType Container)) {
-        Add-Failure 'Missing Claude project skill directory: .claude/skills'
+        Add-Failure "Missing Claude project skill directory: .claude/skills. $bootstrapHint"
     }
     else {
         foreach ($claudeSkillDirectory in Get-ChildItem -LiteralPath $claudeSkillRoot -Directory) {
@@ -329,6 +461,21 @@ if ($failures.Count -eq 0) {
             if (-not $skillNames.Contains($claudeSkillDirectory.Name)) {
                 Add-Failure "Claude skill has no canonical .agents copy: $($claudeSkillDirectory.Name)"
             }
+        }
+
+        $missingClaudeSkills = New-Object System.Collections.Generic.List[string]
+        foreach ($skillName in ($skillNames | Sort-Object)) {
+            $checks++
+            $claudeSkillFile = Join-Path (Join-Path $claudeSkillRoot $skillName) 'SKILL.md'
+            if (-not (Test-Path -LiteralPath $claudeSkillFile -PathType Leaf)) {
+                [void]$missingClaudeSkills.Add($skillName)
+            }
+        }
+        if ($missingClaudeSkills.Count -gt 0) {
+            Add-Failure (
+                "Claude environment is missing $($missingClaudeSkills.Count) project skill(s) under .claude/skills: " +
+                ($missingClaudeSkills -join ', ') + ". $bootstrapHint"
+            )
         }
     }
 
@@ -463,8 +610,11 @@ if ($failures.Count -eq 0) {
     $markdownFiles = @(
         (Join-Path $repoRoot 'README.md'),
         (Join-Path $repoRoot 'AGENTS.md'),
-        (Join-Path $repoRoot 'CLAUDE.md')
-    ) + @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'docs') -Filter '*.md' -File -Recurse | ForEach-Object { $_.FullName })
+        (Join-Path $repoRoot 'CLAUDE.md'),
+        (Join-Path $repoRoot 'CODING_STANDARDS.md')
+    ) +
+        @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'docs') -Filter '*.md' -File -Recurse | ForEach-Object { $_.FullName }) +
+        @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'implementation-plan') -Filter '*.md' -File | ForEach-Object { $_.FullName })
 
     foreach ($markdownFile in $markdownFiles) {
         $text = [IO.File]::ReadAllText($markdownFile)
