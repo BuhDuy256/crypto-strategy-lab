@@ -8,9 +8,10 @@ skills:
     compatibility:
       codex: true
       claude: true
-    destinations:
-      - .agents/skills/karpathy-guidelines
+    canonicalDestination: .agents/skills/karpathy-guidelines
+    mirrors:
       - .claude/skills/karpathy-guidelines
+      - .codex/skills/karpathy-guidelines
     decision: retain-and-mirror
   - name: pdf
     purpose: Extract and visually inspect the authoritative PDF specification and lecture materials.
@@ -19,9 +20,10 @@ skills:
     compatibility:
       codex: true
       claude: true
-    destinations:
-      - .agents/skills/pdf
+    canonicalDestination: .agents/skills/pdf
+    mirrors:
       - .claude/skills/pdf
+      - .codex/skills/pdf
     decision: install
   - name: setup-matt-pocock-skills
     purpose: Configure the issue tracker and domain-document layout expected by the selected engineering workflows.
@@ -33,10 +35,10 @@ skills:
     compatibility:
       codex: true
       claude: true
-    destinations:
-      - .agents/skills/setup-matt-pocock-skills
-    runtimeLinks:
+    canonicalDestination: .agents/skills/setup-matt-pocock-skills
+    mirrors:
       - .claude/skills/setup-matt-pocock-skills
+      - .codex/skills/setup-matt-pocock-skills
     decision: install-shared
   - name: tdd
     purpose: Drive feature and bug work through observable red-green-refactor cycles at public seams.
@@ -48,10 +50,10 @@ skills:
     compatibility:
       codex: true
       claude: true
-    destinations:
-      - .agents/skills/tdd
-    runtimeLinks:
+    canonicalDestination: .agents/skills/tdd
+    mirrors:
       - .claude/skills/tdd
+      - .codex/skills/tdd
     decision: install-shared
   - name: code-review
     purpose: Review changes against repository standards and the originating specification in parallel.
@@ -63,10 +65,10 @@ skills:
     compatibility:
       codex: true
       claude: true
-    destinations:
-      - .agents/skills/code-review
-    runtimeLinks:
+    canonicalDestination: .agents/skills/code-review
+    mirrors:
       - .claude/skills/code-review
+      - .codex/skills/code-review
     decision: install-shared
   - name: diagnosing-bugs
     purpose: Diagnose bugs and performance regressions with a reproducible, instrumented feedback loop.
@@ -78,10 +80,10 @@ skills:
     compatibility:
       codex: true
       claude: true
-    destinations:
-      - .agents/skills/diagnosing-bugs
-    runtimeLinks:
+    canonicalDestination: .agents/skills/diagnosing-bugs
+    mirrors:
       - .claude/skills/diagnosing-bugs
+      - .codex/skills/diagnosing-bugs
     decision: install-shared
   - name: codebase-design
     purpose: Design deep implementation modules and testable seams with a consistent vocabulary.
@@ -93,10 +95,10 @@ skills:
     compatibility:
       codex: true
       claude: true
-    destinations:
-      - .agents/skills/codebase-design
-    runtimeLinks:
+    canonicalDestination: .agents/skills/codebase-design
+    mirrors:
       - .claude/skills/codebase-design
+      - .codex/skills/codebase-design
     decision: install-shared
   - name: domain-modeling
     purpose: Sharpen project terminology and capture explicitly approved domain decisions.
@@ -108,10 +110,10 @@ skills:
     compatibility:
       codex: true
       claude: true
-    destinations:
-      - .agents/skills/domain-modeling
-    runtimeLinks:
+    canonicalDestination: .agents/skills/domain-modeling
+    mirrors:
       - .claude/skills/domain-modeling
+      - .codex/skills/domain-modeling
     decision: install-shared-with-adr-guardrail
   - name: to-spec
     purpose: Synthesize an agreed conversation into a reviewable implementation specification.
@@ -123,10 +125,10 @@ skills:
     compatibility:
       codex: true
       claude: true
-    destinations:
-      - .agents/skills/to-spec
-    runtimeLinks:
+    canonicalDestination: .agents/skills/to-spec
+    mirrors:
       - .claude/skills/to-spec
+      - .codex/skills/to-spec
     decision: install-shared
   - name: to-tickets
     purpose: Split an approved plan or specification into dependency-aware tracer-bullet tickets.
@@ -138,10 +140,10 @@ skills:
     compatibility:
       codex: true
       claude: true
-    destinations:
-      - .agents/skills/to-tickets
-    runtimeLinks:
+    canonicalDestination: .agents/skills/to-tickets
+    mirrors:
       - .claude/skills/to-tickets
+      - .codex/skills/to-tickets
     decision: install-shared
   - name: implement
     purpose: Orchestrate test-first implementation followed by review and verification.
@@ -153,10 +155,10 @@ skills:
     compatibility:
       codex: true
       claude: true
-    destinations:
-      - .agents/skills/implement
-    runtimeLinks:
+    canonicalDestination: .agents/skills/implement
+    mirrors:
       - .claude/skills/implement
+      - .codex/skills/implement
     decision: install-shared-with-git-guardrail
   - name: research
     purpose: Investigate technical questions against high-trust primary sources and capture cited findings.
@@ -168,10 +170,10 @@ skills:
     compatibility:
       codex: true
       claude: true
-    destinations:
-      - .agents/skills/research
-    runtimeLinks:
+    canonicalDestination: .agents/skills/research
+    mirrors:
       - .claude/skills/research
+      - .codex/skills/research
     decision: install-shared
   - name: writing-for-agents
     purpose: Write and maintain concise, reliably triggered agent-facing governance documents.
@@ -183,10 +185,10 @@ skills:
     compatibility:
       codex: true
       claude: true
-    destinations:
-      - .agents/skills/writing-for-agents
-    runtimeLinks:
+    canonicalDestination: .agents/skills/writing-for-agents
+    mirrors:
       - .claude/skills/writing-for-agents
+      - .codex/skills/writing-for-agents
     decision: install-shared
   - name: improve-codebase-architecture
     purpose: Manually inspect implemented code for deep-module opportunities and report candidates without changing code.
@@ -198,9 +200,9 @@ skills:
     compatibility:
       codex: true
       claude: true
-    destinations:
-      - .agents/skills/improve-codebase-architecture
-    runtimeLinks:
+    canonicalDestination: .agents/skills/improve-codebase-architecture
+    mirrors:
       - .claude/skills/improve-codebase-architecture
+      - .codex/skills/improve-codebase-architecture
     invocation: manual-only
     decision: install-shared-with-frozen-architecture-guardrail

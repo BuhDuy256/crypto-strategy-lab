@@ -51,12 +51,13 @@ crypto-strategy-lab/
 │   ├── architecture-freeze.yaml
 │   ├── skill-manifest.yaml
 │   ├── skill-lock.yaml
-│   └── skills/
+│   └── skills/            (canonical skills)
 ├── .claude/
 │   ├── settings.json
-│   └── skills/
+│   └── skills/            (mirror, loaded by Claude Code)
 ├── .codex/
-│   └── config.toml
+│   ├── config.toml
+│   └── skills/            (mirror, loaded by Codex)
 ├── docs/
 │   ├── architecture/
 │   │   ├── architecture-baseline.md
@@ -148,35 +149,42 @@ Two rules that keep sequential work honest:
 ## Taking over the project
 
 1. Clone, then `pnpm install`.
-2. Bootstrap Claude skills (below) if you use Claude Code.
+2. Nothing to set up for skills: they are committed for both Claude Code and Codex.
 3. Tell your AI assistant:
 
    > Read the repository AI/development instructions and continue the current authorized product version.
 
 `AGENTS.md` (which `CLAUDE.md` imports) is the entry point, and it routes to the plan, the tracker, the journal, and the coding standards. You should not have to paste project context from a previous member's chat.
 
+`AGENTS.md` is deliberately the only place shared policy lives, so it works for any assistant, not just Claude Code and Codex. If your tool reads its own instruction file instead, point that file at `AGENTS.md` rather than copying rules into it. A second copy drifts, and then two members' assistants follow different rules, which is the failure this whole setup exists to prevent.
+
 If you end a session with a slice unfinished, the checkpoint file stays on your machine, so leave the part others need in tracked state: the slice marked `IN_PROGRESS` in `TRACKING.md` with one line on where it stopped, and any lasting decision or problem in `JOURNAL.md`.
 
-### Bootstrap Claude skills
+### Project skills
 
-`.agents/skills/` is the Git-tracked source of truth for project skills, and both Claude Code and Codex use that same set. Claude Code discovers skills under `.claude/skills/`, which is deliberately **not** duplicated into Git, so each clone links it once:
+Skills are committed, so there is **no setup step**. `git clone` gives Claude Code and
+Codex the same set:
 
-```powershell
-Get-ChildItem .agents/skills -Directory | ForEach-Object {
-    $link = Join-Path '.claude/skills' $_.Name
-    if (-not (Test-Path -LiteralPath $link)) {
-        New-Item -ItemType Junction -Path $link -Target $_.FullName | Out-Null
-    }
-}
-```
+| Directory | Role |
+|---|---|
+| `.agents/skills/` | Canonical. Edit a skill here. |
+| `.claude/skills/` | Mirror that Claude Code loads |
+| `.codex/skills/` | Mirror that Codex loads |
 
-Windows needs Developer Mode or an elevated shell to create a junction; copying each directory works too, but do not commit the copies. Verify with:
+Every skill is plain Markdown at `<root>/<name>/SKILL.md`, so an assistant with no
+skill system of its own can simply open the file the workflow router names.
+
+Changing a skill means changing all three copies in one commit, then updating that
+skill's `treeSha256` in `.agents/skill-lock.yaml`. You do not have to remember this:
+the governance validator hashes each mirror against the canonical tree and fails on
+drift or a missing mirror, naming the skill and the directory.
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-repo-governance.ps1
 ```
 
-The validator names every project skill your Claude environment is missing. Codex reads `.agents/skills/` directly and needs no bootstrap step.
+The hash is computed over LF-normalized content, so a Windows checkout and a macOS or
+Linux checkout of the same skill agree.
 
 ## What the team should review now
 

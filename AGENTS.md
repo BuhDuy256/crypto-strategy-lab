@@ -177,9 +177,9 @@ This is a single-context repository. Read the frozen baseline, accepted ADRs, an
 
 ### Installation and safeguards
 
-- The canonical, Git-tracked skill copy is `.agents/skills/`. It is the only source of truth for skill content.
-- `.claude/skills/` is a local runtime representation of that same set, not a second copy in Git. Claude Code discovers skills there, so each developer bootstraps it once per clone (see `README.md`, "Bootstrap Claude skills"). Never commit duplicated skill content under `.claude/skills/`.
-- The governance validator fails when a canonical skill has no `.claude/skills/` representation, so a Claude environment missing project skills is reported instead of silently degrading.
+- `.agents/skills/` is the canonical skill set. Edit a skill there and nowhere else.
+- `.claude/skills/` and `.codex/skills/` are committed mirrors of it, so a clone needs no setup step and Claude Code and Codex load the same skills. **Change a skill in all three, in the same commit**, then update `treeSha256` in `.agents/skill-lock.yaml`. The governance validator hashes each mirror against the canonical tree and fails on any drift or missing mirror, so this is enforced, not a convention to remember.
+- **If your assistant has no skill system:** every skill is plain Markdown at `.agents/skills/<name>/SKILL.md`. When `docs/agents/development-workflow.md` names a skill for the phase you are in, open that file and follow it. Say which skill you read. Never invent a substitute method for a named skill, and never guess what a skill says without opening it.
 - Every installed project skill must be represented in `.agents/skill-manifest.yaml` and `.agents/skill-lock.yaml`.
 - Do not install, upgrade, or execute a third-party skill before inspecting its instructions, scripts, dependencies, license, and pinned provenance.
 - Matt Pocock skills are subordinate to this file, the frozen baseline, accepted ADRs, and the architecture deviation procedure.
