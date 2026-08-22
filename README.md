@@ -212,7 +212,26 @@ The repository is a pnpm workspace (`apps/*`, `packages/*`) with TypeScript in s
 | `pnpm run migrate` | Apply every pending database migration (safe to run twice). |
 | `pnpm run migrate:reset` | Drop the module-owned schemas and return the database to empty. |
 
-## Local setup
+## Two run paths
+
+This repository has two ways to run, and they answer different questions. Neither replaces the other.
+
+| Path | Use it for | What it starts |
+|---|---|---|
+| **Host development** (below) | Coding, testing, debugging, hot reload, focused slice work | Infrastructure in Docker; the API and the SPA as `pnpm` commands on your machine |
+| **Full-system integration and demo** | Proving a whole product version, and running its demo | Every process role that version requires, through one documented Docker Compose command |
+
+Host development is the normal way to build a slice. **Nothing requires a command, a test, or a coding session to run inside a container.** Docker Compose is what proves a whole version: before a version is declared demoable, its required topology must come up from a clean checkout through Compose and its demo scenario must be walked there. Host tests passing is not that gate.
+
+The rule itself is not repeated here. It lives in [`AGENTS.md`](AGENTS.md) under "Local development and full-system integration", and the per-version condition is the [Compose integration gate](implementation-plan/VERSIONS.md#compose-integration-gate-every-version), which also lists which process roles each version needs. Read those two before completing a version.
+
+### Status of the full-system path
+
+Today `docker-compose.yml` starts PostgreSQL only, which is exactly what V1's completed setup slices required. The application services and the single `docker compose up --build` command are built by `DEMO-01`, the last V1 slice, once the API, the backtest runner, and the Backtest page exist to assemble. Until then, use the host development path below.
+
+The topology grows with the roadmap and never ahead of it: Redis and the market ingest process arrive in V4, the news worker in V5, and the outbox dispatcher and BullMQ backtest workers in V6.
+
+## Local setup (host development path)
 
 V1 needs durable storage only, so local setup starts PostgreSQL through Docker Compose. Redis is not started yet; it arrives with the live fan-out slice (V4).
 
@@ -223,6 +242,8 @@ cp .env.example .env
 ```
 
 `.env.example` lists every variable the system reads, with a safe placeholder for each — no real secret. Edit `.env` if you want different local values; `.env` is git-ignored and never committed.
+
+`POSTGRES_HOST=localhost` is correct for this path, where the backend runs on your machine and reaches the container through a published port. A backend running *inside* Compose reaches PostgreSQL by its service name instead, so the full-system path supplies its own value for that variable rather than expecting you to edit `.env`. `DEMO-01` wires this up.
 
 ### 2. Start PostgreSQL
 

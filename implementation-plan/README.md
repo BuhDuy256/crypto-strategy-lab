@@ -165,9 +165,14 @@ When every slice in the current target version is `DONE`:
 
 1. Run the version's **Definition of Demoable** conditions from `VERSIONS.md`.
    Every one must pass.
-2. Walk the version's **Demo scenario** end to end on a clean checkout.
+2. Bring up the version's required topology from a clean checkout through the
+   documented Docker Compose path, and walk the version's **Demo scenario** end to
+   end on that assembled topology. Host tests passing is not this step. See
+   [Compose integration gate](VERSIONS.md#compose-integration-gate-every-version).
 3. Run the version's **Architecture evidence** proofs, if it has any.
-4. Report to the user that the version meets its exit criteria.
+4. Record the Compose run in `DEMO-01`'s Evidence cell in `TRACKING.md`, and in
+   `JOURNAL.md` when it produced durable history.
+5. Report to the user that the version meets its exit criteria.
 
 Then stop.
 
@@ -185,7 +190,8 @@ Verify all five before writing any V(N+1) code:
 
 1. every required slice of V(N) is `DONE` in `TRACKING.md` **and** present in code;
 2. every condition in V(N)'s Definition of Demoable in `VERSIONS.md` passes;
-3. V(N)'s demo scenario runs end to end on a clean checkout;
+3. V(N)'s demo scenario runs end to end on a clean checkout, on the topology brought
+   up through the documented Docker Compose path;
 4. V(N)'s required `PROOF-*` evidence is recorded;
 5. Git, code, and tests agree with what the tracker claims.
 
