@@ -12,63 +12,55 @@ Read [`README.md`](README.md) first. Version scope and demo contracts are in
 
 # Current target version
 
-## V1 - Backtesting Lab
+The only authoritative view of where this project is. Keep these fields filled in and
+true; keep conversation out of them.
 
-All six V1 setup slices (`SETUP-01` through `SETUP-06`) are done. The platform
-foundation exists: pnpm workspace, PostgreSQL topology, a NestJS API with the five
-module boundaries and structured logging, module-owned migrations, automated
-architecture boundary tests, and a React SPA shell with a typed API client. All
-work is uncommitted in the working tree.
-
-**Continue here: `MKT-01` or `STRAT-01`** (both newly `READY`; independent
-branches, no shared files).
-
-| | |
+| Field | Value |
 |---|---|
-| Target version | **V1 - Backtesting Lab** |
-| V1 slices | 25 |
-| V1 `DONE` | 6 (`SETUP-01` through `SETUP-06`) |
-| V1 `READY` | 2 (`MKT-01`, `STRAT-01`) |
-| V1 `IN_PROGRESS` | 0 |
-| V1 `BLOCKED` | 2 (`EXP-02` execution defaults, `EXP-04` architecture review) |
-| V1 `TODO` | 17 |
-| V1 demo readiness | Not yet - see V1's Definition of Demoable in `VERSIONS.md` |
+| Implementation status | `IN PROGRESS` |
+| Current target version | **V1 - Backtesting Lab** |
+| Previous version | None. V1 is the first product version, so no prior version has to be verified. |
+| Last verified commit | `a46dd38` - `feat(setup): complete V1 platform foundation (SETUP-01 through SETUP-06)` |
+| Last verified on | 2026-08-22 |
+| Last tag | None. No version tag exists yet; `v1.0-demo` is the user's to create once V1's Definition of Demoable passes. |
+| V1 slices | 25 (`DONE` 6, `READY` 2, `IN_PROGRESS` 0, `BLOCKED` 2, `TODO` 15) |
+| V1 demo readiness | Not yet. See V1's Definition of Demoable in [`VERSIONS.md`](VERSIONS.md#v1---backtesting-lab). |
+| Next allowed action | Take `MKT-01` or `STRAT-01`. Both are `READY`, independent, and touch no shared files. |
+| History | [`JOURNAL.md`](JOURNAL.md), section "V1 - Backtesting Lab" |
 
-**Do not start a V2 or later slice**, even if its dependencies are satisfied.
-Finishing V1 makes the project demoable; starting V2 early does not.
+All six V1 setup slices (`SETUP-01` through `SETUP-06`) are `DONE` and committed. The
+platform foundation exists: pnpm workspace, PostgreSQL topology, a NestJS API with the
+five module boundaries and structured logging, module-owned migrations, automated
+architecture boundary tests, and a React SPA shell with a typed API client. No slice is
+left unfinished, so no checkpoint exists.
 
-**Last reviewed:** 2026-08-22, against commit `87d2108` plus uncommitted `SETUP-01`
-through `SETUP-06` work, clean otherwise.
+**Do not start a V2 or later slice**, even if its dependencies are satisfied. Finishing
+V1 makes the project demoable; starting V2 early does not. Being handed V2 does not
+authorize V2 - see "Starting a new version" in [`README.md`](README.md).
 
-**Foundation integration gate (2026-08-22):** after all six slices landed, the
-whole stack was brought up together and re-verified as one system, beyond each
-slice's own validation:
-- `pnpm install`, `pnpm run typecheck`, `pnpm run lint`, `pnpm run test` (33
-  tests / 10 files, DB-backed tests included) all pass together.
-- PostgreSQL: `docker compose up -d` reaches healthy; a row survives both a
-  container restart and (separately, per `SETUP-04`) a full recreate.
-- Config fail-fast: unsetting `POSTGRES_HOST` and loading the config throws a
-  clear named-variable error.
-- Migrations: `migrate` from empty creates exactly `market`/`strategy`/
-  `experiment`/`news`; a second `migrate` is a no-op; `migrate:reset` empties
-  the database; re-`migrate` restores it.
-- API: starts without Postgres running, `/health` returns `{"status":"ok"}`;
-  a request without `x-request-id` gets one generated, a request carrying one
-  keeps it; structured log lines show timestamp/level/`api`/module graph
-  (all five modules present); `enableShutdownHooks(["SIGTERM","SIGINT"])`
-  confirmed releasing port 3000 cleanly on signal.
-- Architecture boundary test passes against the full real tree (not just
-  fixtures) with all `apps/web` and `apps/backend` code present.
-- SPA: dev server serves all 5 routes (200), `/api/health` through the dev
-  proxy returns `{"status":"ok"}`, production build succeeds (34 modules,
-  ~74 KB gzip).
-- Governance validator: 34 checks, 1 finding — a pre-existing, untracked
-  `trash/` directory that predates this session and is unrelated to any
-  `SETUP-*` slice; no new finding introduced by any of the six slices.
-- All Docker containers/volumes and dev-server/API processes started for
-  validation were stopped/cleaned up afterward; working tree left exactly as
-  the six slices produced it (uncommitted, per instruction — committing
-  requires a separate explicit request).
+## Blockers needing a human
+
+| Blocker | Blocks | What is needed |
+|---|---|---|
+| Execution model defaults: starting capital, fee, slippage, fill rule, rounding, position sizing, stop rules | `EXP-02` | Supplied values. The baseline requires these to be specification fields, not constants inside the engine. |
+| **Architecture review** of the backtest execution transport sequence | `EXP-04` | An explicit accept or reject of [`deviation-proposal-001`](../docs/architecture/deviation-proposal-001-backtest-execution-transport.md). This is a formal architecture deviation under `AGENTS.md`, not an informal acknowledgement: the frozen baseline names BullMQ as the runtime path and the plan's V1 to V5 realization does not use it. |
+
+Both can be resolved in parallel with `MKT-01` and `STRAT-01`, and neither changes
+those two slices.
+
+If the deviation is **rejected**, V1 grows to roughly 28 slices as `SETUP-08`, `WS-02`,
+and `EXP-12` move into it and `EXP-04` drops its claim path. The critical path
+lengthens; nothing else in the plan changes.
+
+## Foundation integration gate (2026-08-22)
+
+After all six setup slices landed, the whole stack was brought up together and
+re-verified as one system, beyond each slice's own validation. What was run and what it
+proved is recorded in [`JOURNAL.md`](JOURNAL.md); the short version is that
+`pnpm install`, `typecheck`, `lint`, and `test` (33 tests / 10 files, database-backed
+included) pass together, the API, migrations, boundary test, and SPA were each
+exercised end to end, and the governance validator reported only the pre-existing,
+unrelated `trash` finding.
 
 ---
 
@@ -105,7 +97,13 @@ slice's own validation:
   "It works" is not evidence.
 - Keep one, or at most a few, slices `IN_PROGRESS`.
 - No conversational detail here. Unfinished inner-task state belongs in
-  `.scratch/checkpoints/`.
+  `.scratch/checkpoints/`; durable decisions, deviations, and results belong in
+  [`JOURNAL.md`](JOURNAL.md).
+- Update the **Current target version** fields in the same edit as any status change,
+  so the header never disagrees with the tables below it or with Git.
+- A slice left unfinished at the end of a session must appear here as `IN_PROGRESS`
+  with one line saying where it stopped. The checkpoint file is git-ignored and never
+  reaches anyone else.
 - Statuses reflect reality, not intent. Architecture documents existing is not
   implementation progress.
 - A coding agent never changes the target version and never creates a Git tag.
@@ -187,18 +185,10 @@ more than one session.
 
 ## V1 blockers needing a human
 
-| Blocker | Blocks | What is needed |
-|---|---|---|
-| Execution model defaults: starting capital, fee, slippage, fill rule, rounding, position sizing, stop rules | `EXP-02` | Supplied values. The baseline requires these to be specification fields, not constants inside the engine. |
-| **Architecture review** of the backtest execution transport sequence | `EXP-04` | An explicit accept or reject of [`deviation-proposal-001`](../docs/architecture/deviation-proposal-001-backtest-execution-transport.md). This is a formal architecture deviation under `AGENTS.md`, not an informal acknowledgement - the frozen baseline names BullMQ as the runtime path and the plan's V1 to V5 realization does not use it. |
-
-Both can be resolved now, in parallel with `SETUP-01` through `SETUP-06`. Neither
-blocks the six setup slices, and neither changes them: `SETUP-01` to `SETUP-06` are
-identical whether the deviation is accepted or rejected.
-
-If the deviation is **rejected**, V1 grows to roughly 28 slices as `SETUP-08`,
-`WS-02`, and `EXP-12` move into it and `EXP-04` drops its claim path. The critical
-path lengthens; nothing else in the plan changes.
+Both are listed with what they need in
+[Blockers needing a human](#blockers-needing-a-human) at the top of this file:
+execution model defaults (`EXP-02`) and the architecture review of the backtest
+execution transport (`EXP-04`).
 
 ---
 

@@ -25,24 +25,26 @@ set of mechanisms.
 - It is **not** a source of architecture truth. It restates constraints; it never
   creates them.
 - It is **not** a requirement document. It points at the official sources.
-- It is **not** a place for conversation notes, debugging history, or unfinished
-  work state. That belongs in `.scratch/checkpoints/`.
+- It is **not** a place for conversation notes or debugging history. Unfinished work
+  state belongs in `.scratch/checkpoints/`; durable decisions, deviations, and
+  results belong in [`JOURNAL.md`](JOURNAL.md).
 - It is **not** a Git or code status report. Live Git and live code are the truth
   about what exists.
 
-## The five levels
+## The six levels
 
 ```text
 VERSIONS.md            what each product version must achieve, and its demo
 TRACKING.md            which slice is READY / IN_PROGRESS / BLOCKED / DONE
 00-... to 07-...       what one work unit must build
+JOURNAL.md             why the current state looks the way it does
 .scratch/checkpoints/  where unfinished execution stopped
 Git, code, tests       what actually exists
 ```
 
 Each level answers a different question. Never copy content between them. In
-particular, a slice definition never goes into a checkpoint, and checkpoint detail
-never goes into the plan.
+particular, a slice definition never goes into a checkpoint, checkpoint detail never
+goes into the plan, and per-slice status never goes into the journal.
 
 ## Source hierarchy
 
@@ -89,9 +91,13 @@ that table has not been approved. Propose it; do not take it.
    [`TRACKING.md`](TRACKING.md).
 4. Read that version's entry in [`VERSIONS.md`](VERSIONS.md) so you know what the
    version has to achieve.
-5. Pick one slice in [`TRACKING.md`](TRACKING.md) that is `READY` **and belongs to
+5. Read that version's section in [`JOURNAL.md`](JOURNAL.md) when the current state
+   needs explaining: an unexpected technology choice, a piece of debt, a problem that
+   already bit someone.
+6. Verify Git, code, and tests against what the tracker claims, before trusting it.
+7. Pick one slice in [`TRACKING.md`](TRACKING.md) that is `READY` **and belongs to
    the current target version**.
-6. Open only the plan file named in that row.
+8. Open only the plan file named in that row.
 
 **Never start a slice from a later version**, even when its dependencies happen to
 be satisfied. Finishing the current version is worth more than starting the next
@@ -119,8 +125,24 @@ target version, and that have no blocker, move from `TODO` to `READY`. A tracker
 where nothing is `READY` because nobody promoted anything is a broken tracker.
 
 Follow [`docs/agents/development-workflow.md`](../docs/agents/development-workflow.md)
-for which skill each phase uses. Committing and pushing still require a separate
-explicit user request.
+for which skill each phase uses, and
+[`CODING_STANDARDS.md`](../CODING_STANDARDS.md) for how the code itself is written.
+Committing and pushing still require a separate explicit user request.
+
+## How to end a session
+
+```text
+run the slice's validation commands
+  -> update TRACKING.md: status, evidence, readiness promotion, header fields
+    -> append a JOURNAL.md entry only if this session produced durable history
+      -> write .scratch/checkpoints/<slice-id>.md only if a slice is left unfinished
+        -> stop
+```
+
+Leaving a slice unfinished has one extra obligation. The checkpoint is git-ignored,
+so it never reaches anyone else. Set the slice to `IN_PROGRESS` in `TRACKING.md` with
+one line saying where it stopped, so nobody advances past it, and put any decision or
+problem that outlives this session into `JOURNAL.md`. Detail stays in the checkpoint.
 
 ## Slices are the work unit
 
@@ -131,6 +153,11 @@ what a ticket would carry.
 
 Publish a GitHub issue per slice only if the user asks for tracker visibility, and
 then one issue per slice, not one per acceptance criterion.
+
+This is the project's rule for implementing a planned slice, and
+[`docs/agents/development-workflow.md`](../docs/agents/development-workflow.md)
+states the same rule in its router. `to-spec` and `to-tickets` stay available for
+work that is not a planned slice.
 
 ## Completing a version
 
@@ -147,6 +174,42 @@ Then stop.
 **A coding agent never tags a version and never advances the target version.** Both
 are the user's decision. The agent reports readiness; the user tags
 (`git tag vN.0-demo`) and names the next target.
+
+## Starting a new version
+
+**Being assigned V(N+1) does not authorize implementing V(N+1).** Authorization comes
+from repository state, never from an instruction alone. A new member arriving with
+"you have V3" still has to check that V2 really finished.
+
+Verify all five before writing any V(N+1) code:
+
+1. every required slice of V(N) is `DONE` in `TRACKING.md` **and** present in code;
+2. every condition in V(N)'s Definition of Demoable in `VERSIONS.md` passes;
+3. V(N)'s demo scenario runs end to end on a clean checkout;
+4. V(N)'s required `PROOF-*` evidence is recorded;
+5. Git, code, and tests agree with what the tracker claims.
+
+`TRACKING.md`'s header carries the previous version's completion state and last
+verified commit, so this check starts there — but it ends in the code, not in the
+tracker. A tracker row is a claim; the code is the evidence.
+
+If any of the five fails, do not start the new version, and do not quietly work on
+something else instead. Report:
+
+```text
+V(N+1) NOT AUTHORIZED
+
+Previous version:
+  <V(N)>, <its real state>
+
+Missing:
+  - <each condition that does not pass>
+
+Current READY work:
+  - <READY slices inside the current target version, or "none">
+```
+
+Then continue the current target version, or stop if it has no `READY` work.
 
 ## Interrupted work
 
@@ -177,8 +240,9 @@ in `AGENTS.md` under "Architecture deviation procedure".
 
 A coding agent may update on its own:
 
-- `TRACKING.md` - status, evidence, blocker text, and readiness promotion for slices
-  it worked on.
+- `TRACKING.md` - status, evidence, blocker text, readiness promotion, and the header
+  fields, for slices it worked on.
+- `JOURNAL.md` - append one entry for a session that produced durable history.
 - `.scratch/checkpoints/*` - its own active-work state.
 
 A coding agent must **not** silently change:
@@ -186,7 +250,9 @@ A coding agent must **not** silently change:
 - a slice's outcome, scope, architecture constraints, or acceptance criteria;
 - the dependency graph;
 - which version a slice belongs to;
+- the current target version, in `TRACKING.md` or anywhere else;
 - anything in `VERSIONS.md`;
+- an earlier `JOURNAL.md` entry - correct it by appending a new one;
 - a proof mapping in `07-architecture-proof.md`.
 
 If reality contradicts the plan - a dependency is unnecessary, an acceptance
@@ -216,7 +282,8 @@ one changes only this plan, never the architecture.
 | File | Contents |
 |---|---|
 | [`VERSIONS.md`](VERSIONS.md) | The roadmap. Six versions, each with a demo contract. Read this second. |
-| [`TRACKING.md`](TRACKING.md) | Current target version and the status of every slice. Read this third. |
+| [`TRACKING.md`](TRACKING.md) | Current target version and the status of every slice. The one authoritative status view. Read this third. |
+| [`JOURNAL.md`](JOURNAL.md) | Durable history: decisions, deviations, debt, results. Read the current version's section when the present state needs explaining. |
 | [`00-setup-and-walking-skeleton.md`](00-setup-and-walking-skeleton.md) | Environment and platform foundations, across every version |
 | [`01-market-and-realtime.md`](01-market-and-realtime.md) | Binance data, normalized candles, charts, realtime, recovery |
 | [`02-strategy-and-composition.md`](02-strategy-and-composition.md) | Strategy contract, the MVP strategies, composition, generators |
