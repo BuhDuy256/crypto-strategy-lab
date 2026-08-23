@@ -1,6 +1,11 @@
 # Crypto Strategy Lab Architecture Proposal
 
 Architecture Status: ACCEPTED FOR FROZEN BASELINE v1.1
+
+Baseline v1.2 later accepted only the staged realization timing recorded by
+[ADR-010](../adr/ADR-010-realization-sequencing-for-asynchronous-backtest-execution.md).
+The problem tree, quality scenarios, target BullMQ realization, and all other
+decisions in this proposal remain unchanged.
 Validation Status: PENDING IMPLEMENTATION PROOFS
 Decision date: 2026-08-21
 Traceability convention: `P-*` problem, `QA-*` quality scenario, `D-*` decision, `ADR-*` record, `ARC-*` architecture element, `PROOF-*` validation proof.

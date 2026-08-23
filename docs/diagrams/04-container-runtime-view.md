@@ -19,9 +19,12 @@ flowchart LR
     Market -->|"closed candles / datasets"| DB
     NewsWorker -->|"items, attempts, sentiment results"| DB
 
-    API -->|"immutable BacktestJob"| Bull[("BullMQ on persistent Redis<br/>DURABLE ASYNC DELIVERY")]
-    Bull -->|"at-least-once"| Workers["Node.js / TypeScript<br/>backtest worker process(es)"]
-    Bull -->|"routed collection / inference work"| NewsWorker
+    DB -->|"V1-V5: claimable BacktestRun"| Runner["Node.js / TypeScript<br/>backtest runner process"]
+    Runner -->|"result + trades + provenance"| DB
+
+    API -->|"V6 target: immutable BacktestJob"| Bull[("BullMQ on persistent Redis<br/>DURABLE ASYNC DELIVERY")]
+    Bull -->|"V6: at-least-once"| Workers["Node.js / TypeScript<br/>BullMQ backtest worker process(es)"]
+    Bull -->|"V6 routed integration work"| NewsWorker
     Workers -->|"result + trade link + provenance + outbox transaction"| DB
 
     DB -->|"committed outbox rows"| Dispatcher["Outbox dispatcher process"]
@@ -45,7 +48,10 @@ flowchart LR
 
 - Logical modules share one codebase; these role processes are not independently owned microservices.
 - The API-to-PostgreSQL edge collapses in-process module calls for runtime readability; `ARC-API` does not access another module's repositories or tables directly.
-- BullMQ/Redis is the correctness delivery path for asynchronous work and requires persistence/no-arbitrary-eviction configuration.
+- V1 through V5 use the PostgreSQL-backed durable executor authorized by ADR-010;
+  the runner is a separate process and PostgreSQL owns claim/recovery state.
+- BullMQ/Redis is the mandatory V6 correctness delivery path and requires
+  persistence/no-arbitrary-eviction configuration.
 - Redis Pub/Sub never proves durable delivery; PostgreSQL snapshots and projections are recovery truth.
 
 ## References
@@ -57,3 +63,4 @@ flowchart LR
 - [ADR-005 - Transactional results](../adr/ADR-005-transactional-results-leaderboard.md)
 - [ADR-008 - Realtime delivery](../adr/ADR-008-realtime-delivery-recovery.md)
 - [ADR-009 - Technology realization](../adr/ADR-009-technology-realization.md)
+- [ADR-010 - Asynchronous execution sequencing](../adr/ADR-010-realization-sequencing-for-asynchronous-backtest-execution.md)

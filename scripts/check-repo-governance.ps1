@@ -33,6 +33,21 @@ function Read-RepoFile {
     return [IO.File]::ReadAllText((Join-Path $script:repoRoot $RelativePath))
 }
 
+function Get-NormalizedFileSha256 {
+    # Freeze identity is repository-content identity, not checkout line-ending
+    # identity. Normalize CRLF/CR to LF so Windows and Linux validate the same tree.
+    param([string]$Path)
+    $normalizedContent = [IO.File]::ReadAllText($Path).Replace("`r`n", "`n").Replace("`r", "`n")
+    $sha256 = [Security.Cryptography.SHA256]::Create()
+    try {
+        $payloadBytes = [Text.UTF8Encoding]::new($false).GetBytes($normalizedContent)
+        return ([BitConverter]::ToString($sha256.ComputeHash($payloadBytes))).Replace('-', '').ToUpperInvariant()
+    }
+    finally {
+        $sha256.Dispose()
+    }
+}
+
 function Get-SkillTreeHash {
     # Content identity of one skill directory: every file's SHA-256 over
     # LF-normalized UTF-8, keyed by sorted relative path. Normalizing means a
@@ -169,8 +184,9 @@ if ($missingRequiredFiles -eq 0) {
     $proofPlan = Read-RepoFile 'docs/validation/architecture-proof-plan.md'
 
     $checks++
+    $agentsArchitectureVersionMatch = [regex]::Match($agents, '(?m)^ARCHITECTURE STATUS: FROZEN (v[1-9][0-9]*(?:\.[0-9]+)*)\s*$')
     if ($agents -notmatch '(?m)^PROJECT MODE: IMPLEMENTATION AGAINST FROZEN ARCHITECTURE\s*$' -or
-        $agents -notmatch '(?m)^ARCHITECTURE STATUS: FROZEN v1\.1\s*$' -or
+        -not $agentsArchitectureVersionMatch.Success -or
         $agents -notmatch '(?m)^VALIDATION STATUS: PENDING IMPLEMENTATION PROOFS\s*$') {
         Add-Failure 'AGENTS.md is not in implementation-against-frozen-architecture mode.'
     }
@@ -237,7 +253,10 @@ if ($missingRequiredFiles -eq 0) {
     }
 
     $checks += 6
-    if ($readme -notmatch 'Architecture:\*\* `FROZEN v1\.1`' -or
+    $readmeArchitectureVersionMatch = [regex]::Match($readme, 'Architecture:\*\* `FROZEN (v[1-9][0-9]*(?:\.[0-9]+)*)`')
+    if (-not $readmeArchitectureVersionMatch.Success -or
+        -not $agentsArchitectureVersionMatch.Success -or
+        $readmeArchitectureVersionMatch.Groups[1].Value -ne $agentsArchitectureVersionMatch.Groups[1].Value -or
         $readme -notmatch 'Validation:\*\* `PENDING IMPLEMENTATION PROOFS`' -or
         $readme -notmatch 'Implementation:\*\* `(?:NOT STARTED|IN PROGRESS|COMPLETE)`' -or
         $readme -notmatch 'Current product version:\*\* `(?:NONE|V[1-9][0-9]*)`') {
@@ -400,6 +419,12 @@ if ($missingRequiredFiles -eq 0) {
     }
 
     $checks++
+    if (-not $agentsArchitectureVersionMatch.Success -or -not $baselineVersionMatch.Success -or
+        $agentsArchitectureVersionMatch.Groups[1].Value -ne $baselineVersionMatch.Groups[1].Value) {
+        Add-Failure 'AGENTS.md architecture version does not match the baseline.'
+    }
+
+    $checks++
     $validationStatusMatch = [regex]::Match($baseline, '(?m)^\*\*Validation Status:\*\* (PENDING IMPLEMENTATION PROOFS|PARTIALLY VERIFIED|VERIFIED AGAINST BASELINE PROOFS)\s*$')
     if (-not $validationStatusMatch.Success) {
         Add-Failure 'Architecture baseline validation status is missing or invalid.'
@@ -428,7 +453,7 @@ if ($missingRequiredFiles -eq 0) {
             Add-Failure "Frozen baseline path does not resolve: $frozenRelativePath"
         }
         else {
-            $actualFreezeHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $frozenPath).Hash
+            $actualFreezeHash = Get-NormalizedFileSha256 -Path $frozenPath
             if ($actualFreezeHash -ne $freezeHashMatch.Groups[1].Value.ToUpperInvariant()) {
                 Add-Failure 'Frozen baseline content changed without updating the explicit freeze record/version.'
             }

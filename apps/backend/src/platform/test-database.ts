@@ -22,7 +22,21 @@ import { createDatabasePool } from "./database.js";
 export async function resetTestDatabase(): Promise<Pool> {
   const config = loadConfig();
   const pool = createDatabasePool(config.postgres);
-  await resetDatabase(pool);
-  await runMigrations(pool);
+  const lock = await pool.connect();
+  try {
+    // Vitest files and process-level E2E fixtures share one dedicated test DB.
+    // Serialize destructive reset/migration cycles even if the runner schedules
+    // files concurrently; application queries remain unaffected after setup.
+    await lock.query("SELECT pg_advisory_lock(hashtextextended($1, 0))", [
+      "crypto-strategy-lab.test-database-reset"
+    ]);
+    await resetDatabase(pool);
+    await runMigrations(pool);
+  } finally {
+    await lock.query("SELECT pg_advisory_unlock(hashtextextended($1, 0))", [
+      "crypto-strategy-lab.test-database-reset"
+    ]);
+    lock.release();
+  }
   return pool;
 }

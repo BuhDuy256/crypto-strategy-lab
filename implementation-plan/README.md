@@ -50,7 +50,7 @@ goes into the plan, and per-slice status never goes into the journal.
 
 Apply authority in this order. This plan sits below all four.
 
-1. [`docs/architecture/architecture-baseline.md`](../docs/architecture/architecture-baseline.md) - FROZEN v1.1.
+1. [`docs/architecture/architecture-baseline.md`](../docs/architecture/architecture-baseline.md) - FROZEN v1.2.
 2. Accepted ADRs in [`docs/adr/`](../docs/adr).
 3. Official project sources in [`docs/requirements/`](../docs/requirements).
 4. [`AGENTS.md`](../AGENTS.md) and [`docs/agents/development-workflow.md`](../docs/agents/development-workflow.md).
@@ -74,11 +74,11 @@ Every such simplification is listed in
 [`VERSIONS.md`](VERSIONS.md) under "Planned realization evolution", with its driver,
 its seam, and the version that closes it.
 
-One of them - the backtest execution transport - conflicts with the frozen baseline
-and is an **open architecture deviation awaiting formal review**. It blocks `EXP-04`.
+The backtest execution transport originally conflicted with baseline v1.1. The
+Project Owner accepted its staged realization in ADR-010 and baseline v1.2. V1
+through V5 use the PostgreSQL-backed adapter; V6 still must deliver the BullMQ target.
 See [`deviation-proposal-001`](../docs/architecture/deviation-proposal-001-backtest-execution-transport.md)
-and "The one open architecture question" in `VERSIONS.md`. A coding session must not
-resolve it, and must not start `EXP-04` until the review concludes.
+and "Accepted asynchronous-execution sequencing" in `VERSIONS.md`.
 
 This is not permission to simplify anything else. A simplification that is not in
 that table has not been approved. Propose it; do not take it.

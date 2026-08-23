@@ -4,7 +4,7 @@ Crypto Strategy Lab is an architecture-first platform for crypto market data, st
 
 ## Current project status
 
-- **Architecture:** `FROZEN v1.1`
+- **Architecture:** `FROZEN v1.2`
 - **Validation:** `PENDING IMPLEMENTATION PROOFS`
 - **Implementation:** `IN PROGRESS`
 - **Current product version:** `V1`
@@ -64,7 +64,7 @@ crypto-strategy-lab/
 │   │   ├── architecture-baseline-v1.md
 │   │   └── architecture-proposal.md
 │   ├── adr/
-│   │   └── ADR-001 ... ADR-009
+│   │   └── ADR-001 ... ADR-010
 │   ├── diagrams/
 │   │   ├── README.md
 │   │   └── 01 ... 10 architecture views
@@ -83,7 +83,7 @@ crypto-strategy-lab/
 4. [System Context](docs/diagrams/03-system-context.md)
 5. [Container / Runtime View](docs/diagrams/04-container-runtime-view.md)
 6. [Module Boundaries](docs/diagrams/05-module-boundaries.md)
-7. [Frozen architecture baseline v1.1](docs/architecture/architecture-baseline.md) — normative source
+7. [Frozen architecture baseline v1.2](docs/architecture/architecture-baseline.md) — normative source
 8. The ADRs relevant to the area under review
 9. [Architecture Proof Plan](docs/validation/architecture-proof-plan.md)
 10. [Architecture Proposal](docs/architecture/architecture-proposal.md) for deeper reasoning and trade-offs
@@ -119,6 +119,7 @@ Cross-module access uses exported application/domain ports. A logical module is 
 - [ADR-007 — News Collection and Sentiment Isolation](docs/adr/ADR-007-news-sentiment-isolation.md)
 - [ADR-008 — Realtime Delivery and Market Recovery](docs/adr/ADR-008-realtime-delivery-recovery.md)
 - [ADR-009 — Technology Realization for Baseline v1.1](docs/adr/ADR-009-technology-realization.md)
+- [ADR-010 — Realization Sequencing for Asynchronous Backtest Execution](docs/adr/ADR-010-realization-sequencing-for-asynchronous-backtest-execution.md)
 
 ## Development workflow
 
@@ -148,7 +149,8 @@ Two rules that keep sequential work honest:
 
 ## Taking over the project
 
-1. Clone, then `pnpm install`.
+1. Clone, run `corepack enable`, then `pnpm install`. The repository pins pnpm in
+   `package.json`, so every member uses the same package-manager release.
 2. Nothing to set up for skills: they are committed for both Claude Code and Codex.
 3. Tell your AI assistant:
 
@@ -197,7 +199,10 @@ Linux checkout of the same skill agree.
 - [ ] Are the immutable provenance and reproducibility requirements realistic?
 - [ ] Do any unresolved product policies block the first implementation slice?
 
-Open product/configuration choices remain intentionally undecided: ranking weights and tie-breaking; capital, fee, slippage, fill, sizing, and stop defaults; concrete news providers and sentiment model; measurable performance targets and test hardware; authentication; and retention. The team should confirm or schedule these decisions rather than allowing hidden implementation defaults.
+Open product/configuration choices remain intentionally undecided: ranking weights
+and tie-breaking; concrete news providers and sentiment model; measurable performance
+targets and test hardware; authentication; and retention. V1 execution-model defaults
+were accepted on 2026-08-23 and are recorded in `implementation-plan/JOURNAL.md`.
 
 ## Development commands
 
@@ -211,6 +216,7 @@ The repository is a pnpm workspace (`apps/*`, `packages/*`) with TypeScript in s
 | `pnpm run test` | Run the Vitest test suite. |
 | `pnpm run migrate` | Apply every pending database migration (safe to run twice). |
 | `pnpm run migrate:reset` | Drop the module-owned schemas and return the database to empty. |
+| `pnpm run market:backfill -- --symbol BTCUSDT --timeframe 1h --startTime <ms> --endTime <ms>` | Load a closed Binance candle range into append-only Market storage. |
 
 ## Two run paths
 
@@ -242,6 +248,10 @@ cp .env.example .env
 ```
 
 `.env.example` lists every variable the system reads, with a safe placeholder for each — no real secret. Edit `.env` if you want different local values; `.env` is git-ignored and never committed.
+
+Host commands load this repository-root `.env` automatically. Variables already set
+in the shell or CI environment retain precedence, and a missing `.env` remains valid
+for commands that do not need PostgreSQL.
 
 `POSTGRES_HOST=localhost` is correct for this path, where the backend runs on your machine and reaches the container through a published port. A backend running *inside* Compose reaches PostgreSQL by its service name instead, so the full-system path supplies its own value for that variable rather than expecting you to edit `.env`. `DEMO-01` wires this up.
 
@@ -277,10 +287,9 @@ pnpm run migrate
 
 This applies every pending migration under `apps/backend/migrations/` in filename
 order, tracking what it has applied in a `public._migrations` table so re-running the
-command is a no-op for migrations already applied. The first migration
-(`0001_create_module_schemas.sql`) creates one empty PostgreSQL schema per
-data-owning module. No tables exist yet; each schema gets its tables from the slice
-that owns that data.
+command is a no-op for migrations already applied. The first migration creates one
+PostgreSQL schema per data-owning module; later migrations add tables only to the
+schema of the slice that owns that data.
 
 | Schema | Owning module |
 |---|---|
@@ -306,11 +315,18 @@ running `pnpm run test` if you do not want tests touching your local dev databas
 
 ### How the backend config loader works
 
-`apps/backend/src/platform/config.ts` exports `loadConfig()`, a typed loader that reads the same PostgreSQL variables from `.env.example` out of `process.env`. It is fully typed (no `any`, no silent `undefined`) and fails fast: a missing or blank required variable, or an invalid port, throws an error naming that exact variable instead of letting the app start with a bad config. See `apps/backend/src/platform/config.test.ts` for the loader's expected behavior. Nothing in the API process (below) imports this loader yet; that wiring arrives in a later slice.
+`apps/backend/src/platform/root-env.ts` loads the optional root `.env`, then
+`apps/backend/src/platform/config.ts` exports `loadConfig()`, a typed loader that reads
+the PostgreSQL values from `process.env`. It is fully typed (no `any`, no silent
+`undefined`) and fails fast: a missing or blank required variable, or an invalid port,
+throws an error naming that exact variable instead of letting the app start with a bad
+config. See the adjacent tests for the expected loading and validation behavior.
 
 ### Starting the API process
 
-The API process is a NestJS HTTP server exposing a health endpoint. It does not need PostgreSQL running.
+The API process is a NestJS HTTP server exposing health and normalized candle-history
+endpoints. PostgreSQL must be running because Market Data supplies the candle query
+port.
 
 ```powershell
 pnpm run start:api
@@ -322,12 +338,21 @@ This runs `apps/backend/src/main.api.ts` (the entry command for the API/WebSocke
 curl http://localhost:3000/health
 ```
 
+After loading a closed range with `market:backfill`, read it through:
+
+```powershell
+curl "http://localhost:3000/market/candles?provider=binance&symbol=BTCUSDT&timeframe=1h&startTime=<ms>&endTime=<ms>"
+```
+
 Every request gets an `x-request-id` header on the response: the inbound header's value if the request sent one, otherwise a freshly generated one. Log lines are structured records with a timestamp, level, process role, and that request identifier; they print pretty in development and as raw JSON when `NODE_ENV=production`. Stop the process with Ctrl+C (`SIGINT`) or `SIGTERM`; it shuts down cleanly.
 
 ## Next phase
 
 Implementation against the frozen baseline continues as a Walking Skeleton / architecture proof-oriented vertical slice inside **V1 - Backtesting Lab**.
 
-All six V1 setup slices (`SETUP-01` through `SETUP-06`) are complete: pnpm workspace and quality commands, PostgreSQL topology and the typed config loader, the NestJS API skeleton with the five frozen module boundaries and structured logging, module-owned migrations, automated architecture boundary tests, and the React SPA shell with a typed API client. Domain implementation has not started; `MKT-01` and `STRAT-01` are the next available slices.
+All six V1 setup slices are complete. Market Data now has normalized provider
+contracts, Binance history, immutable candle revisions, dataset snapshots, and the
+typed candle endpoint; Strategy has its pure contract, descriptor, registry, and
+annotation vocabulary. The tracker below remains the authoritative next-work view.
 
-[`implementation-plan/TRACKING.md`](implementation-plan/TRACKING.md) is authoritative for what is done and what may be started next. This section is a summary and can lag; the tracker cannot. 
+[`implementation-plan/TRACKING.md`](implementation-plan/TRACKING.md) is authoritative for what is done and what may be started next. This section is a summary and can lag; the tracker cannot.
