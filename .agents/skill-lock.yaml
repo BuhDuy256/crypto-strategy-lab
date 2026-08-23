@@ -217,4 +217,4 @@ skills:
     scripts: none
     dependencies: none
     invocation: manual-only
-    guardrail: Analysis may not redesign or override frozen baseline v1.1 or accepted ADRs.
+    guardrail: Analysis may not redesign or override frozen baseline v1.2 or accepted ADRs.

@@ -307,3 +307,512 @@ avoiding duplication no longer applies; the decision below replaces it.
 - At `b55a9d4`: `pnpm run typecheck` and `pnpm run lint` clean; `pnpm run test` 33
   passed / 10 files with `.env` exported and PostgreSQL healthy; governance validator
   1020 checks with only the three pre-existing unrelated findings.
+
+### 2026-08-23 — V1 — architecture review, setup repair, and MKT-01 start
+
+**Decisions**
+
+- The Project Owner accepted Alternative C from Deviation Proposal 001. V1 through
+  V5 use a PostgreSQL-backed durable executor behind `BacktestExecutor`; V6 replaces
+  only the adapter and runner entry point with BullMQ. ADR-010 and baseline v1.2 are
+  the normative record.
+- MKT-A is accepted for `MKT-01`: OHLCV uses finite `number` values; time uses Unix
+  epoch milliseconds; `Timeframe` is exactly `1m | 5m | 15m | 30m | 1h | 2h | 4h |
+  1d`. The port methods are `fetchHistorical(request): Promise<readonly Candle[]>`,
+  `subscribeLive(request): AsyncIterable<Candle>`, and
+  `getHealth(): Promise<ProviderHealth>`. Historical results are unique, closed,
+  ascending candles inside the inclusive requested open-time range.
+- MKT-A health states are `healthy | degraded | unavailable`. Provider error codes
+  are `UNSUPPORTED_SYMBOL`, `UNSUPPORTED_TIMEFRAME`, `RATE_LIMITED`,
+  `PROVIDER_UNAVAILABLE`, `INVALID_PROVIDER_DATA`, and `NOT_SUPPORTED` for an adapter
+  that deliberately lacks live capability in V1. `DatasetRef` contains `datasetId`,
+  integer `version`, `manifestVersion`, `provider`, `symbols`, `timeframe`, inclusive
+  `range`, `revisionWatermark`, and `integrityHash`.
+- EXEC-A is accepted for `EXP-02`: 10,000 USDT starting capital, 0.1% fee and 0.05%
+  slippage per fill, close-of-bar signal with next-open fill, one 1x position using
+  available equity, both long and simulated-short directions, optional stops disabled
+  by default, stop-loss-first same-bar tie handling, and final-close liquidation.
+  Quantity, cash, fees, and realized PnL normalize to eight decimal places. Every
+  value and disabled option is recorded in the immutable experiment specification
+  rather than hidden in the engine.
+- Setup repair is authorized: normalize the freeze hash across line endings, load the
+  root `.env` for host commands, and pin the pnpm toolchain for clean-clone repeatability.
+
+**Validation**
+
+- Architecture governance passes 1,108 checks on Windows, including LF-normalized
+  freeze identity for baseline v1.2 and the exact preserved v1.1 snapshot.
+- Thirty-five targeted tests pass for the MKT-01 contract, deliberately broken
+  provider responses, root `.env` loading, and all six architecture boundary rules.
+  A targeted strict typecheck reports zero diagnostics.
+- After installing the pinned pnpm 9.15.9 dependencies, the canonical repository
+  commands pass: `pnpm run typecheck`, `pnpm run lint`, and `pnpm run test` (61 tests
+  in 13 files, including the PostgreSQL-backed schema tests).
+- PostgreSQL 16 is healthy for this checkout. Local port 5433 is used because port
+  5432 belongs to the preserved legacy checkout; this is local `.env` configuration
+  only and does not change the committed topology.
+
+**Problems worth remembering**
+
+- `corepack enable` may require an elevated terminal when Node is installed under
+  `C:\Program Files`; invoking the prepared package manager through Corepack or using
+  an existing pnpm shim avoids that machine-level permission issue.
+- The root environment loader must tolerate Vite's HTTP-form `import.meta.url` in
+  frontend tests. It now falls back to the test process working directory while
+  retaining file-relative resolution in the backend runtime.
+
+**Ending state**
+
+- MKT-01 is `DONE`; its direct dependent MKT-02 is promoted to `READY`. STRAT-01
+  remains independently `READY`. The legacy comparison is pinned to pre-MKT commit
+  `b823d45` in `docs/architecture/legacy-architecture-comparison.md`.
+
+### 2026-08-23 — V1 — MKT-02
+
+**Decisions**
+
+- The adapter uses Node.js native `fetch` and Binance's public market-data endpoint;
+  no HTTP package or architecture change is needed. HTTP and delay injection stay
+  private to Market Data so offline fixtures can exercise the public provider seam.
+
+**Validation**
+
+- The unchanged provider contract suite and adapter regression tests pass. A live
+  two-page fetch returned 1,001 one-minute BTCUSDT candles from open time
+  `1785542400000` through `1785602400000`, with exact continuity.
+- Canonical typecheck and lint pass; 77 tests in 15 files pass; governance passes
+  1,110 checks. Standards and spec re-review have no open finding.
+
+**Problems worth remembering**
+
+- Provider HTTP wrappers must preserve status and headers before interpreting the
+  body, because rate-limit responses may not contain JSON. Unknown numeric fields
+  must be narrowed before conversion; JavaScript coercion otherwise accepts null,
+  booleans, and blank strings.
+
+**Ending state**
+
+- MKT-02 is complete in the working tree based on `b823d45`; MKT-03 is now `READY`.
+  No commit was created because Git actions require separate owner approval.
+
+### 2026-08-23 - V1 - MKT-03 decision gate
+
+**Decision**
+
+- The Project Owner accepted MKT03-A. `Candle.revision` remains a local sequence for
+  one logical candle, while each stored revision receives a globally increasing,
+  storage-only ingest sequence. `DatasetRef.revisionWatermark` is an ingest-sequence
+  boundary. An as-of query first excludes rows beyond that boundary and then selects
+  the highest local revision per logical candle.
+- The accepted application seam is one deep `MarketDataQuery.getCandles(request)`
+  operation. Its inclusive range request carries provider, symbol, timeframe, start
+  time, end time, and an optional revision watermark. Omitting the watermark returns
+  the current view; providing it returns the stable as-of view.
+- This clarifies the already-frozen append-only snapshot mechanism; it does not add
+  a module, communication path, technology, or ownership change, so no new ADR is
+  required. The implementation plan is corrected because a local candle revision
+  alone cannot serve as a stable global snapshot boundary.
+
+**Ending state**
+
+- `MKT-03` is `IN_PROGRESS`. Implementation proceeds test-first through the accepted
+  application seam; the PostgreSQL repository remains internal to Market Data.
+
+### 2026-08-23 - V1 - MKT-03 completion
+
+**Implementation**
+
+- Migration `0002_create_market_candles.sql` creates the Market-owned append-only
+  candle table, composite logical-identity-plus-revision primary key, global identity
+  ingest sequence, and range index.
+- `PostgresCandleRepository` implements the accepted `MarketDataQuery` application
+  port. Duplicate values are a no-op; changed values receive the next local revision;
+  current and watermark-bounded reads are inclusive and ascending.
+- Historical backfill uses one set-based SQL statement per batch. A shared
+  transaction-level advisory lock coordinates writes and watermark capture, ensuring
+  a snapshot watermark cannot overtake a lower, uncommitted ingest sequence.
+- PostgreSQL-backed test files run sequentially because they intentionally reset the
+  same dedicated test database.
+
+**Validation**
+
+- The TDD red phase failed because the repository did not exist. The green phase now
+  covers eight PostgreSQL integration cases: duplicate no-op, immutable revision,
+  current view, cross-candle watermark stability, inclusive ordered gaps, concurrent
+  set-based backfills, closed-only persistence, and a backend-wide append-only guard.
+- Canonical `pnpm run typecheck` and `pnpm run lint` pass. Canonical `pnpm run test`
+  passes 85 tests in 16 files. Repository governance passes 1,110 checks, and
+  `git diff --check` is clean apart from Git's existing Windows line-ending notices.
+- The two-axis Standards and Spec review initially found seven issues. All were
+  corrected; re-review reports no remaining finding.
+
+**Ending state**
+
+- `MKT-03` is `DONE`. Direct dependents `MKT-10` and `MKT-04` are promoted to
+  `READY`; independent `STRAT-01` remains `READY`. No commit was created because Git
+  actions require separate owner approval.
+
+### 2026-08-23 - V1 - MKT-10, MKT-04, and STRAT-01 decision gate
+
+**Decision**
+
+- The Project Owner accepted Option A for all three slices. Dataset snapshots are
+  content-addressed with SHA-256, use manifest version v1, record consecutive gap
+  ranges, and resolve candles through the global ingest watermark rather than copied
+  candle rows.
+- The candle history surface is `GET /market/candles`, accepts only the V1 provider,
+  symbol, and timeframe vocabulary, and limits a response to 10,000 candles. API
+  composition receives Market Data through an exported injection token. Historical
+  loading is a CLI command rather than an unauthenticated mutation endpoint.
+- Strategy analysis uses declared discriminated inputs rather than importing Market
+  types or exposing a service locator. Registry-owned wrappers validate the compact,
+  frontend-renderable parameter schema and required inputs before invoking a pure
+  strategy. Signal and the five generic annotation primitives use closed normalized
+  vocabularies.
+- These choices concretize ADR-002 and ADR-006 without adding a technology, module,
+  ownership edge, or communication path. No new ADR is required.
+
+**Ending state**
+
+- `MKT-10`, `MKT-04`, and `STRAT-01` are `IN_PROGRESS` as one owner-approved batch.
+
+### 2026-08-23 - V1 - MKT-10, MKT-04, and STRAT-01 completion
+
+**Implementation**
+
+- `MKT-10` adds immutable content-addressed dataset manifests, range-scoped ingest
+  watermarks, canonical SHA-256 identity, explicit consecutive gaps, exact as-of
+  resolution, and a PostgreSQL trigger rejecting dataset mutation. Pure snapshot
+  policy lives in domain/application; the PostgreSQL adapter only persists manifests.
+- `MKT-04` binds Market query/dataset/backfill use cases in `MarketModule`, exposes a
+  validated 10,000-candle HTTP range, shares its response contract with the SPA, and
+  adds a Market-owned CLI backfill. The E2E fixture uses the backfill use case rather
+  than writing Market tables from outside the module.
+- `STRAT-01` adds declared price/sentiment analysis inputs, normalized signals, a
+  compact renderable parameter schema, generic annotation primitives, and an
+  additive registry wrapper that filters context and validates every run.
+- `CONTEXT.md` records the project vocabulary resolved by these contracts.
+
+**Validation**
+
+- Focused TDD suites cover five dataset cases, nine Strategy registry/contract cases,
+  and six SPA-client-to-HTTP-to-port-to-PostgreSQL cases.
+- A live CLI smoke loaded BTCUSDT `1h` at open time `1704070800000` from Binance;
+  `GET /market/candles` returned that exact normalized durable candle.
+- The single final full run passes typecheck, lint, 105 tests in 19 files, governance
+  with 1,114 checks, and `git diff --check` (only existing Windows line-ending notices).
+- Two-axis Standards and Spec review has no remaining finding after refactoring
+  snapshot policy, DTO validation, shared contracts, and test seeding.
+
+**Ending state**
+
+- `MKT-10`, `MKT-04`, and `STRAT-01` are `DONE`. `STRAT-02` and `MKT-05` are promoted
+  to `READY`. No commit was created because Git actions require separate owner approval.
+
+### 2026-08-23 - V1 - STRAT-02 and MKT-05 decision gate
+
+**Decision**
+
+- The Project Owner accepted Option A for both slices. `MAStrategy` uses simple moving
+  averages, declares `open | high | low | close` as its price-source vocabulary with
+  `close` as the default, and declares default fast and slow periods of 10 and 20.
+  The fast period must be smaller than the slow period. A crossover is confirmed at
+  candle close, needs the previous and current averages, and therefore holds until at
+  least `slowPeriod + 1` candles exist.
+- The single V1 chart uses the already planned `lightweight-charts` library, defaults
+  to `1h`, and requests the latest 200 fully closed candles. It renders candlesticks
+  and volume from normalized API data. A timeframe change refreshes only the chart
+  request and state.
+- These choices fill in task-local strategy semantics and presentation query behavior
+  inside the frozen Strategy and API/Presentation boundaries. They add no module,
+  ownership edge, communication path, persistence policy, or deployment role, so no
+  ADR is required.
+
+**Ending state**
+
+- `STRAT-02` and `MKT-05` are `IN_PROGRESS`.
+
+### 2026-08-23 - V1 - STRAT-02 and MKT-05 completion
+
+**Implementation**
+
+- `STRAT-02` adds a pure sliding-window SMA primitive and a registered built-in
+  `MAStrategy`. The strategy validates the accepted period relationship, reads only
+  its declared price-bars input, evaluates upward and downward crossovers at candle
+  close, holds during warm-up or without a new crossover, and emits aligned fast and
+  slow line annotations.
+- `MKT-05` adds the planned `lightweight-charts` dependency and a presentation-only
+  candlestick-and-volume component. `BacktestPage` owns the recent 200-closed-candle
+  query, defaults to `1h`, reloads only chart state on timeframe changes, and exposes
+  loading, empty, and error states.
+
+**Validation**
+
+- Canonical typecheck and lint pass. The full suite passes 123 tests in 23 files;
+  governance passes 1,116 checks; `git diff --check` is clean apart from existing
+  Windows line-ending notices. The web production build passes.
+- The Market CLI stored 200 real closed BTCUSDT `1h` candles. A manual browser run
+  through the local API and Vite rendered the chart and nonzero canvases, changed to
+  the meaningful `4h` empty state, restored the real `1h` chart, and produced no
+  browser warning or error.
+- Two-axis review has no remaining Standards or Spec finding after consolidating the
+  price-source vocabulary and adding the required test-file purpose comments.
+
+**Ending state**
+
+- `STRAT-02` and `MKT-05` are `DONE`. `EXP-01` and `PROOF-PROVIDER-001` are promoted
+  to `READY`. No commit was created because Git actions require separate owner approval.
+
+### 2026-08-23 - V1 - EXP-01 and PROOF-PROVIDER-001 decision gate
+
+**Decision**
+
+- The Project Owner accepted Option A for `EXP-01`. A relational lifecycle envelope
+  stores a typed V1 specification as JSONB. The canonical hash covers the complete
+  frozen content but excludes lifecycle identity and timestamps. Freeze resolves the
+  dataset, validates the strategy reference and parameters through Strategy-owned
+  validation, and adds runtime/build provenance. A PostgreSQL trigger permits draft
+  edits and the draft-to-frozen transition, then rejects update or delete.
+- The Project Owner accepted a deterministic fake second provider for
+  `PROOF-PROVIDER-001`. The proof runs the shared provider contract, sends its
+  normalized candles through the real dataset service and unchanged chart component,
+  and uses a temporary browser harness that is removed after validation.
+- Architecture proof records are stored under `docs/validation/evidence/`, beginning
+  with `PROOF-PROVIDER-001.md`.
+
+**Ending state**
+
+- `EXP-01` and `PROOF-PROVIDER-001` are `IN_PROGRESS`.
+
+### 2026-08-23 - V1 - EXP-01 and PROOF-PROVIDER-001 completion
+
+**Implementation**
+
+- `EXP-01` adds the typed V1 draft and frozen specification contracts, a relational
+  lifecycle envelope with JSONB content, exhaustive runtime validation, Market dataset
+  resolution, Strategy-owned parameter validation, canonical SHA-256 freezing, and a
+  PostgreSQL trigger that prevents frozen update or deletion. Frozen specifications
+  retain the accepted EXEC-A profile, metric version, and runtime/build provenance.
+- `PROOF-PROVIDER-001` adds a Market-owned second-provider proof that runs the full
+  common provider contract and sends normalized candles through real append-only
+  persistence and immutable dataset resolution. The unchanged chart accepts the same
+  provider-neutral candles.
+
+**Validation**
+
+- The proof command passes 24 tests across Binance, the second provider, dataset
+  integration, and chart input. A temporary browser harness rendered seven nonzero
+  chart canvases with no warning or error and was removed afterward.
+- Canonical typecheck and lint pass. The final full suite passes 138 tests in 25 files;
+  governance passes 1,118 checks; `git diff --check` is clean apart from existing
+  Windows line-ending notices.
+- The proof environment, commands, fixture, hashes, browser result, deviations, and
+  follow-up are recorded in `docs/validation/evidence/PROOF-PROVIDER-001.md`.
+- Two-axis review has no remaining Standards or Spec finding after exhaustive nested
+  validation and moving the proof inside the owning Market boundary.
+
+**Ending state**
+
+- `EXP-01` and `PROOF-PROVIDER-001` are `DONE`. `EXP-02` and `EXP-04` are promoted to
+  `READY`. No commit was created because Git actions require separate owner approval.
+
+### 2026-08-23 - V1 - EXP-02 and EXP-04 decision gate
+
+**Decision**
+
+- The Project Owner accepted Option A for deterministic simulation. Opposite signals
+  close and reverse at the next candle open; sizing uses available equity after entry
+  fee at 1x leverage; slippage is adverse on every fill; fees apply to entry and exit
+  notional; monetary values and quantity normalize to eight decimal places. Optional
+  percentage stops default off, stop loss wins a same-candle tie, and final positions
+  liquidate at the last close.
+- The Project Owner accepted a broker-neutral `BacktestExecutor.enqueue(job)` seam.
+  PostgreSQL claim, lease, and reclaim stay internal to the V1 adapter. Run intent is
+  committed before enqueue. Idempotency hashes the frozen spec plus engine/runtime
+  execution identity; V1 candidate identity hashes strategy ID/version/parameters.
+  Attempts start at one, expired 30-second leases create later attempts, and HTTP
+  exposes start plus status reads.
+
+**Ending state**
+
+- `EXP-02` and `EXP-04` are `IN_PROGRESS`.
+
+### 2026-08-23 - V1 - EXP-02 and EXP-04 completion
+
+**Implementation**
+
+- `EXP-02` adds a pure deterministic backtester with next-open execution, long and
+  short positions, opposite-signal reversal, available-equity sizing, adverse
+  slippage, entry and exit fees, optional percentage exits, stop-first same-candle
+  ties, final liquidation, eight-place normalization, and annotation passthrough.
+- `EXP-04` adds the broker-neutral executor port, stable candidate and idempotency
+  hashes, durable PostgreSQL run and attempt tables, atomic lease-based claims and
+  reclaim, complete durable job identity, start and status endpoints, shared API
+  contracts, and SPA client methods.
+
+**Validation**
+
+- Hand-checked simulation tests cover both directions, reversal, hold, no look-ahead,
+  stop/take priority, fees, slippage, sizing, final liquidation, and annotations. A
+  separate Node process produces the same canonical trade-list hash.
+- PostgreSQL tests prove two concurrent runners claim different work, expired leases
+  create a new attempt, and attempt history remains queryable. Application and HTTP
+  tests cover durable-before-enqueue, duplicate submission, status serialization,
+  failure reason, and invalid run identifiers.
+- Two-axis review findings were resolved: intrabar chronology now applies the known
+  open action before candle high/low, claimed work contains the full immutable job,
+  command identity is verified, and execution rates have safe bounds.
+
+**Ending state**
+
+- `EXP-02` and `EXP-04` are `DONE`. `EXP-03` is promoted to `READY`. No commit was
+  created because Git actions require separate owner approval.
+
+### 2026-08-23 - V1 - EXP-03 decision gate
+
+**Decision**
+
+- The Project Owner accepted Option A. Total return uses initial and final
+  closed-trade equity, win rate counts strictly positive realized trades, and zero
+  trades produce zero return, win rate, and drawdown. Maximum drawdown is the largest
+  peak-to-trough decline on the closed-trade equity curve. Metric values are decimal
+  ratios, and the V1 set is identified as `mvp-metrics@1.0.0`.
+
+**Ending state**
+
+- `EXP-03` is `IN_PROGRESS`.
+
+### 2026-08-23 - V1 - EXP-03 completion
+
+**Implementation**
+
+- Added a pure versioned evaluator for total return, strict-positive win rate,
+  closed-trade peak-to-trough maximum drawdown, and trade count.
+- Metric definitions are bound to an explicit metric-set identity. New metric sets
+  can add a metric without changing callers, while empty or duplicate IDs and all
+  non-finite inputs or outputs fail fast.
+
+**Validation**
+
+- Nine evaluator tests cover a hand-checked mixed fixture, zero trades, all wins,
+  all losses, one trade, a breakeven trade, extensibility, invalid identifiers, and
+  non-finite values.
+- Full regression passes 159 tests in 31 files. Typecheck and lint pass. Governance
+  passes 1,118 checks. Two-axis review has no remaining finding.
+
+**Ending state**
+
+- `EXP-03` is `DONE`. `EXP-05` is blocked on its owner decision gate.
+
+### 2026-08-23 - V1 - EXP-05 decision gate
+
+**Decision**
+
+- The Project Owner accepted Option A. The runner produces a framework-independent
+  outcome and hands it to `BacktestResultAcceptor`; `EXP-06` supplies the durable
+  transaction behind that port. V1 polls every 500 milliseconds, defaults to one
+  positive configured concurrent slot, renews a 30-second lease every 10 seconds,
+  and checks cooperative cancellation after claim, after input resolution, after
+  strategy execution, and before acceptance. Graceful shutdown stops new claims and
+  waits for active work. Unrecoverable failures record a stable failure reason.
+
+**Ending state**
+
+- `EXP-05` is `IN_PROGRESS`.
+
+### 2026-08-23 - V1 - EXP-06 decision gate
+
+**Decision**
+
+- The Project Owner accepted Option A. Accepted results use relational result,
+  provenance, and ordered trade tables in one transaction. Metrics and execution
+  assumptions are versioned JSONB values; trades remain rows for V1 paging. A
+  canonical ordered trade hash protects content. Provenance explicitly distinguishes
+  recorded and not-applicable inputs, and runtime/build identity must match the
+  frozen specification. Accepted rows are immutable and idempotent by logical key.
+
+**Ending state**
+
+- `EXP-05` and `EXP-06` are both `IN_PROGRESS`. Their plan dependency is a delivery
+  order, but the accepted port has no valid production implementation until the
+  acceptance transaction exists, so both close together after the integrated runner
+  validation. This overlap is recorded explicitly rather than hiding implemented
+  `EXP-06` work behind a `TODO` status.
+
+### 2026-08-23 - V1 - EXP-05 CPU isolation decision
+
+**Decision**
+
+- The Project Owner accepted Option A. The runner main thread owns durable claim,
+  heartbeat, cancellation, graceful shutdown, and result acceptance. Strategy,
+  backtest simulation, and evaluation execute in a Node.js Worker Thread behind a
+  framework-independent computation port. This keeps heartbeat and signal handling
+  responsive during CPU-bound work without changing deployment topology or the pure
+  domain APIs.
+
+**Ending state**
+
+- `EXP-05` and `EXP-06` remain `IN_PROGRESS` until worker isolation and integrated
+  lifecycle validation pass.
+
+### 2026-08-23 - V1 - EXP-05 and EXP-06 completed
+
+**Delivered**
+
+- Implemented the accepted Worker Thread CPU boundary while the runner process owns
+  claims, heartbeat, cancellation, graceful shutdown, and result acceptance.
+- Heartbeat rejection or ownership loss aborts CPU work; stale attempts are fenced
+  from heartbeat, failure, and acceptance.
+- One PostgreSQL transaction persists the immutable result, metrics, ordered trades,
+  provenance, attempt completion, and run completion. Runtime, metric-set, and
+  executed-engine identities are verified before acceptance.
+- Reclaim terminally records an expired attempt as `BACKTEST_LEASE_EXPIRED`, and the
+  provenance view exposes every attempt including its lease timestamp.
+- Process-level tests use the real API and runner entrypoints. They prove two runners
+  produce one result, hard-stopping the API does not stop work, and a hard-killed
+  runner is reclaimed and completed as attempt 2.
+
+**Validation and transition**
+
+- `pnpm run typecheck`, `pnpm run lint`, 177 tests, repository governance (1,118
+  checks), and `git diff --check` pass.
+- Marked `EXP-05` and `EXP-06` `DONE`; promoted `EXP-10` to `READY`.
+
+### 2026-08-23 - V1 - EXP-10 query contract accepted
+
+**Decision**
+
+- The Project Owner explicitly accepted Option A for the single-result read surface.
+- `GET /backtests/:runId/result` returns the persisted summary. Missing is `404`,
+  queued/running is `202`, failed is `200` with its stable failure reason, and a
+  completed result is `200` with metrics, frozen execution assumptions,
+  specification identity/hash, and timestamps.
+- `GET /backtests/:runId/trades?page=1&pageSize=10` pages persisted trades in
+  `sequence_number ASC` order. Page numbering is one-based, page size defaults to
+  10 and is capped at 100, and an out-of-range page is empty while preserving the
+  total count.
+- Both endpoints are keyed by `runId`; the SPA does not need to discover or retain a
+  separate result identifier.
+
+**Starting state**
+
+- Claimed `EXP-10` and moved it from `READY` to `IN_PROGRESS`.
+
+### 2026-08-23 - V1 - EXP-10 completed
+
+**Delivered**
+
+- Added the Experiment-owned result query port and PostgreSQL projection adapter.
+- Added run-keyed result and server-paged trade HTTP reads, shared response contracts,
+  exhaustive runtime decoders, and SPA client methods.
+- Preserved stored evaluator metrics, frozen execution assumptions, specification
+  identity/hash, timestamps, stable trade ordering, and authoritative SQL sequence
+  numbers without controller-side calculation.
+- Covered completed, queued/running, failed, missing, multipage, out-of-range,
+  zero-trade, malformed nested contract, and unsafe paging cases.
+
+**Validation and transition**
+
+- Full suite: 184 tests pass; typecheck, lint, governance (1,118 checks), and diff
+  validation pass. Two-axis review reports no remaining blocker.
+- Marked `EXP-10` `DONE`; promoted `EXP-11` and `UI-04` to `READY`.

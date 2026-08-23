@@ -41,9 +41,9 @@ Every such simplification is listed in
 [Planned realization evolution](#planned-realization-evolution) below with its
 driver, its seam, and the version that closes it. Nothing is simplified silently.
 
-One divergence is an open architecture deviation awaiting formal review, and it blocks
-`EXP-04`. It is described in
-[The one open architecture question](#the-one-open-architecture-question).
+One divergence was reviewed and accepted as staged realization by ADR-010 and
+baseline v1.2. It is described in
+[Accepted asynchronous-execution sequencing](#accepted-asynchronous-execution-sequencing).
 
 ## Compose integration gate (every version)
 
@@ -84,10 +84,9 @@ Which roles each version needs:
 | V5 | plus the news worker process | `NEWS-02` |
 | V6 | plus the outbox dispatcher and BullMQ backtest workers, on persistence-configured Redis | `SETUP-08`, `EXP-08`, `EXP-12` |
 
-That table follows the roadmap; it does not define it. If the review of
-[The one open architecture question](#the-one-open-architecture-question) rejects the
-deviation, `SETUP-08`, `WS-02`, and `EXP-12` move into V1, and V1's row gains Redis
-along with them. Read the version's own slice table before trusting this summary.
+That table follows the roadmap; it does not define it. ADR-010 and baseline v1.2
+authorize this sequence while keeping `SETUP-08`, `WS-02`, and `EXP-12` mandatory in
+V6. Read the version's own slice table before trusting this summary.
 
 [`DEMO-01`](06-ui-and-demo-integration.md) owns building the Compose path in V1 and
 updating it in each later version, as part of that version's final documentation
@@ -684,23 +683,23 @@ None of these are deleted. Every one has a version and a driver.
 
 ---
 
-## The one open architecture question
+## Accepted asynchronous-execution sequencing
 
-**`EXP-04` is BLOCKED pending formal architecture review.** Not an informal
-acknowledgement - a review under the `AGENTS.md` deviation procedure.
+**The Project Owner accepted Alternative C on 2026-08-23.** ADR-010 and baseline
+v1.2 are the normative record. `EXP-04` is no longer architecture-blocked and becomes
+eligible when its normal dependency is complete.
 
-The frozen baseline states the runtime path as
+The superseded baseline v1.1 stated the runtime path as
 `API/coordinator -> workers: immutable BullMQ commands through Redis`, and
-architectural invariant 11 makes BullMQ the correctness delivery path. V1 through V5
+made BullMQ the immediate correctness delivery path. V1 through V5
 instead use a PostgreSQL run table with claim-by-update, drained by a separate runner
 process. ADR-004 and ADR-009 both name a PostgreSQL queue as an alternative they
 considered and did **not** select.
 
-`AGENTS.md` lists "communication style" among the things that may not be altered
-without explicit architecture review, and both it and the baseline require a
-superseding ADR plus a new baseline version if a deviation is accepted. An earlier
-draft of this plan claimed a short acknowledgement was enough. That was wrong against
-this repository's own governance, and it has been corrected.
+`AGENTS.md` lists communication style among the things that may not be altered
+without explicit architecture review. The accepted decision therefore has a formal
+ADR, a new baseline version, and an updated freeze record rather than an informal
+acknowledgement.
 
 The full write-up - stopped work, exact conflicting sections, what is and is not in
 conflict, four alternatives with costs and migration consequences, and the proposed
@@ -717,13 +716,9 @@ Summary of what is at stake:
 - The target architecture is unchanged. This is about *when* BullMQ appears, not
   *whether*.
 
-**If the review rejects the proposal**, `SETUP-08`, `WS-02`, and `EXP-12` move into
-V1 and `EXP-04` drops its claim path. V1 grows from 25 to roughly 28 slices and its
-first demonstrable backtest arrives later. Nothing else changes, because the port and
-the domain contracts are identical either way.
-
-A coding session must not make this call, and must not start `EXP-04` until the
-review concludes. `SETUP-01` through `SETUP-06` are unaffected by the outcome and can
+The accepted sequence leaves `SETUP-08`, `WS-02`, and `EXP-12` in V6. The stable
+port and domain contracts must remain identical across the adapter replacement.
+`SETUP-01` through `SETUP-06` are unaffected and can
 proceed now.
 
 ---

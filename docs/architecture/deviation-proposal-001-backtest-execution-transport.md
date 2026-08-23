@@ -1,16 +1,17 @@
 # Deviation Proposal 001 - Backtest Execution Transport Sequencing
 
-**Status:** PROPOSED - REQUIRES EXPLICIT ARCHITECTURE REVIEW
+**Status:** ACCEPTED - OPEN UNTIL V6 CLOSURE
 **Raised:** 2026-08-22
 **Raised by:** implementation planning, before any application code exists
 **Normative baseline:** [`architecture-baseline.md`](architecture-baseline.md) v1.1 (FROZEN)
 **Related ADRs:** [ADR-004](../adr/ADR-004-asynchronous-experiment-processing.md), [ADR-009](../adr/ADR-009-technology-realization.md), [ADR-001](../adr/ADR-001-modular-monolith-process-roles.md)
-**Blocks:** implementation slice `EXP-04` in `implementation-plan/`
+**Accepted:** 2026-08-23 by the Project Owner
+**Resolution:** [`ADR-010`](../adr/ADR-010-realization-sequencing-for-asynchronous-backtest-execution.md) and frozen baseline v1.2
+**Blocks:** none; `EXP-04` is unblocked when its dependency is complete
 
-This document follows steps 1 to 4 of the architecture deviation procedure in
-`AGENTS.md` and requests step 5. It changes nothing. No ADR is written and no
-baseline text is edited, because `docs/agents/domain.md` states that new
-architecture decisions "are added only after explicit approval".
+This document captured steps 1 to 5 of the architecture deviation procedure. The
+Project Owner accepted Alternative C on 2026-08-23. ADR-010 and baseline v1.2 record
+the normative decision; this proposal remains as the comparison and closure record.
 
 ---
 

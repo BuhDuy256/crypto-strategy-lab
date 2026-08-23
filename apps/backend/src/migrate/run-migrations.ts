@@ -5,9 +5,11 @@
 
 import { loadConfig } from "../platform/config.js";
 import { createDatabasePool } from "../platform/database.js";
+import { loadRootEnvFile } from "../platform/root-env.js";
 import { runMigrations } from "./migration-runner.js";
 
 async function main(): Promise<void> {
+  loadRootEnvFile();
   const config = loadConfig();
   const pool = createDatabasePool(config.postgres);
   try {

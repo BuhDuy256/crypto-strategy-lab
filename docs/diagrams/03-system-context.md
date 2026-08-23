@@ -27,7 +27,7 @@ flowchart LR
 
 - Binance is the initial exchange; future exchanges enter only through provider adapters.
 - The model runtime may be local, hosted, Node-compatible, or Python-backed behind the same port.
-- Real order execution, custody, exchange accounts, and public multi-tenancy are outside baseline v1.1.
+- Real order execution, custody, exchange accounts, and public multi-tenancy are outside baseline v1.2.
 
 ## References
 

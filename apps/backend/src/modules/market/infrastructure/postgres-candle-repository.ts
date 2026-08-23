@@ -1,0 +1,269 @@
+// PostgreSQL-backed append-only candle storage and the durable MarketDataQuery adapter.
+// Local revisions preserve history; a globally coordinated ingest sequence makes
+// DatasetRef watermarks stable even when writes for different candles overlap.
+
+import type { Pool } from "pg";
+import type {
+  MarketDataQuery,
+  MarketDataRangeRequest
+} from "../application/market-data-query.js";
+import {
+  assertHistoricalCandleSeries,
+  type Candle
+} from "../domain/candle.js";
+
+interface CandleRow {
+  readonly provider: string;
+  readonly symbol: string;
+  readonly timeframe: Candle["timeframe"];
+  readonly open_time: string;
+  readonly close_time: string;
+  readonly open: number;
+  readonly high: number;
+  readonly low: number;
+  readonly close: number;
+  readonly volume: number;
+  readonly closed: boolean;
+  readonly revision: string;
+  readonly ingest_sequence: string;
+}
+
+interface StoredCandleRevision {
+  readonly candle: Candle;
+  readonly ingestSequence: number;
+}
+
+const WRITE_LOCK_NAME = "market.candles.write-and-watermark";
+
+function mapRow(row: CandleRow): StoredCandleRevision {
+  return {
+    candle: {
+      provider: row.provider,
+      symbol: row.symbol,
+      timeframe: row.timeframe,
+      openTime: Number(row.open_time),
+      closeTime: Number(row.close_time),
+      open: row.open,
+      high: row.high,
+      low: row.low,
+      close: row.close,
+      volume: row.volume,
+      closed: row.closed,
+      revision: Number(row.revision)
+    },
+    ingestSequence: Number(row.ingest_sequence)
+  };
+}
+
+function assertRangeRequest(request: MarketDataRangeRequest): void {
+  if (!Number.isSafeInteger(request.startTime) || !Number.isSafeInteger(request.endTime)) {
+    throw new Error("MARKET_RANGE_TIME: startTime and endTime must be safe integers");
+  }
+  if (request.startTime > request.endTime) {
+    throw new Error("MARKET_RANGE_ORDER: startTime must be less than or equal to endTime");
+  }
+  if (
+    request.revisionWatermark !== undefined &&
+    (!Number.isSafeInteger(request.revisionWatermark) || request.revisionWatermark < 0)
+  ) {
+    throw new Error("MARKET_REVISION_WATERMARK: revisionWatermark must be a non-negative safe integer");
+  }
+}
+
+const CANDLE_COLUMNS = `
+  provider, symbol, timeframe, open_time, close_time,
+  open, high, low, close, volume, closed, revision, ingest_sequence
+`;
+
+/** Internal SQL adapter; consumers outside Market Data receive only MarketDataQuery. */
+export class PostgresCandleRepository implements MarketDataQuery {
+  constructor(private readonly pool: Pool) {}
+
+  async append(candle: Candle): Promise<Candle> {
+    const [stored] = await this.appendMany([candle]);
+    if (stored === undefined) {
+      throw new Error("MARKET_CANDLE_APPEND: append unexpectedly returned no candle");
+    }
+    return stored;
+  }
+
+  /** Set-based transactional insert path used by historical backfill. */
+  async appendMany(candles: readonly Candle[]): Promise<readonly Candle[]> {
+    assertHistoricalCandleSeries(candles);
+    if (candles.length === 0) {
+      return [];
+    }
+
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
+        WRITE_LOCK_NAME
+      ]);
+      const result = await client.query<CandleRow>(
+        `
+          WITH incoming AS (
+            SELECT
+              entry.ordinality,
+              entry.value->>'provider' AS provider,
+              entry.value->>'symbol' AS symbol,
+              entry.value->>'timeframe' AS timeframe,
+              (entry.value->>'openTime')::bigint AS open_time,
+              (entry.value->>'closeTime')::bigint AS close_time,
+              (entry.value->>'open')::double precision AS open,
+              (entry.value->>'high')::double precision AS high,
+              (entry.value->>'low')::double precision AS low,
+              (entry.value->>'close')::double precision AS close,
+              (entry.value->>'volume')::double precision AS volume,
+              (entry.value->>'closed')::boolean AS closed
+            FROM jsonb_array_elements($1::jsonb) WITH ORDINALITY AS entry(value, ordinality)
+          ),
+          compared AS (
+            SELECT
+              incoming.*,
+              current.close_time AS previous_close_time,
+              current.open AS previous_open,
+              current.high AS previous_high,
+              current.low AS previous_low,
+              current.close AS previous_close,
+              current.volume AS previous_volume,
+              current.closed AS previous_closed,
+              current.revision AS previous_revision,
+              current.ingest_sequence AS previous_ingest_sequence
+            FROM incoming
+            LEFT JOIN LATERAL (
+              SELECT
+                close_time, open, high, low, close, volume, closed,
+                revision, ingest_sequence
+              FROM market.candles
+              WHERE provider = incoming.provider
+                AND symbol = incoming.symbol
+                AND timeframe = incoming.timeframe
+                AND open_time = incoming.open_time
+              ORDER BY revision DESC
+              LIMIT 1
+            ) AS current ON true
+          ),
+          inserted AS (
+            INSERT INTO market.candles (
+              provider, symbol, timeframe, open_time, close_time,
+              open, high, low, close, volume, closed, revision
+            )
+            SELECT
+              provider, symbol, timeframe, open_time, close_time,
+              open, high, low, close, volume, closed,
+              COALESCE(previous_revision, 0) + 1
+            FROM compared
+            WHERE previous_revision IS NULL
+              OR ROW(close_time, open, high, low, close, volume, closed)
+                 IS DISTINCT FROM
+                 ROW(
+                   previous_close_time, previous_open, previous_high, previous_low,
+                   previous_close, previous_volume, previous_closed
+                 )
+            RETURNING ${CANDLE_COLUMNS}
+          )
+          SELECT
+            compared.provider,
+            compared.symbol,
+            compared.timeframe,
+            compared.open_time,
+            COALESCE(inserted.close_time, compared.previous_close_time) AS close_time,
+            COALESCE(inserted.open, compared.previous_open) AS open,
+            COALESCE(inserted.high, compared.previous_high) AS high,
+            COALESCE(inserted.low, compared.previous_low) AS low,
+            COALESCE(inserted.close, compared.previous_close) AS close,
+            COALESCE(inserted.volume, compared.previous_volume) AS volume,
+            COALESCE(inserted.closed, compared.previous_closed) AS closed,
+            COALESCE(inserted.revision, compared.previous_revision) AS revision,
+            COALESCE(inserted.ingest_sequence, compared.previous_ingest_sequence) AS ingest_sequence
+          FROM compared
+          LEFT JOIN inserted USING (provider, symbol, timeframe, open_time)
+          ORDER BY compared.ordinality
+        `,
+        [JSON.stringify(candles)]
+      );
+      await client.query("COMMIT");
+      return result.rows.map((row) => mapRow(row).candle);
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async getCurrentRevisionWatermark(): Promise<number> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
+        WRITE_LOCK_NAME
+      ]);
+      const result = await client.query<{ watermark: string }>(
+        "SELECT COALESCE(MAX(ingest_sequence), 0)::text AS watermark FROM market.candles"
+      );
+      await client.query("COMMIT");
+      return Number(result.rows[0]?.watermark ?? 0);
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  /** Smallest stable watermark that still contains the current state of one range. */
+  async getRangeRevisionWatermark(request: MarketDataRangeRequest): Promise<number> {
+    assertRangeRequest(request);
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
+        WRITE_LOCK_NAME
+      ]);
+      const result = await client.query<{ watermark: string }>(
+        `
+          SELECT COALESCE(MAX(ingest_sequence), 0)::text AS watermark
+          FROM market.candles
+          WHERE provider = $1 AND symbol = $2 AND timeframe = $3
+            AND open_time BETWEEN $4 AND $5
+        `,
+        [request.provider, request.symbol, request.timeframe, request.startTime, request.endTime]
+      );
+      await client.query("COMMIT");
+      return Number(result.rows[0]?.watermark ?? 0);
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async getCandles(request: MarketDataRangeRequest): Promise<readonly Candle[]> {
+    assertRangeRequest(request);
+    const result = await this.pool.query<CandleRow>(
+      `
+        SELECT DISTINCT ON (provider, symbol, timeframe, open_time)
+          ${CANDLE_COLUMNS}
+        FROM market.candles
+        WHERE provider = $1
+          AND symbol = $2
+          AND timeframe = $3
+          AND open_time BETWEEN $4 AND $5
+          AND ($6::bigint IS NULL OR ingest_sequence <= $6)
+        ORDER BY provider, symbol, timeframe, open_time, revision DESC
+      `,
+      [
+        request.provider,
+        request.symbol,
+        request.timeframe,
+        request.startTime,
+        request.endTime,
+        request.revisionWatermark ?? null
+      ]
+    );
+    return result.rows.map((row) => mapRow(row).candle);
+  }
+}

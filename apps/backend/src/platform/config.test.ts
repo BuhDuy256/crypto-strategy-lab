@@ -20,7 +20,8 @@ describe("loadConfig", () => {
         user: "crypto_strategy_lab",
         password: "local-dev-password",
         database: "crypto_strategy_lab"
-      }
+      },
+      backtestRunner: { concurrency: 1 }
     });
   });
 
@@ -43,5 +44,12 @@ describe("loadConfig", () => {
 
   it("throws a clear error when the port is out of range", () => {
     expect(() => loadConfig({ ...VALID_ENV, POSTGRES_PORT: "70000" })).toThrow(/POSTGRES_PORT/);
+  });
+
+  it("loads and validates runner concurrency", () => {
+    expect(loadConfig({ ...VALID_ENV, BACKTEST_RUNNER_CONCURRENCY: "2" }).backtestRunner)
+      .toEqual({ concurrency: 2 });
+    expect(() => loadConfig({ ...VALID_ENV, BACKTEST_RUNNER_CONCURRENCY: "0" }))
+      .toThrow(/BACKTEST_RUNNER_CONCURRENCY/);
   });
 });

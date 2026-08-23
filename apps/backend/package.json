@@ -6,10 +6,13 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "start:api": "tsx src/main.api.ts",
+    "start:backtest-runner": "tsx src/main.backtest-runner.ts",
+    "market:backfill": "tsx src/modules/market/infrastructure/run-market-backfill.ts",
     "migrate": "tsx src/migrate/run-migrations.ts",
     "migrate:reset": "tsx src/migrate/reset-database.ts"
   },
   "dependencies": {
+    "@crypto-strategy-lab/api-contracts": "workspace:*",
     "@nestjs/common": "^11.2.1",
     "@nestjs/core": "^11.2.1",
     "@nestjs/platform-express": "^11.2.1",

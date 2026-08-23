@@ -37,15 +37,11 @@ WebSocket execution - is satisfied from V1**, because the runner is a separate
 process from the first version. That is the reason V1 pays for a separate process at
 all rather than calling the backtester inline.
 
-**This divergence is not yet approved.** The frozen baseline states the runtime path
-as BullMQ commands through Redis, and `AGENTS.md` forbids altering communication
-style without explicit architecture review. The conflict, its evidence, and the
-alternatives are written up in
+**This sequencing is approved.** The Project Owner accepted Alternative C on
+2026-08-23. ADR-010 and baseline v1.2 authorize the PostgreSQL-backed adapter through
+V5 and retain BullMQ as the mandatory V6 target. The original conflict and alternatives
+remain in
 [`deviation-proposal-001`](../docs/architecture/deviation-proposal-001-backtest-execution-transport.md).
-`EXP-04` is `BLOCKED` until that review concludes. If the proposal is rejected,
-`SETUP-08`, `WS-02`, and `EXP-12` move into V1 and `EXP-04` drops its claim path -
-a scope change, not a redesign, because the port and the domain contracts are the
-same either way.
 
 ## What V1 deliberately does not build
 
@@ -58,14 +54,13 @@ outbox would be machinery guarding nothing.
 V6 introduces the async delivery path and, with it, the outbox, the inbox, and the
 failure matrix that `PROOF-RETRY-001` exercises.
 
-## Blocked on a decision
+## Accepted V1 execution model
 
-`EXP-02` cannot start until the execution model defaults are supplied: starting
-capital, fee, slippage, fill rule, rounding, position sizing, and stop rules. The
-baseline requires each to be resolvable from a completed result, which means they
-must be specification fields with supplied values, not constants inside the engine.
-See the decisions table in
-[`00-setup-and-walking-skeleton.md`](00-setup-and-walking-skeleton.md).
+The Project Owner accepted EXEC-A on 2026-08-23, so `EXP-02` has no human-decision
+blocker. The exact capital, fee, slippage, fill, direction, rounding, sizing, stop,
+tie-breaking, and final-liquidation rules are recorded in `JOURNAL.md`. They remain
+fields of the immutable experiment specification, never constants hidden in the
+backtest engine.
 
 ---
 
@@ -283,9 +278,7 @@ invariant 4 and one of the assignment's headline architecture questions. It is a
 the seam that V6 swaps to BullMQ without touching the domain.
 
 **Dependencies**
-`EXP-01`. **Blocked** until
-[`deviation-proposal-001`](../docs/architecture/deviation-proposal-001-backtest-execution-transport.md)
-is reviewed and accepted.
+`EXP-01`.
 
 **Authoritative references**
 - [Baseline - Architectural invariants](../docs/architecture/architecture-baseline.md#architectural-invariants) item 4: backtest workers never run inside API request or WebSocket execution.

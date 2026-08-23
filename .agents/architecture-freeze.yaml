@@ -1,8 +1,8 @@
 schemaVersion: 1
 baseline: docs/architecture/architecture-baseline.md
-baselineVersion: v1.1
+baselineVersion: v1.2
 architectureStatus: FROZEN
 validationStatus: PENDING IMPLEMENTATION PROOFS
-frozenAt: 2026-08-21
-sha256: 53BAD25EE86389041B8A959F74BF3C7B0DBEF7730C6137419F257AA7E31824C4
+frozenAt: 2026-08-23
+sha256: CCCD2F5CADD5AFFFB59D927AACFAFBF6D686817D6660EABC3341433FFE7933F1
 changeRule: Update only through explicit architecture review, a superseding ADR, and a new baseline version.

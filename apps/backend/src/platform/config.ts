@@ -18,6 +18,7 @@ export interface PostgresConfig {
 
 export interface AppConfig {
   readonly postgres: PostgresConfig;
+  readonly backtestRunner: { readonly concurrency: number };
 }
 
 type RequiredEnvVar =
@@ -61,6 +62,10 @@ export function loadConfig(env: EnvSource = process.env): AppConfig {
   const user = readRequiredEnvVar("POSTGRES_USER", env);
   const password = readRequiredEnvVar("POSTGRES_PASSWORD", env);
   const database = readRequiredEnvVar("POSTGRES_DB", env);
+  const concurrency = Number(env.BACKTEST_RUNNER_CONCURRENCY ?? "1");
+  if (!Number.isInteger(concurrency) || concurrency <= 0) {
+    throw new Error("Environment variable \"BACKTEST_RUNNER_CONCURRENCY\" must be a positive integer.");
+  }
 
   return {
     postgres: {
@@ -69,6 +74,7 @@ export function loadConfig(env: EnvSource = process.env): AppConfig {
       user,
       password,
       database
-    }
+    },
+    backtestRunner: { concurrency }
   };
 }
