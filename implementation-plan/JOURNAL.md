@@ -816,3 +816,13 @@ avoiding duplication no longer applies; the decision below replaces it.
 - Full suite: 184 tests pass; typecheck, lint, governance (1,118 checks), and diff
   validation pass. Two-axis review reports no remaining blocker.
 - Marked `EXP-10` `DONE`; promoted `EXP-11` and `UI-04` to `READY`.
+
+### 2026-08-23 - Future minimal-account context recorded
+
+- The Project Owner clarified that any future account capability should remain
+  intentionally small: username/password and one personal workspace per account.
+- Email, verification, password recovery, social login, team workspaces,
+  invitations, and billing are out of scope.
+- V1 remains a single shared workspace. This is product context, not an accepted
+  architecture change; implementation still requires a proposed ADR and explicit
+  owner acceptance.
