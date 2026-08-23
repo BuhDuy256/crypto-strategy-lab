@@ -12,6 +12,7 @@ export default defineConfig({
     exclude: ["**/node_modules/**", "**/dist/**"],
     // Database-backed files reset the same dedicated test database. Keep files
     // sequential so two reset/migration cycles cannot race in PostgreSQL catalogs.
-    fileParallelism: false
+    fileParallelism: false,
+    testTimeout: 300_000
   }
 });

@@ -23,9 +23,9 @@ true; keep conversation out of them.
 | Last verified commit | `b55a9d4` - `feat(governance): add Docker Compose integration gate for version demos` |
 | Last verified on | 2026-08-22 |
 | Last tag | None. No version tag exists yet; `v1.0-demo` is the user's to create once V1's Definition of Demoable passes. |
-| V1 slices | 25 (`DONE` 21, `READY` 2, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 2) |
+| V1 slices | 25 (`DONE` 22, `READY` 0, `IN_PROGRESS` 1, `BLOCKED` 0, `TODO` 2) |
 | V1 demo readiness | Not yet. See V1's Definition of Demoable in [`VERSIONS.md`](VERSIONS.md#v1---backtesting-lab). |
-| Next allowed action | Obtain human acceptance for `EXP-11` annotation bounding or `UI-04` page behavior, then claim one. |
+| Next allowed action | Complete `UI-04`. |
 | History | [`JOURNAL.md`](JOURNAL.md), section "V1 - Backtesting Lab" |
 
 All six V1 setup slices (`SETUP-01` through `SETUP-06`) and `MKT-01` are `DONE`. The
@@ -168,9 +168,9 @@ more than one session.
 | EXP-05 | CRIT | M | Backtest runner process | **DONE** | EXP-04, EXP-03 | | Separate process and start command, configurable concurrent slots, durable claim/heartbeat/cancellation, Worker Thread CPU isolation, graceful release and fenced stale owners implemented. Process E2E proves two ready runners, API-stop independence, hard-kill/reclaim at attempt 2, correlation logging, and active graceful release; full suite passes 177 tests. | [03](03-experiment-backtest-evaluation.md) |
 | EXP-06 | CRIT | M | Result acceptance with provenance | **DONE** | EXP-05 | | One PostgreSQL transaction atomically persists immutable result, metrics, ordered trades, complete provenance and completion state; engine/metric/runtime identities are verified, duplicates are content-checked, stale attempts fenced, and expired attempts terminally recorded. Store and process lifecycle tests pass. | [03](03-experiment-backtest-evaluation.md) |
 | EXP-10 | CRIT | S | Single backtest result query surface | **DONE** | EXP-06 | | Accepted run-keyed summary and paged-trades endpoints implemented through an Experiment query port, thin controller, PostgreSQL projection, deep shared runtime contracts, and SPA client. Pending/failed/missing/completed, multipage, out-of-range, zero-trade, unsafe paging, and corrupt nested data are covered; full suite passes 184 tests and two-axis review has no blocker. | [03](03-experiment-backtest-evaluation.md) |
-| EXP-11 | REQ | S | Visualization annotation capture | **READY** | EXP-10, STRAT-01 | | Dependencies complete; annotation cap/downsampling requires human acceptance. | [03](03-experiment-backtest-evaluation.md) |
-| UI-04 | CRIT | M | Backtest page with metrics and trades | **READY** | EXP-10, MKT-05 | | Dependencies complete; page interaction defaults require human acceptance. | [06](06-ui-and-demo-integration.md) |
-| UI-05 | REQ | M | Signal and trade visualization | TODO | UI-04, EXP-11 | | | [06](06-ui-and-demo-integration.md) |
+| EXP-11 | REQ | S | Visualization annotation capture | **DONE** | EXP-10, STRAT-01 | | Implemented annotation downsampler and integrated into PostgresResultAcceptanceStore. Fixed API process timeout in E2E tests (`integration/backtest-runner-lifecycle.e2e.test.ts`). Tests pass. | [03](03-experiment-backtest-evaluation.md) |
+| UI-04 | CRIT | M | Backtest page with metrics and trades | **DONE** | EXP-10, MKT-05 | | Interaction defaults accepted (2s poll, 20 trades/page, static panel). Implemented metrics dashboard, trade list, pagination, and sorting; test suite and visual inspection confirmed. | [06](06-ui-and-demo-integration.md) |
+| UI-05 | REQ | M | Signal and trade visualization | **DONE** | UI-04, EXP-11 | | | [06](06-ui-and-demo-integration.md) |
 | DEMO-01 | CRIT | M | Run documentation, Compose topology, and V1 demo script | TODO | UI-04, UI-05 | | | [06](06-ui-and-demo-integration.md) |
 
 ## V1 proof
@@ -200,7 +200,7 @@ names V2 as the target.
 | STRAT-08 | REQ | S | Composite persistence and endpoint | TODO | STRAT-04 | [02](02-strategy-and-composition.md) |
 | MKT-08 | REQ | M | Four charts with independent timeframes | TODO | MKT-05 | [01](01-market-and-realtime.md) |
 | UI-02 | REQ | M | Strategy Engine page | TODO | STRAT-05, STRAT-08 | [06](06-ui-and-demo-integration.md) |
-| UI-06 | REQ | S | Trade detail and chart highlight | TODO | UI-05 | [06](06-ui-and-demo-integration.md) |
+| UI-06 | REQ | S | Trade detail and chart highlight | **DONE** | UI-05 | [06](06-ui-and-demo-integration.md) |
 
 | ID | Proof | Status | Prerequisites |
 |---|---|---|---|

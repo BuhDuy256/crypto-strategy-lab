@@ -35,7 +35,7 @@ const completed = {
   specificationHash: "a".repeat(64), createdAt: "created", updatedAt: "updated",
   completedAt: "completed", metricSet: { id: "mvp-metrics", version: "1.0.0" },
   metrics: { totalReturn: 0.1, winRate: 0.5, maximumDrawdown: 0.02, numberOfTrades: 2 },
-  executionAssumptions: execution
+  executionAssumptions: execution, annotations: []
 };
 
 describe("EXP-10 runtime contracts", () => {

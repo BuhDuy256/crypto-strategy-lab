@@ -41,6 +41,7 @@ describe("database schemas", () => {
       market: ["candles", "datasets"],
       strategy: [],
       experiment: [
+        "backtest_annotations",
         "backtest_attempts",
         "backtest_result_provenance",
         "backtest_results",

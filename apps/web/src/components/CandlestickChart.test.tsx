@@ -19,20 +19,21 @@ vi.mock("lightweight-charts", () => ({
   CandlestickSeries: Symbol("CandlestickSeries"),
   ColorType: { Solid: "Solid" },
   HistogramSeries: Symbol("HistogramSeries"),
+  LineSeries: Symbol("LineSeries"),
   createChart: chartMocks.createChart
 }));
 
 beforeEach(() => {
   chartMocks.addSeries
     .mockReset()
-    .mockReturnValueOnce({ setData: chartMocks.candleSetData })
+    .mockReturnValueOnce({ setData: chartMocks.candleSetData, setMarkers: vi.fn(), createPriceLine: vi.fn() })
     .mockReturnValueOnce({ setData: chartMocks.volumeSetData });
   chartMocks.createChart.mockReturnValue({
     addSeries: chartMocks.addSeries,
     applyOptions: chartMocks.applyOptions,
     priceScale: () => ({ applyOptions: vi.fn() }),
     remove: chartMocks.remove,
-    timeScale: () => ({ fitContent: chartMocks.fitContent })
+    timeScale: () => ({ fitContent: chartMocks.fitContent, setVisibleLogicalRange: vi.fn(), coordinateToLogical: vi.fn(), timeToCoordinate: vi.fn() })
   });
 });
 

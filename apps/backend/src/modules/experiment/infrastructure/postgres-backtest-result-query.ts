@@ -15,7 +15,7 @@ interface ResultRow {
   failure_reason: string | null; created_at: Date; updated_at: Date;
   result_id: string | null; spec_id: string; spec_hash: string | null;
   completed_at: Date | null; metric_set: unknown; metrics: unknown;
-  execution_assumptions: unknown;
+  execution_assumptions: unknown; annotations: unknown;
 }
 
 interface TradeRow { sequence_number: number; trade: unknown; total_count: number }
@@ -27,9 +27,11 @@ export class PostgresBacktestResultQuery extends BacktestResultQuery {
     const result = await this.pool.query<ResultRow>(
       `SELECT run.run_id, run.status, run.failure_reason, run.created_at, run.updated_at,
          result.result_id, run.spec_id, result.spec_hash, result.completed_at,
-         result.metric_set, result.metrics, result.execution_assumptions
+         result.metric_set, result.metrics, result.execution_assumptions,
+         ann.annotations
        FROM experiment.backtest_runs run
        LEFT JOIN experiment.backtest_results result ON result.run_id = run.run_id
+       LEFT JOIN experiment.backtest_annotations ann ON ann.result_id = result.result_id
        WHERE run.run_id = $1`, [runId]
     );
     const row = result.rows[0];
@@ -50,7 +52,8 @@ export class PostgresBacktestResultQuery extends BacktestResultQuery {
       specificationHash: row.spec_hash, completedAt: row.completed_at.toISOString(),
       metricSet: row.metric_set as CompletedBacktestResultResponse["metricSet"],
       metrics: row.metrics as CompletedBacktestResultResponse["metrics"],
-      executionAssumptions: row.execution_assumptions as CompletedBacktestResultResponse["executionAssumptions"]
+      executionAssumptions: row.execution_assumptions as CompletedBacktestResultResponse["executionAssumptions"],
+      annotations: (row.annotations ?? []) as CompletedBacktestResultResponse["annotations"]
     };
     if (!isBacktestResultResponse(response) || response.status !== "completed") {
       throw new Error(`BACKTEST_QUERY_CORRUPT: completed result ${row.result_id} has invalid content`);

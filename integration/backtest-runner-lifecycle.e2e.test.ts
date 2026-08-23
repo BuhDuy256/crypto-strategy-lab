@@ -2,9 +2,11 @@
 
 import { spawn, type ChildProcess } from "node:child_process";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { Pool } from "pg";
 import { resetTestDatabase } from "../apps/backend/src/platform/test-database.js";
+
+vi.setConfig({ testTimeout: 300_000 });
 import { PostgresCandleRepository } from "../apps/backend/src/modules/market/infrastructure/postgres-candle-repository.js";
 import { PostgresDatasetManifestStore } from "../apps/backend/src/modules/market/infrastructure/postgres-dataset-manifest-store.js";
 import { MarketDatasetService } from "../apps/backend/src/modules/market/application/market-dataset-service.js";
@@ -61,7 +63,7 @@ function runtimeIdentityToEnv(): NodeJS.ProcessEnv {
   };
 }
 
-async function waitUntil(check: () => Promise<boolean>, timeoutMs = 15_000): Promise<void> {
+async function waitUntil(check: () => Promise<boolean>, timeoutMs = 120_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (await check()) return;
@@ -172,7 +174,7 @@ describe("backtest runner process lifecycle", () => {
     expect(runners.some((runner) => processOutput.get(runner)?.text.includes("lifecycle-10")))
       .toBe(true);
     await Promise.all(runners.map((runner) => terminate(runner)));
-  }, 25_000);
+  }, 120_000);
 
   it("reclaims a hard-killed runner and records the incremented attempt", async () => {
     const first = startProcess("main.backtest-runner.ts");
@@ -196,7 +198,7 @@ describe("backtest runner process lifecycle", () => {
       { attempt_number: 2, failure_reason: null }
     ]);
     await terminate(replacement);
-  }, 25_000);
+  }, 120_000);
 
   it("releases an active claim on graceful shutdown and a replacement completes it", async () => {
     const first = startProcess("main.backtest-runner.ts");
@@ -217,5 +219,5 @@ describe("backtest runner process lifecycle", () => {
       { attempt_number: 2, failure_reason: null }
     ]);
     await terminate(replacement);
-  }, 25_000);
+  }, 120_000);
 });

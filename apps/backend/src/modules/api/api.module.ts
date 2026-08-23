@@ -10,9 +10,10 @@ import { ExperimentModule } from "../experiment/index.js";
 import { BacktestController } from "./backtest.controller.js";
 import { CandleHistoryController } from "./candle-history.controller.js";
 import { HealthController } from "./health.controller.js";
+import { SpecificationController } from "./specification.controller.js";
 
 @Module({
   imports: [MarketModule, ExperimentModule],
-  controllers: [HealthController, CandleHistoryController, BacktestController]
+  controllers: [HealthController, CandleHistoryController, BacktestController, SpecificationController]
 })
 export class ApiModule {}

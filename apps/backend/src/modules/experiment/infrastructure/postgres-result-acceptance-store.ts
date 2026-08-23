@@ -8,6 +8,7 @@ import type {
   ProvenanceChecklist,
   ResultAcceptanceStore
 } from "../application/backtest-result-acceptor.js";
+import { downsampleAnnotations } from "../application/annotation-downsampler.js";
 import type { BacktestRunnerOutcome } from "../application/backtest-runner-service.js";
 
 interface ResultRow {
@@ -105,6 +106,10 @@ export class PostgresResultAcceptanceStore implements ResultAcceptanceStore {
         `UPDATE experiment.backtest_attempts SET completed_at = now()
          WHERE run_id = $1 AND attempt_number = $2 AND runner_id = $3 AND completed_at IS NULL`,
         [outcome.job.runId, outcome.claim.attempt, outcome.claim.runnerId]
+      );
+      await client.query(
+        "INSERT INTO experiment.backtest_annotations (result_id, annotations) VALUES ($1,$2::jsonb)",
+        [resultId, JSON.stringify(downsampleAnnotations(outcome.simulation.annotations))]
       );
       await client.query("COMMIT");
       return map(row);
