@@ -34,3 +34,23 @@ _Avoid_: Strategy config, UI catalog row
 A provider-independent buy, sell, or hold decision effective at one time, optionally
 carrying confidence and a reason.
 _Avoid_: Binance signal, order
+
+## Future account scope
+
+The current V1 product is a single shared workspace and has no authentication or
+per-user ownership. A later version may add deliberately minimal local accounts:
+
+- username and password only;
+- one personal workspace per account;
+- experiments, saved strategies, runs, and results scoped to that workspace;
+- no email address, email verification, password recovery, social login, team
+  workspace, invitation, or billing flow.
+
+Passwords must never be stored directly, and the API must derive account/workspace
+identity from the authenticated session rather than accept an owner ID from the SPA.
+Background workers continue to receive durable resource IDs, not user credentials.
+
+This paragraph records product context only. It does not modify frozen architecture
+v1.2 or authorize account implementation inside V1. Adding Identity/Access,
+credentials, sessions, ownership columns, or authorization requires a proposed ADR,
+explicit Project Owner acceptance, migrations, and security tests.
