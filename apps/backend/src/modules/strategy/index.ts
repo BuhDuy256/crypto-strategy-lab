@@ -4,7 +4,15 @@ export { StrategyModule } from "./strategy.module.js";
 export { StrategyRegistry } from "./application/strategy-registry.js";
 export { createBuiltInStrategyRegistry } from "./application/built-in-strategy-registry.js";
 export type { RunnableStrategy, StrategyRef } from "./application/strategy-registry.js";
-export type { Annotation } from "./domain/annotation.js";
+export type {
+  Annotation,
+  AnnotationPoint,
+  LineAnnotation,
+  BandAnnotation,
+  ZoneAnnotation,
+  LevelAnnotation,
+  MarkerAnnotation
+} from "./domain/annotation.js";
 export type {
   ParameterDefinition,
   ParameterSchema,

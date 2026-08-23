@@ -12,6 +12,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "start:api": "pnpm --filter @crypto-strategy-lab/backend run start:api",
+    "start:ui": "pnpm --filter @crypto-strategy-lab/web run dev",
     "start:backtest-runner": "pnpm --filter @crypto-strategy-lab/backend run start:backtest-runner",
     "market:backfill": "pnpm --filter @crypto-strategy-lab/backend run market:backfill --",
     "migrate": "pnpm --filter @crypto-strategy-lab/backend run migrate",

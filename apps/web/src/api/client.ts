@@ -18,7 +18,10 @@ import {
   type BacktestRunResponse,
   type BacktestResultResponse,
   type BacktestTradesResponse,
-  type StartBacktestRequest
+  type StartBacktestRequest,
+  type CreateSpecificationRequest,
+  type CreateSpecificationResponse,
+  isCreateSpecificationResponse
 } from "@crypto-strategy-lab/api-contracts";
 
 // In dev, Vite proxies "/api/*" to the backend (see vite.config.ts).
@@ -96,4 +99,8 @@ export function getBacktestTrades(
     `/backtests/${encodeURIComponent(runId)}/trades?${query.toString()}`,
     isBacktestTradesResponse
   );
+}
+
+export function createSpecification(request: CreateSpecificationRequest): Promise<CreateSpecificationResponse> {
+  return postJson("/specifications", request, isCreateSpecificationResponse);
 }

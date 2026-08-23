@@ -170,6 +170,7 @@ export interface CompletedBacktestResultResponse {
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly completedAt: string;
+  readonly annotations: readonly ApiAnnotation[];
 }
 
 export type BacktestResultResponse =
@@ -269,7 +270,8 @@ export function isBacktestResultResponse(value: unknown): value is BacktestResul
   return value.status === "completed" && typeof value.resultId === "string" &&
     typeof value.specId === "string" && typeof value.specificationHash === "string" &&
     typeof value.completedAt === "string" && isMetricSet(value.metricSet) &&
-    isMetrics(value.metrics) && isExecutionAssumptions(value.executionAssumptions);
+    isMetrics(value.metrics) && isExecutionAssumptions(value.executionAssumptions) &&
+    Array.isArray(value.annotations) && value.annotations.every(isApiAnnotation);
 }
 
 export function isBacktestTradesResponse(value: unknown): value is BacktestTradesResponse {
@@ -279,4 +281,107 @@ export function isBacktestTradesResponse(value: unknown): value is BacktestTrade
   const page = value as Readonly<Record<string, unknown>>;
   return page.status === "completed" && typeof page.runId === "string" &&
     Array.isArray(page.trades) && page.trades.every(isTrade) && isPage(page.page);
+}
+
+export interface ApiAnnotationPoint {
+  readonly time: number;
+  readonly value: number;
+}
+
+export interface ApiLineAnnotation {
+  readonly type: "line";
+  readonly id: string;
+  readonly label: string;
+  readonly points: readonly ApiAnnotationPoint[];
+}
+
+export interface ApiBandAnnotation {
+  readonly type: "band";
+  readonly id: string;
+  readonly label: string;
+  readonly upper: readonly ApiAnnotationPoint[];
+  readonly lower: readonly ApiAnnotationPoint[];
+}
+
+export interface ApiZoneAnnotation {
+  readonly type: "zone";
+  readonly id: string;
+  readonly label: string;
+  readonly startTime: number;
+  readonly endTime: number;
+  readonly lower: number;
+  readonly upper: number;
+}
+
+export interface ApiLevelAnnotation {
+  readonly type: "level";
+  readonly id: string;
+  readonly label: string;
+  readonly value: number;
+}
+
+export interface ApiMarkerAnnotation {
+  readonly type: "marker";
+  readonly id: string;
+  readonly label: string;
+  readonly time: number;
+  readonly value?: number;
+  readonly direction: "up" | "down" | "neutral";
+}
+
+export type ApiAnnotation =
+  | ApiLineAnnotation
+  | ApiBandAnnotation
+  | ApiZoneAnnotation
+  | ApiLevelAnnotation
+  | ApiMarkerAnnotation;
+
+export function isApiAnnotationPoint(value: unknown): value is ApiAnnotationPoint {
+  return isRecord(value) && isFiniteNumber(value.time) && isFiniteNumber(value.value);
+}
+
+export function isApiAnnotation(value: unknown): value is ApiAnnotation {
+  if (!isRecord(value) || typeof value.type !== "string" || typeof value.id !== "string" || typeof value.label !== "string") return false;
+  const val = value as Record<string, unknown>;
+  switch (val.type) {
+    case "line": return Array.isArray(val.points) && val.points.every(isApiAnnotationPoint);
+    case "band": return Array.isArray(val.upper) && Array.isArray(val.lower) && val.upper.every(isApiAnnotationPoint) && val.lower.every(isApiAnnotationPoint);
+    case "zone": return isFiniteNumber(val.startTime) && isFiniteNumber(val.endTime) && isFiniteNumber(val.lower) && isFiniteNumber(val.upper);
+    case "level": return isFiniteNumber(val.value);
+    case "marker": return isFiniteNumber(val.time) && (val.value === undefined || isFiniteNumber(val.value)) && ["up", "down", "neutral"].includes(String(val.direction));
+    default: return false;
+  }
+}
+
+export interface CreateSpecificationRequest {
+  readonly schemaVersion: "v1";
+  readonly datasetRef: { readonly datasetId: string; readonly version: number; readonly manifestVersion: "v1"; readonly provider: string; readonly symbols: readonly string[]; readonly timeframe: "1m" | "5m" | "15m" | "30m" | "1h" | "2h" | "4h" | "1d"; readonly range: { readonly startTime: number; readonly endTime: number; }; readonly revisionWatermark: number; readonly integrityHash: string; };
+  readonly strategy: {
+    readonly id: string;
+    readonly version: string;
+    readonly parameters: Record<string, unknown>;
+  };
+  readonly execution: {
+    readonly initialCapital: number;
+    readonly feeRate: number;
+    readonly slippageRate: number;
+    readonly signalTiming: "close-of-bar";
+    readonly leverage: 1;
+    readonly positionSizing: "available-equity";
+    readonly allowedDirections: readonly ("long" | "short")[];
+    readonly stopLoss: { readonly enabled: boolean; readonly percentage?: number };
+    readonly takeProfit: { readonly enabled: boolean; readonly percentage?: number };
+    readonly sameBarExitPriority: "stop-loss-first";
+    readonly finalPositionPolicy: "liquidate-at-final-close";
+    readonly decimalPlaces: 8;
+  };
+  readonly metricSet: { readonly id: string; readonly version: string };
+}
+
+export interface CreateSpecificationResponse {
+  readonly specId: string;
+}
+
+export function isCreateSpecificationResponse(value: unknown): value is CreateSpecificationResponse {
+  return typeof value === "object" && value !== null && "specId" in value && typeof (value as { specId: unknown }).specId === "string";
 }
