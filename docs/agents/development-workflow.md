@@ -6,7 +6,7 @@ This document routes project work to the repository-local skills and records the
 
 Apply authority in this order:
 
-1. [Frozen architecture baseline v1.1](../architecture/architecture-baseline.md).
+1. [Frozen architecture baseline v1.2](../architecture/architecture-baseline.md).
 2. [Accepted ADRs](../adr/).
 3. [Official project sources](../requirements/), within the authority of each source.
 4. Project coding and testing conventions in [`CODING_STANDARDS.md`](../../CODING_STANDARDS.md).

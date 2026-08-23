@@ -23,16 +23,21 @@ true; keep conversation out of them.
 | Last verified commit | `b55a9d4` - `feat(governance): add Docker Compose integration gate for version demos` |
 | Last verified on | 2026-08-22 |
 | Last tag | None. No version tag exists yet; `v1.0-demo` is the user's to create once V1's Definition of Demoable passes. |
-| V1 slices | 25 (`DONE` 6, `READY` 2, `IN_PROGRESS` 0, `BLOCKED` 2, `TODO` 15) |
+| V1 slices | 25 (`DONE` 22, `READY` 0, `IN_PROGRESS` 1, `BLOCKED` 0, `TODO` 2) |
 | V1 demo readiness | Not yet. See V1's Definition of Demoable in [`VERSIONS.md`](VERSIONS.md#v1---backtesting-lab). |
-| Next allowed action | Take `MKT-01` or `STRAT-01`. Both are `READY`, independent, and touch no shared files. |
+| Next allowed action | Complete `UI-04`. |
 | History | [`JOURNAL.md`](JOURNAL.md), section "V1 - Backtesting Lab" |
 
-All six V1 setup slices (`SETUP-01` through `SETUP-06`) are `DONE` and committed. The
+All six V1 setup slices (`SETUP-01` through `SETUP-06`) and `MKT-01` are `DONE`. The
 platform foundation exists: pnpm workspace, PostgreSQL topology, a NestJS API with the
 five module boundaries and structured logging, module-owned migrations, automated
-architecture boundary tests, and a React SPA shell with a typed API client. No slice is
-left unfinished, so no checkpoint exists.
+architecture boundary tests, a React SPA shell with a typed API client, and the
+normalized market-provider seam, the Binance historical adapter, and append-only
+candle persistence and snapshots, a typed candle vertical slice, and the Strategy
+contract/registry foundation, a registered SMA crossover strategy, a real BTCUSDT
+candlestick-and-volume chart, and immutable experiment specifications. No slice is
+`EXP-02` through `EXP-06` and `EXP-10` are complete. `EXP-11` and `UI-04` are ready. Provider replaceability has its first recorded
+architecture proof.
 
 **Do not start a V2 or later slice**, even if its dependencies are satisfied. Finishing
 V1 makes the project demoable; starting V2 early does not. Being handed V2 does not
@@ -40,17 +45,8 @@ authorize V2 - see "Starting a new version" in [`README.md`](README.md).
 
 ## Blockers needing a human
 
-| Blocker | Blocks | What is needed |
-|---|---|---|
-| Execution model defaults: starting capital, fee, slippage, fill rule, rounding, position sizing, stop rules | `EXP-02` | Supplied values. The baseline requires these to be specification fields, not constants inside the engine. |
-| **Architecture review** of the backtest execution transport sequence | `EXP-04` | An explicit accept or reject of [`deviation-proposal-001`](../docs/architecture/deviation-proposal-001-backtest-execution-transport.md). This is a formal architecture deviation under `AGENTS.md`, not an informal acknowledgement: the frozen baseline names BullMQ as the runtime path and the plan's V1 to V5 realization does not use it. |
-
-Both can be resolved in parallel with `MKT-01` and `STRAT-01`, and neither changes
-those two slices.
-
-If the deviation is **rejected**, V1 grows to roughly 28 slices as `SETUP-08`, `WS-02`,
-and `EXP-12` move into it and `EXP-04` drops its claim path. The critical path
-lengthens; nothing else in the plan changes.
+None for V1. The `EXP-05` runner defaults and acceptance seam were accepted on
+2026-08-23 and are recorded in `JOURNAL.md`.
 
 ## Foundation integration gate (2026-08-22)
 
@@ -157,38 +153,35 @@ more than one session.
 | SETUP-04 | CRIT | M | Migrations and module-owned schemas | **DONE** | SETUP-02, SETUP-03 | | Hand-rolled SQL-first migration runner over `apps/backend/migrations/*.sql`, tracked in `public._migrations`; first migration creates exactly the `market`/`strategy`/`experiment`/`news` schemas, no tables; `pnpm run migrate` idempotent (proven by running twice against an empty DB), `pnpm run migrate:reset` proven to empty the DB; `platform/database.ts` connection provider reads only from `platform/config.ts` (no literals); `platform/test-database.ts` gives Vitest isolated schema state; schema-ownership table in README; typecheck/lint/test (20 tests, 8 files, DB-backed) all pass; governance validator has only the pre-existing unrelated `trash` finding | [00](00-setup-and-walking-skeleton.md) |
 | SETUP-05 | CRIT | M | Architecture boundary tests | **DONE** | SETUP-03, SETUP-04 | | Hand-rolled regex import scanner + pure rule engine (`apps/backend/src/architecture/{boundary-rules,scan-source-tree,boundary.test}.ts`) encoding all 6 rules (index-only access, allowed edges, domain purity, platform isolation, no internal reach, web/backend isolation incl. future `messaging-contracts`); each rule proven with a temporary violating fixture (clear per-file/import/rule failure message), then reverted — tree confirmed clean afterward; runs automatically in `pnpm run test` (27 tests, 9 files); typecheck/lint pass; governance validator has only the pre-existing unrelated `trash` finding | [00](00-setup-and-walking-skeleton.md) |
 | SETUP-06 | REQ | M | React SPA workspace and shell | **DONE** | SETUP-01, SETUP-03 | | Vite+React+TypeScript SPA in `apps/web` with `react-router-dom` shell (5 routes: Backtest/Realtime/Strategy Engine/Discovery/News, placeholder content except Backtest which is also placeholder-level per V1 scope — real content is `UI-04`); dev proxy `/api` -> backend; single typed API client `apps/web/src/api/client.ts` (`getHealth()`), `HealthResponse` type added to `packages/api-contracts`; live health shown in header, proven with backend+dev-server running (`{"status":"ok"}` via proxy); client-side navigation proven by `App.test.tsx` (no remount across all 5 links); production build succeeds (34 modules, ~74 KB gzip); typecheck covers `apps/web`; boundary test still passes with the new `apps/web` tree; governance validator has only the pre-existing unrelated `trash` finding | [00](00-setup-and-walking-skeleton.md) |
-| MKT-01 | CRIT | M | Candle contract, provider port, contract suite | **READY** | SETUP-05 | | | [01](01-market-and-realtime.md) |
-| MKT-02 | CRIT | M | Binance historical adapter | TODO | MKT-01 | | | [01](01-market-and-realtime.md) |
-| MKT-03 | CRIT | M | Candle persistence with immutable revisions | TODO | MKT-02, SETUP-04 | | | [01](01-market-and-realtime.md) |
-| MKT-04 | REQ | S | Candle history endpoint | TODO | MKT-03, SETUP-06 | | | [01](01-market-and-realtime.md) |
-| MKT-05 | REQ | M | Single candlestick chart | TODO | MKT-04 | | | [01](01-market-and-realtime.md) |
-| MKT-10 | CRIT | S | Dataset snapshot and manifest | TODO | MKT-03 | | | [01](01-market-and-realtime.md) |
-| STRAT-01 | REQ | M | Strategy contract, descriptor, registry, annotations | **READY** | SETUP-05 | | | [02](02-strategy-and-composition.md) |
-| STRAT-02 | REQ | M | Indicator primitives and the first strategy | TODO | STRAT-01 | | | [02](02-strategy-and-composition.md) |
-| EXP-01 | CRIT | M | Immutable run specification | TODO | MKT-10, STRAT-02 | | | [03](03-experiment-backtest-evaluation.md) |
-| EXP-02 | CRIT | L | Deterministic backtester | **BLOCKED** | EXP-01 | Execution model defaults not supplied | | [03](03-experiment-backtest-evaluation.md) |
-| EXP-03 | CRIT | M | Evaluator and the MVP metric set | TODO | EXP-02 | | | [03](03-experiment-backtest-evaluation.md) |
-| EXP-04 | CRIT | M | BacktestExecutor port and durable run record | **BLOCKED** | EXP-01 | Deviation proposal 001 not yet reviewed | | [03](03-experiment-backtest-evaluation.md) |
-| EXP-05 | CRIT | M | Backtest runner process | TODO | EXP-04, EXP-03 | | | [03](03-experiment-backtest-evaluation.md) |
-| EXP-06 | CRIT | M | Result acceptance with provenance | TODO | EXP-05 | | | [03](03-experiment-backtest-evaluation.md) |
-| EXP-10 | CRIT | S | Single backtest result query surface | TODO | EXP-06 | | | [03](03-experiment-backtest-evaluation.md) |
-| EXP-11 | REQ | S | Visualization annotation capture | TODO | EXP-10, STRAT-01 | | | [03](03-experiment-backtest-evaluation.md) |
-| UI-04 | CRIT | M | Backtest page with metrics and trades | TODO | EXP-10, MKT-05 | | | [06](06-ui-and-demo-integration.md) |
-| UI-05 | REQ | M | Signal and trade visualization | TODO | UI-04, EXP-11 | | | [06](06-ui-and-demo-integration.md) |
+| MKT-01 | CRIT | M | Candle contract, provider port, contract suite | **DONE** | SETUP-05 | | Contract, port, fake, reusable conformance suite, and deliberately broken-provider cases implemented; canonical `pnpm run typecheck` and `pnpm run lint` pass; canonical `pnpm run test` passes 61 tests in 13 files with PostgreSQL 16 healthy; governance passes 1,108 checks. | [01](01-market-and-realtime.md) |
+| MKT-02 | CRIT | M | Binance historical adapter | **DONE** | MKT-01 | | Native-fetch HTTP wrapper and Binance Spot adapter map recorded 12-field fixtures, page at 1,000 rows, enforce closed/ascending/continuous/in-range candles, translate typed errors, and back off on rate limits; unchanged provider contract suite passes; live 1,001-candle fetch returned the exact endpoints with continuity; canonical typecheck/lint pass, 77 tests in 15 files pass, governance passes 1,110 checks, two-axis review has no open finding. | [01](01-market-and-realtime.md) |
+| MKT-03 | CRIT | M | Candle persistence with immutable revisions | **DONE** | MKT-02, SETUP-04 | | Migration, set-based append-only repository, global ingest watermark, and public `MarketDataQuery` implemented; canonical typecheck/lint pass; 85 tests in 16 files pass including 8 PostgreSQL repository cases; governance passes 1,110 checks; two-axis review has no open finding. | [01](01-market-and-realtime.md) |
+| MKT-04 | REQ | S | Candle history endpoint | **DONE** | MKT-03, SETUP-06 | | Normalized shared response contract, validated 10,000-candle endpoint, Market DI wiring, SPA client, Market-owned CLI backfill, and real PostgreSQL E2E implemented; live Binance candle loaded and read through HTTP; canonical checks pass. | [01](01-market-and-realtime.md) |
+| MKT-05 | REQ | M | Single candlestick chart | **DONE** | MKT-04 | | `lightweight-charts` candlestick and volume component, 200-closed-candle request, timeframe-owned loading, and explicit loading/empty/error states implemented; component/page/App tests pass; production build passes; manual browser run rendered real 1h BTCUSDT data, changed 4h to empty, restored 1h, and logged no warning/error. | [01](01-market-and-realtime.md) |
+| MKT-10 | CRIT | S | Dataset snapshot and manifest | **DONE** | MKT-03 | | Content-addressed immutable manifests, range-scoped watermark, canonical SHA-256, exact resolution, explicit gaps, mutation trigger, and five PostgreSQL integration cases implemented; canonical checks pass. | [01](01-market-and-realtime.md) |
+| STRAT-01 | REQ | M | Strategy contract, descriptor, registry, annotations | **DONE** | SETUP-05 | | Pure declared-input contract, normalized signal, compact parameter schema, guarded startup registry, and five generic annotations implemented; nine contract tests and boundary checks pass. | [02](02-strategy-and-composition.md) |
+| STRAT-02 | REQ | M | Indicator primitives and the first strategy | **DONE** | STRAT-01 | | Pure SMA primitive and registered `MAStrategy` implement validated 10/20 defaults, all four price sources, close-time crossover, explicit warm-up hold, and aligned line annotations; 21 strategy tests pass. | [02](02-strategy-and-composition.md) |
+| EXP-01 | CRIT | M | Immutable run specification | **DONE** | MKT-10, STRAT-02 | | Typed V1 JSONB content, draft editing, exhaustive runtime validation, dataset/strategy resolution, canonical freeze hash, build provenance, restart reads, and database immutability implemented; 10 lifecycle tests pass. | [03](03-experiment-backtest-evaluation.md) |
+| EXP-02 | CRIT | L | Deterministic backtester | **DONE** | EXP-01 | | Pure deterministic simulator implements next-open long/short/reversal, adverse slippage, entry/exit fees, available-equity sizing, optional percentage exits with stop-first ties, final liquidation, and annotation passthrough; hand-checked and separate-process canonical-hash tests pass. | [03](03-experiment-backtest-evaluation.md) |
+| EXP-03 | CRIT | M | Evaluator and the MVP metric set | **DONE** | EXP-02 | | Versioned extensible evaluator implements total return, strict-positive win rate, closed-trade maximum drawdown, and trade count; nine hand-checked edge and validation tests pass, with full regression at 159 tests. | [03](03-experiment-backtest-evaluation.md) |
+| EXP-04 | CRIT | M | BacktestExecutor port and durable run record | **DONE** | EXP-01 | | Broker-neutral executor port, durable idempotent run and attempt schema, atomic skip-locked lease claims/reclaim, complete durable job identity, start/status HTTP contracts, and SPA client methods implemented; concurrency, lease, service-order, and HTTP tests pass. | [03](03-experiment-backtest-evaluation.md) |
+| EXP-05 | CRIT | M | Backtest runner process | **DONE** | EXP-04, EXP-03 | | Separate process and start command, configurable concurrent slots, durable claim/heartbeat/cancellation, Worker Thread CPU isolation, graceful release and fenced stale owners implemented. Process E2E proves two ready runners, API-stop independence, hard-kill/reclaim at attempt 2, correlation logging, and active graceful release; full suite passes 177 tests. | [03](03-experiment-backtest-evaluation.md) |
+| EXP-06 | CRIT | M | Result acceptance with provenance | **DONE** | EXP-05 | | One PostgreSQL transaction atomically persists immutable result, metrics, ordered trades, complete provenance and completion state; engine/metric/runtime identities are verified, duplicates are content-checked, stale attempts fenced, and expired attempts terminally recorded. Store and process lifecycle tests pass. | [03](03-experiment-backtest-evaluation.md) |
+| EXP-10 | CRIT | S | Single backtest result query surface | **DONE** | EXP-06 | | Accepted run-keyed summary and paged-trades endpoints implemented through an Experiment query port, thin controller, PostgreSQL projection, deep shared runtime contracts, and SPA client. Pending/failed/missing/completed, multipage, out-of-range, zero-trade, unsafe paging, and corrupt nested data are covered; full suite passes 184 tests and two-axis review has no blocker. | [03](03-experiment-backtest-evaluation.md) |
+| EXP-11 | REQ | S | Visualization annotation capture | **DONE** | EXP-10, STRAT-01 | | Implemented annotation downsampler and integrated into PostgresResultAcceptanceStore. Fixed API process timeout in E2E tests (`integration/backtest-runner-lifecycle.e2e.test.ts`). Tests pass. | [03](03-experiment-backtest-evaluation.md) |
+| UI-04 | CRIT | M | Backtest page with metrics and trades | **DONE** | EXP-10, MKT-05 | | Interaction defaults accepted (2s poll, 20 trades/page, static panel). Implemented metrics dashboard, trade list, pagination, and sorting; test suite and visual inspection confirmed. | [06](06-ui-and-demo-integration.md) |
+| UI-05 | REQ | M | Signal and trade visualization | **DONE** | UI-04, EXP-11 | | | [06](06-ui-and-demo-integration.md) |
 | DEMO-01 | CRIT | M | Run documentation, Compose topology, and V1 demo script | TODO | UI-04, UI-05 | | | [06](06-ui-and-demo-integration.md) |
 
 ## V1 proof
 
 | ID | Proof | Status | Prerequisites | Evidence |
 |---|---|---|---|---|
-| PROOF-PROVIDER-001 | Provider replaceability | TODO | MKT-01, MKT-02, MKT-03, MKT-04, MKT-05 | |
+| PROOF-PROVIDER-001 | Provider replaceability | **DONE** | MKT-01, MKT-02, MKT-03, MKT-04, MKT-05 | [PASS evidence](../docs/validation/evidence/PROOF-PROVIDER-001.md): full second-provider contract, immutable dataset path, unchanged production chart browser render. |
 
 ## V1 blockers needing a human
 
-Both are listed with what they need in
-[Blockers needing a human](#blockers-needing-a-human) at the top of this file:
-execution model defaults (`EXP-02`) and the architecture review of the backtest
-execution transport (`EXP-04`).
+None. The decisions for `EXP-02`, `EXP-04`, and `EXP-05` are accepted and recorded.
 
 ---
 
@@ -207,7 +200,7 @@ names V2 as the target.
 | STRAT-08 | REQ | S | Composite persistence and endpoint | TODO | STRAT-04 | [02](02-strategy-and-composition.md) |
 | MKT-08 | REQ | M | Four charts with independent timeframes | TODO | MKT-05 | [01](01-market-and-realtime.md) |
 | UI-02 | REQ | M | Strategy Engine page | TODO | STRAT-05, STRAT-08 | [06](06-ui-and-demo-integration.md) |
-| UI-06 | REQ | S | Trade detail and chart highlight | TODO | UI-05 | [06](06-ui-and-demo-integration.md) |
+| UI-06 | REQ | S | Trade detail and chart highlight | **DONE** | UI-05 | [06](06-ui-and-demo-integration.md) |
 
 | ID | Proof | Status | Prerequisites |
 |---|---|---|---|

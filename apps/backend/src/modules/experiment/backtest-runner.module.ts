@@ -1,0 +1,77 @@
+// Narrow composition root for the separate backtest runner process only.
+
+import { Module } from "@nestjs/common";
+import type { Pool } from "pg";
+import { DATASET_SERVICE, MarketModule, type DatasetService } from "../market/index.js";
+import { StrategyModule } from "../strategy/index.js";
+import { loadConfig } from "../../platform/config.js";
+import { StructuredLogger } from "../../platform/logger.js";
+import { DurableBacktestResultAcceptor } from "./application/backtest-result-acceptor.js";
+import { BacktestRunnerRuntime } from "./application/backtest-runner-runtime.js";
+import { BacktestRunnerService } from "./application/backtest-runner-service.js";
+import { ExperimentSpecificationService } from "./application/experiment-specification-service.js";
+import { EXPERIMENT_DATABASE_POOL, ExperimentModule } from "./experiment.module.js";
+import { PostgresBacktestRunStore } from "./infrastructure/postgres-backtest-run-store.js";
+import { PostgresResultAcceptanceStore } from "./infrastructure/postgres-result-acceptance-store.js";
+import { WorkerThreadBacktestComputation } from "./infrastructure/worker-thread-backtest-computation.js";
+
+@Module({
+  imports: [ExperimentModule, MarketModule, StrategyModule],
+  providers: [
+    {
+      provide: PostgresResultAcceptanceStore,
+      inject: [EXPERIMENT_DATABASE_POOL],
+      useFactory: (pool: Pool) => new PostgresResultAcceptanceStore(pool)
+    },
+    {
+      provide: DurableBacktestResultAcceptor,
+      inject: [PostgresResultAcceptanceStore],
+      useFactory: (store: PostgresResultAcceptanceStore) => new DurableBacktestResultAcceptor(store)
+    },
+    {
+      provide: WorkerThreadBacktestComputation,
+      useFactory: () => new WorkerThreadBacktestComputation()
+    },
+    {
+      provide: BacktestRunnerService,
+      inject: [PostgresBacktestRunStore, ExperimentSpecificationService, DATASET_SERVICE,
+        WorkerThreadBacktestComputation, DurableBacktestResultAcceptor],
+      useFactory: (
+        queue: PostgresBacktestRunStore,
+        specifications: ExperimentSpecificationService,
+        datasets: DatasetService,
+        computation: WorkerThreadBacktestComputation,
+        acceptor: DurableBacktestResultAcceptor
+      ) => new BacktestRunnerService(
+        queue,
+        { get: async (specId) => {
+          const value = await specifications.get(specId);
+          if (value.status !== "frozen") throw new Error(`EXPERIMENT_NOT_FROZEN: ${specId}`);
+          return value;
+        } },
+        datasets,
+        computation,
+        acceptor,
+        {
+          nodeRuntimeVersion: process.versions.node,
+          dependencyLockHash: process.env.DEPENDENCY_LOCK_HASH ?? "unavailable",
+          applicationCommit: process.env.APPLICATION_COMMIT ?? "unavailable",
+          workerCommit: process.env.WORKER_COMMIT ?? "unavailable",
+          deterministicConfigVersion: process.env.DETERMINISTIC_CONFIG_VERSION ?? "unavailable"
+        },
+        new StructuredLogger("backtest-runner")
+      )
+    },
+    {
+      provide: BacktestRunnerRuntime,
+      inject: [BacktestRunnerService],
+      useFactory: (runner: BacktestRunnerService) => new BacktestRunnerRuntime(
+        runner,
+        new StructuredLogger("backtest-runner"),
+        loadConfig().backtestRunner.concurrency
+      )
+    }
+  ],
+  exports: [BacktestRunnerRuntime]
+})
+export class BacktestRunnerModule {}

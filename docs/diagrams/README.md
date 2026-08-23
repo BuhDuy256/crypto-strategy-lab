@@ -6,7 +6,7 @@ This directory is the diagram-first entry point to the Crypto Strategy Lab archi
 
 The diagrams explain the architecture; they are not authoritative. If a diagram conflicts with a text artifact, use this order of precedence:
 
-1. [Frozen architecture baseline v1.1](../architecture/architecture-baseline.md)
+1. [Frozen architecture baseline v1.2](../architecture/architecture-baseline.md)
 2. [Accepted ADRs](../adr/)
 3. [Architecture proposal](../architecture/architecture-proposal.md)
 4. [Architecture proof plan](../validation/architecture-proof-plan.md)
@@ -37,7 +37,7 @@ The diagrams explain the architecture; they are not authoritative. If a diagram 
 6. [Experiment / Backtest Flow](06-experiment-backtest-flow.md), [Realtime Market Flow](07-realtime-market-flow.md), and [News / Sentiment Flow](08-news-sentiment-flow.md)
 7. [Reproducibility / Provenance Map](09-reproducibility-provenance-map.md)
 8. [Proof Coverage Map](10-proof-coverage-map.md)
-9. [Frozen architecture baseline v1.1](../architecture/architecture-baseline.md)
+9. [Frozen architecture baseline v1.2](../architecture/architecture-baseline.md)
 10. The relevant [accepted ADRs](../adr/) and the [full proposal reasoning](../architecture/architecture-proposal.md)
 
 Names such as `P-*`, `D-*`, `ADR-*`, `ARC-*`, and `PROOF-*` follow the traceability identifiers in the proposal and proof plan.

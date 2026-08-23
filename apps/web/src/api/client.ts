@@ -6,7 +6,23 @@
 // market/news API (Binance, a news source, etc.) — only the project
 // backend, reached through the dev proxy / same-origin "/api" prefix
 // configured in vite.config.ts.
-import { isHealthResponse, type HealthResponse } from "@crypto-strategy-lab/api-contracts";
+import {
+  isCandleHistoryResponse,
+  isBacktestRunResponse,
+  isBacktestResultResponse,
+  isBacktestTradesResponse,
+  isHealthResponse,
+  type CandleHistoryRequest,
+  type CandleHistoryResponse,
+  type HealthResponse,
+  type BacktestRunResponse,
+  type BacktestResultResponse,
+  type BacktestTradesResponse,
+  type StartBacktestRequest,
+  type CreateSpecificationRequest,
+  type CreateSpecificationResponse,
+  isCreateSpecificationResponse
+} from "@crypto-strategy-lab/api-contracts";
 
 // In dev, Vite proxies "/api/*" to the backend (see vite.config.ts).
 // In a production build, this expects a reverse proxy or same-origin
@@ -37,4 +53,54 @@ async function getJson<T>(path: string, isValid: (value: unknown) => value is T)
 /** Calls the backend's GET /health endpoint. */
 export function getHealth(): Promise<HealthResponse> {
   return getJson("/health", isHealthResponse);
+}
+
+async function postJson<T>(path: string, input: unknown, isValid: (value: unknown) => value is T): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input)
+  });
+  if (!response.ok) throw new Error(`Request to ${path} failed with status ${response.status}`);
+  const body: unknown = await response.json();
+  if (!isValid(body)) throw new ApiContractError(path);
+  return body;
+}
+
+/** Reads normalized durable candles from the project backend. */
+export function getCandleHistory(request: CandleHistoryRequest): Promise<CandleHistoryResponse> {
+  const query = new URLSearchParams({
+    provider: request.provider,
+    symbol: request.symbol,
+    timeframe: request.timeframe,
+    startTime: String(request.startTime),
+    endTime: String(request.endTime)
+  });
+  return getJson(`/market/candles?${query.toString()}`, isCandleHistoryResponse);
+}
+
+export function startBacktest(request: StartBacktestRequest): Promise<BacktestRunResponse> {
+  return postJson("/backtests", request, isBacktestRunResponse);
+}
+
+export function getBacktestRun(runId: string): Promise<BacktestRunResponse> {
+  return getJson(`/backtests/${encodeURIComponent(runId)}`, isBacktestRunResponse);
+}
+
+export function getBacktestResult(runId: string): Promise<BacktestResultResponse> {
+  return getJson(`/backtests/${encodeURIComponent(runId)}/result`, isBacktestResultResponse);
+}
+
+export function getBacktestTrades(
+  runId: string,
+  pageNumber = 1,
+  pageSize = 10
+): Promise<BacktestTradesResponse> {
+  const query = new URLSearchParams({ page: String(pageNumber), pageSize: String(pageSize) });
+  return getJson(
+    `/backtests/${encodeURIComponent(runId)}/trades?${query.toString()}`,
+    isBacktestTradesResponse
+  );
+}
+
+export function createSpecification(request: CreateSpecificationRequest): Promise<CreateSpecificationResponse> {
+  return postJson("/specifications", request, isCreateSpecificationResponse);
 }

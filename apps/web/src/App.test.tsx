@@ -5,7 +5,8 @@ import { MemoryRouter } from "react-router-dom";
 import { App } from "./App.js";
 
 vi.mock("./api/client.js", () => ({
-  getHealth: vi.fn(async () => ({ status: "ok" }))
+  getHealth: vi.fn(async () => ({ status: "ok" })),
+  getCandleHistory: vi.fn(async () => ({ candles: [] }))
 }));
 
 afterEach(() => {
@@ -47,7 +48,7 @@ describe("App routing and shell", () => {
 
     // The shell (header/nav) never remounts across navigation, so the
     // health status region stays present throughout.
-    expect(screen.getByRole("status")).not.toBeNull();
+    expect(screen.getByText("Backend: ok")).not.toBeNull();
   });
 
   it("displays live backend health obtained through the typed API client", async () => {

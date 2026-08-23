@@ -9,11 +9,13 @@ import { NestFactory } from "@nestjs/core";
 import { ValidationPipe } from "@nestjs/common";
 import { AppModule } from "./app.module.js";
 import { StructuredLogger } from "./platform/logger.js";
+import { loadRootEnvFile } from "./platform/root-env.js";
 
 const PROCESS_ROLE = "api";
 const DEFAULT_PORT = 3000;
 
 async function bootstrap(): Promise<void> {
+  loadRootEnvFile();
   const logger = new StructuredLogger(PROCESS_ROLE);
   const app = await NestFactory.create(AppModule, { logger });
 
