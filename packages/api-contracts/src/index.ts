@@ -385,3 +385,41 @@ export interface CreateSpecificationResponse {
 export function isCreateSpecificationResponse(value: unknown): value is CreateSpecificationResponse {
   return typeof value === "object" && value !== null && "specId" in value && typeof (value as { specId: unknown }).specId === "string";
 }
+
+export type ApiStrategyCategory = "trend" | "momentum" | "volatility" | "structure" | "sentiment" | "composite";
+export type ApiStrategyCapability = "long" | "short" | "annotations" | "sentiment";
+
+export interface ApiParameterProperty {
+  readonly type: "string" | "number" | "integer" | "boolean" | "enum";
+  readonly label: string;
+  readonly description?: string;
+  readonly minimum?: number;
+  readonly maximum?: number;
+  readonly values?: readonly string[];
+  readonly default?: unknown;
+}
+
+export interface ApiParameterSchema {
+  readonly properties: Record<string, ApiParameterProperty>;
+  readonly required: readonly string[];
+}
+
+export interface ApiStrategyDescriptor {
+  readonly id: string;
+  readonly version: string;
+  readonly name: string;
+  readonly description: string;
+  readonly category: ApiStrategyCategory;
+  readonly capabilities: readonly ApiStrategyCapability[];
+  readonly parameterSchema: ApiParameterSchema;
+  readonly requiredInputs: readonly string[];
+}
+
+export interface StrategyCatalogResponse {
+  readonly strategies: readonly ApiStrategyDescriptor[];
+}
+
+export function isStrategyCatalogResponse(value: unknown): value is StrategyCatalogResponse {
+  if (!isRecord(value) || !Array.isArray(value.strategies)) return false;
+  return true;
+}
