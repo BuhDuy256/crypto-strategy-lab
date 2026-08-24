@@ -50,7 +50,7 @@ export interface StrategyResult {
   readonly annotations: readonly Annotation[];
 }
 
-export type StrategyCategory = "trend" | "momentum" | "volatility" | "sentiment" | "composite";
+export type StrategyCategory = "trend" | "momentum" | "volatility" | "structure" | "sentiment" | "composite";
 export type StrategyCapability = "long" | "short" | "annotations" | "sentiment";
 
 export interface StrategyDescriptor {
