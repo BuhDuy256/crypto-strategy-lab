@@ -356,3 +356,38 @@ typed candle endpoint; Strategy has its pure contract, descriptor, registry, and
 annotation vocabulary. The tracker below remains the authoritative next-work view.
 
 [`implementation-plan/TRACKING.md`](implementation-plan/TRACKING.md) is authoritative for what is done and what may be started next. This section is a summary and can lag; the tracker cannot.
+
+## Full-system integration and demo path
+
+The full-system path brings up every process required for the current version (V1: Backtesting Lab) using Docker Compose.
+
+### 1. Configure environment variables
+
+```powershell
+cp .env.example .env
+```
+Ensure you have copied the example environment variables. `docker-compose.yml` uses them, but overrides `DATABASE_URL` internally to route between containers using Docker network hostnames.
+
+### 2. Start the topology
+
+```powershell
+docker compose up --build -d
+```
+
+This brings up:
+- `postgres`: The database
+- `api`: The NestJS API process
+- `runner`: The PostgreSQL-backed backtest execution process
+- `web`: The React frontend served by Nginx
+
+### 3. Run migrations
+
+The database must be migrated. Run the migration script inside the `api` container (or on your host):
+```powershell
+docker compose exec api npx tsx apps/backend/src/migrate/migration-runner.ts
+```
+*(Or simply run `pnpm run migrate` on your host while the stack is running).*
+
+### 4. Walk the demo scenario
+
+Once the stack is healthy, refer to the [V1 Demo Script](docs/demo-script.md) for the explicit steps to verify the version end-to-end.
