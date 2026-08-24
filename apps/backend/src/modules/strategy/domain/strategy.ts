@@ -62,6 +62,7 @@ export interface StrategyDescriptor {
   readonly capabilities: readonly StrategyCapability[];
   readonly parameterSchema: ParameterSchema;
   readonly requiredInputs: readonly AnalysisInputKind[];
+  readonly metadata?: Record<string, string>;
   readonly implementation: {
     readonly kind: "built-in";
     readonly key: string;

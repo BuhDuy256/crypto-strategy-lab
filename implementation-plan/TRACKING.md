@@ -18,15 +18,12 @@ true; keep conversation out of them.
 | Field | Value |
 |---|---|
 | Implementation status | `IN PROGRESS` |
-| Current target version | **V1 - Backtesting Lab** |
-| Previous version | None. V1 is the first product version, so no prior version has to be verified. |
-| Last verified commit | `b55a9d4` - `feat(governance): add Docker Compose integration gate for version demos` |
-| Last verified on | 2026-08-22 |
+| Current target version | **V2 - Extensible Strategy Engine** |
+| Previous version | V1 - Backtesting Lab, DONE |
+| Last verified on | 2026-08-24 |
 | Last tag | None. No version tag exists yet; `v1.0-demo` is the user's to create once V1's Definition of Demoable passes. |
-| V1 slices | 25 (`DONE` 22, `READY` 0, `IN_PROGRESS` 1, `BLOCKED` 0, `TODO` 2) |
-| V1 demo readiness | Not yet. See V1's Definition of Demoable in [`VERSIONS.md`](VERSIONS.md#v1---backtesting-lab). |
-| Next allowed action | Complete `UI-04`. |
-| History | [`JOURNAL.md`](JOURNAL.md), section "V1 - Backtesting Lab" |
+| V2 slices | 7 (`DONE` 2, `READY` 3, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 2) |
+| History | [`JOURNAL.md`](JOURNAL.md), section "V2 - Extensible Strategy Engine" |
 
 All six V1 setup slices (`SETUP-01` through `SETUP-06`) and `MKT-01` are `DONE`. The
 platform foundation exists: pnpm workspace, PostgreSQL topology, a NestJS API with the
@@ -38,15 +35,6 @@ contract/registry foundation, a registered SMA crossover strategy, a real BTCUSD
 candlestick-and-volume chart, and immutable experiment specifications. No slice is
 `EXP-02` through `EXP-06` and `EXP-10` are complete. `EXP-11` and `UI-04` are ready. Provider replaceability has its first recorded
 architecture proof.
-
-**Do not start a V2 or later slice**, even if its dependencies are satisfied. Finishing
-V1 makes the project demoable; starting V2 early does not. Being handed V2 does not
-authorize V2 - see "Starting a new version" in [`README.md`](README.md).
-
-## Blockers needing a human
-
-None for V1. The `EXP-05` runner defaults and acceptance seam were accepted on
-2026-08-23 and are recorded in `JOURNAL.md`.
 
 ## Foundation integration gate (2026-08-22)
 
@@ -170,8 +158,8 @@ more than one session.
 | EXP-10 | CRIT | S | Single backtest result query surface | **DONE** | EXP-06 | | Accepted run-keyed summary and paged-trades endpoints implemented through an Experiment query port, thin controller, PostgreSQL projection, deep shared runtime contracts, and SPA client. Pending/failed/missing/completed, multipage, out-of-range, zero-trade, unsafe paging, and corrupt nested data are covered; full suite passes 184 tests and two-axis review has no blocker. | [03](03-experiment-backtest-evaluation.md) |
 | EXP-11 | REQ | S | Visualization annotation capture | **DONE** | EXP-10, STRAT-01 | | Implemented annotation downsampler and integrated into PostgresResultAcceptanceStore. Fixed API process timeout in E2E tests (`integration/backtest-runner-lifecycle.e2e.test.ts`). Tests pass. | [03](03-experiment-backtest-evaluation.md) |
 | UI-04 | CRIT | M | Backtest page with metrics and trades | **DONE** | EXP-10, MKT-05 | | Interaction defaults accepted (2s poll, 20 trades/page, static panel). Implemented metrics dashboard, trade list, pagination, and sorting; test suite and visual inspection confirmed. | [06](06-ui-and-demo-integration.md) |
-| UI-05 | REQ | M | Signal and trade visualization | **DONE** | UI-04, EXP-11 | | | [06](06-ui-and-demo-integration.md) |
-| DEMO-01 | CRIT | M | Run documentation, Compose topology, and V1 demo script | TODO | UI-04, UI-05 | | | [06](06-ui-and-demo-integration.md) |
+| UI-05 | REQ | M | Signal and trade visualization | **DONE** | UI-04, EXP-11 | | Passed on local, 2026-08-24 | [06](06-ui-and-demo-integration.md) |
+| DEMO-01 | CRIT | M | Run documentation, Compose topology, and V1 demo script | **DONE** | UI-04, UI-05 | | Passed on local, 2026-08-24 | [06](06-ui-and-demo-integration.md) |
 
 ## V1 proof
 
@@ -194,11 +182,11 @@ names V2 as the target.
 
 | ID | Priority | Effort | Slice | Status | Depends on | Plan |
 |---|---|---|---|---|---|---|
-| STRAT-03 | REQ | M | The remaining three MVP strategies | TODO | STRAT-02 | [02](02-strategy-and-composition.md) |
-| STRAT-04 | REQ | M | Composite strategy and combination policy | TODO | STRAT-03 | [02](02-strategy-and-composition.md) |
-| STRAT-05 | REQ | S | Strategy catalog query and endpoint | TODO | STRAT-03, SETUP-06 | [02](02-strategy-and-composition.md) |
+| STRAT-03 | REQ | M | The remaining three MVP strategies | **DONE** | STRAT-02 | [02](02-strategy-and-composition.md) |
+| STRAT-04 | REQ | M | Composite strategy and combination policy | READY | STRAT-03 | [02](02-strategy-and-composition.md) |
+| STRAT-05 | REQ | S | Strategy catalog query and endpoint | READY | STRAT-03, SETUP-06 | [02](02-strategy-and-composition.md) |
 | STRAT-08 | REQ | S | Composite persistence and endpoint | TODO | STRAT-04 | [02](02-strategy-and-composition.md) |
-| MKT-08 | REQ | M | Four charts with independent timeframes | TODO | MKT-05 | [01](01-market-and-realtime.md) |
+| MKT-08 | REQ | M | Four charts with independent timeframes | READY | MKT-05 | [01](01-market-and-realtime.md) |
 | UI-02 | REQ | M | Strategy Engine page | TODO | STRAT-05, STRAT-08 | [06](06-ui-and-demo-integration.md) |
 | UI-06 | REQ | S | Trade detail and chart highlight | **DONE** | UI-05 | [06](06-ui-and-demo-integration.md) |
 
