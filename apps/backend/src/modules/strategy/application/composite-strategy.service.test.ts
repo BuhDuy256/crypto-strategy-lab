@@ -26,7 +26,7 @@ describe("CompositeStrategyService", () => {
 
   it("saves a valid composite", async () => {
     const def = await service.save("Valid", "Desc", [
-      { id: "moving-average", version: "1.0.0", parameters: { fastPeriod: 10, slowPeriod: 20 } }
+      { id: "moving-average", version: "1.0.0", parameters: { fastPeriod: 10, slowPeriod: 20, priceSource: "close" } }
     ], {
       id: "majority-vote", version: "1.0.0", configuration: {}
     });
@@ -38,14 +38,14 @@ describe("CompositeStrategyService", () => {
 
   it("rejects an invalid composite component", async () => {
     await expect(service.save("Invalid", "Desc", [
-      { id: "moving-average", version: "1.0.0", parameters: { fastPeriod: -1, slowPeriod: 20 } } // -1 is invalid
+      { id: "moving-average", version: "1.0.0", parameters: { fastPeriod: -1, slowPeriod: 20, priceSource: "close" } } // -1 is invalid
     ], { id: "majority-vote", version: "1.0.0", configuration: {} }))
       .rejects.toThrow(/COMPONENT_INVALID: component moving-average failed validation - STRATEGY_PARAMETER_MINIMUM/);
   });
 
   it("rejects an unknown policy", async () => {
     await expect(service.save("Invalid Policy", "Desc", [
-      { id: "moving-average", version: "1.0.0", parameters: { fastPeriod: 10, slowPeriod: 20 } }
+      { id: "moving-average", version: "1.0.0", parameters: { fastPeriod: 10, slowPeriod: 20, priceSource: "close" } }
     ], { id: "unknown-policy", version: "1.0.0", configuration: {} }))
       .rejects.toThrow(/POLICY_NOT_FOUND: unknown-policy@1.0.0/);
   });

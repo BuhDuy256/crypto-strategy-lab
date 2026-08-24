@@ -39,7 +39,7 @@ describe("database schemas", () => {
     }
     const expectedTables: Readonly<Record<(typeof MODULE_SCHEMAS)[number], readonly string[]>> = {
       market: ["candles", "datasets"],
-      strategy: [],
+      strategy: ["composites"],
       experiment: [
         "backtest_annotations",
         "backtest_attempts",

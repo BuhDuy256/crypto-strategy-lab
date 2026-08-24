@@ -28,7 +28,7 @@ export class WorkerThreadBacktestComputation implements BacktestComputation {
       new URL("../../../../node_modules/tsx/dist/loader.mjs", import.meta.url)
     );
     const worker = new Worker(useSource ? sourceUrl : compiledUrl, {
-      workerData: input,
+      workerData: input, env: { ...process.env, TSX_TSCONFIG: fileURLToPath(new URL("../../../../tsconfig.json", import.meta.url)) },
       ...(useSource ? { execArgv: ["--import", pathToFileURL(loaderPath).href] } : {})
     });
     return new Promise((resolve, reject) => {

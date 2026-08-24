@@ -1,6 +1,5 @@
 // Public surface of the strategy module. Nothing else in this module is
 // importable from outside it.
-export { StrategyModule } from "./strategy.module.js";
 export { StrategyRegistry } from "./application/strategy-registry.js";
 export { createBuiltInStrategyRegistry } from "./application/built-in-strategy-registry.js";
 export type { RunnableStrategy, StrategyRef } from "./application/strategy-registry.js";
@@ -32,3 +31,8 @@ export type {
   StrategyDescriptor,
   StrategyResult
 } from "./domain/strategy.js";
+export { CompositeStrategyService } from "./application/composite-strategy.service.js";
+export { CombinationPolicyRegistry } from "./application/combination-policy-registry.js";
+export type { CombinationPolicy } from "./domain/combination-policy.js";
+export type { ComponentResult } from "./domain/combination-policy.js";
+export { StrategyModule } from "./strategy.module.js";

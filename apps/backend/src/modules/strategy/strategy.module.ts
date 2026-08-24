@@ -12,7 +12,7 @@ import type { Pool } from "pg";
 const STRATEGY_DATABASE_POOL = Symbol("STRATEGY_DATABASE_POOL");
 
 class StrategyDatabaseLifecycle implements OnApplicationShutdown {
-  constructor(@Inject(STRATEGY_DATABASE_POOL) private readonly pool: Pool) {}
+  constructor(private readonly pool: Pool) {}
   async onApplicationShutdown(): Promise<void> {
     await this.pool.end();
   }
@@ -42,7 +42,11 @@ class StrategyDatabaseLifecycle implements OnApplicationShutdown {
       useFactory: (repo: PostgresCompositeRepository, stratReg: StrategyRegistry, polReg: CombinationPolicyRegistry) => new CompositeStrategyService(repo, stratReg, polReg),
       inject: [PostgresCompositeRepository, StrategyRegistry, CombinationPolicyRegistry]
     },
-    StrategyDatabaseLifecycle
+    {
+      provide: StrategyDatabaseLifecycle,
+      useFactory: (pool: Pool) => new StrategyDatabaseLifecycle(pool),
+      inject: [STRATEGY_DATABASE_POOL]
+    }
   ],
   exports: [StrategyRegistry, CombinationPolicyRegistry, CompositeStrategyService]
 })

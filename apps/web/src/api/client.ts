@@ -1,3 +1,12 @@
+import {
+  isStrategyCatalogResponse,
+  type StrategyCatalogResponse,
+  type CreateCompositeRequest,
+  type CreateCompositeResponse,
+  type ApiCompositeStrategyDefinition,
+  type EvaluatePolicyRequest,
+  type EvaluatePolicyResponse
+} from "@crypto-strategy-lab/api-contracts";
 // The single module through which the SPA talks to the backend.
 //
 // Every backend call anywhere in this app must go through a function
@@ -103,4 +112,36 @@ export function getBacktestTrades(
 
 export function createSpecification(request: CreateSpecificationRequest): Promise<CreateSpecificationResponse> {
   return postJson("/specifications", request, isCreateSpecificationResponse);
+}
+
+export function getStrategies(): Promise<StrategyCatalogResponse> {
+  return getJson("/strategies", isStrategyCatalogResponse);
+}
+
+export async function createComposite(req: CreateCompositeRequest): Promise<CreateCompositeResponse> {
+  const response = await fetch(`${API_BASE_URL}/strategies/composites`, {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(req)
+  });
+  if (!response.ok) throw new Error(`Failed to create composite: ${response.status}`);
+  return response.json();
+}
+
+export async function listComposites(): Promise<ApiCompositeStrategyDefinition[]> {
+  const response = await fetch(`${API_BASE_URL}/strategies/composites`);
+  if (!response.ok) throw new Error(`Failed to list composites: ${response.status}`);
+  return response.json();
+}
+
+export async function getComposite(id: string): Promise<ApiCompositeStrategyDefinition> {
+  const response = await fetch(`${API_BASE_URL}/strategies/composites/${id}`);
+  if (!response.ok) throw new Error(`Failed to fetch composite: ${response.status}`);
+  return response.json();
+}
+
+export async function evaluatePolicy(req: EvaluatePolicyRequest): Promise<EvaluatePolicyResponse> {
+  const response = await fetch(`${API_BASE_URL}/strategies/composites/evaluate-policy`, {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(req)
+  });
+  if (!response.ok) throw new Error(`Failed to evaluate policy: ${response.status}`);
+  return response.json();
 }
