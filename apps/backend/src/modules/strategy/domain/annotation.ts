@@ -8,6 +8,7 @@ export interface AnnotationPoint {
 export interface LineAnnotation {
   readonly type: "line";
   readonly id: string;
+  readonly componentId?: string;
   readonly label: string;
   readonly points: readonly AnnotationPoint[];
 }
@@ -15,6 +16,7 @@ export interface LineAnnotation {
 export interface BandAnnotation {
   readonly type: "band";
   readonly id: string;
+  readonly componentId?: string;
   readonly label: string;
   readonly upper: readonly AnnotationPoint[];
   readonly lower: readonly AnnotationPoint[];
@@ -23,6 +25,7 @@ export interface BandAnnotation {
 export interface ZoneAnnotation {
   readonly type: "zone";
   readonly id: string;
+  readonly componentId?: string;
   readonly label: string;
   readonly startTime: number;
   readonly endTime: number;
@@ -33,6 +36,7 @@ export interface ZoneAnnotation {
 export interface LevelAnnotation {
   readonly type: "level";
   readonly id: string;
+  readonly componentId?: string;
   readonly label: string;
   readonly value: number;
 }
@@ -40,6 +44,7 @@ export interface LevelAnnotation {
 export interface MarkerAnnotation {
   readonly type: "marker";
   readonly id: string;
+  readonly componentId?: string;
   readonly label: string;
   readonly time: number;
   readonly value?: number;

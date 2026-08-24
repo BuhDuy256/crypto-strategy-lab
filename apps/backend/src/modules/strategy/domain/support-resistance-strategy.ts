@@ -1,6 +1,6 @@
 import type { ZoneAnnotation } from "./annotation.js";
 import type { StrategyParameters } from "./parameter-schema.js";
-import type { AnalysisContext, PriceBar, Strategy, StrategyDescriptor, StrategyResult } from "./strategy.js";
+import type { AnalysisContext, Strategy, StrategyDescriptor, StrategyResult } from "./strategy.js";
 
 export const SUPPORT_RESISTANCE_STRATEGY_DESCRIPTOR: StrategyDescriptor = {
   id: "support-resistance",
