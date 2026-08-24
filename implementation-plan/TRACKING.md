@@ -22,7 +22,7 @@ true; keep conversation out of them.
 | Previous version | V1 - Backtesting Lab, DONE |
 | Last verified on | 2026-08-24 |
 | Last tag | None. No version tag exists yet; `v1.0-demo` is the user's to create once V1's Definition of Demoable passes. |
-| V2 slices | 7 (`DONE` 5, `READY` 2, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 0) |
+| V2 slices | 7 (`DONE` 6, `READY` 1, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 0) |
 | History | [`JOURNAL.md`](JOURNAL.md), section "V2 - Extensible Strategy Engine" |
 
 All six V1 setup slices (`SETUP-01` through `SETUP-06`) and `MKT-01` are `DONE`. The
@@ -186,7 +186,7 @@ names V2 as the target.
 | STRAT-04 | REQ | M | Composite strategy and combination policy | **DONE** | STRAT-03 | [02](02-strategy-and-composition.md) |
 | STRAT-05 | REQ | S | Strategy catalog query and endpoint | **DONE** | STRAT-03, SETUP-06 | [02](02-strategy-and-composition.md) |
 | STRAT-08 | REQ | S | Composite persistence and endpoint | **DONE** | STRAT-04 | [02](02-strategy-and-composition.md) |
-| MKT-08 | REQ | M | Four charts with independent timeframes | READY | MKT-05 | [01](01-market-and-realtime.md) |
+| MKT-08 | REQ | M | Four charts with independent timeframes | **DONE** | MKT-05 | [01](01-market-and-realtime.md) |
 | UI-02 | REQ | M | Strategy Engine page | READY | STRAT-05, STRAT-08 | [06](06-ui-and-demo-integration.md) |
 | UI-06 | REQ | S | Trade detail and chart highlight | **DONE** | UI-05 | [06](06-ui-and-demo-integration.md) |
 
