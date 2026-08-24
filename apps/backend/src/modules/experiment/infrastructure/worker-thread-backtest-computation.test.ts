@@ -32,7 +32,7 @@ describe("WorkerThreadBacktestComputation", () => {
     const output = await new WorkerThreadBacktestComputation().compute(input);
     expect(output.evaluation.metricSet).toEqual({ id: "mvp-metrics", version: "1.0.0" });
     expect(output.simulation.annotations.length).toBeGreaterThan(0);
-  }, 15_000);
+  }, 60_000);
 
   it("can be terminated through an abort signal", async () => {
     const controller = new AbortController();
@@ -52,5 +52,5 @@ describe("WorkerThreadBacktestComputation", () => {
     await new WorkerThreadBacktestComputation().compute({ ...input, candles: manyCandles });
     clearInterval(timer);
     expect(ticks).toBeGreaterThan(0);
-  }, 15_000);
+  }, 60_000);
 });

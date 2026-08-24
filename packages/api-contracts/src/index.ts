@@ -423,3 +423,45 @@ export function isStrategyCatalogResponse(value: unknown): value is StrategyCata
   if (!isRecord(value) || !Array.isArray(value.strategies)) return false;
   return true;
 }
+
+export interface ApiComponentStrategyReference {
+  readonly id: string;
+  readonly version: string;
+  readonly parameters: Record<string, unknown>;
+}
+
+export interface ApiCombinationPolicyReference {
+  readonly id: string;
+  readonly version: string;
+  readonly configuration: Record<string, unknown>;
+}
+
+export interface ApiCompositeStrategyDefinition {
+  readonly id: string;
+  readonly version: string;
+  readonly name: string;
+  readonly description: string;
+  readonly components: readonly ApiComponentStrategyReference[];
+  readonly policy: ApiCombinationPolicyReference;
+}
+
+export interface CreateCompositeRequest {
+  readonly name: string;
+  readonly description: string;
+  readonly components: readonly ApiComponentStrategyReference[];
+  readonly policy: ApiCombinationPolicyReference;
+}
+
+export interface CreateCompositeResponse {
+  readonly id: string;
+  readonly version: string;
+}
+
+export interface EvaluatePolicyRequest {
+  readonly policy: ApiCombinationPolicyReference;
+  readonly signals: readonly ("buy" | "sell" | "hold")[];
+}
+
+export interface EvaluatePolicyResponse {
+  readonly action: "buy" | "sell" | "hold";
+}

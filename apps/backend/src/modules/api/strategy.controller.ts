@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Param, Body, Inject, HttpCode, BadRequestException, NotFoundException } from "@nestjs/common";
-import { StrategyRegistry } from "../strategy/application/strategy-registry.js";
-import { CompositeStrategyService } from "../strategy/application/composite-strategy.service.js";
-import { CombinationPolicyRegistry } from "../strategy/application/combination-policy-registry.js";
+import { StrategyRegistry } from "../strategy/index.js";
+import { CompositeStrategyService } from "../strategy/index.js";
+import { CombinationPolicyRegistry } from "../strategy/index.js";
 import type { 
   StrategyCatalogResponse, 
   CreateCompositeRequest, 
@@ -10,7 +10,7 @@ import type {
   EvaluatePolicyRequest,
   EvaluatePolicyResponse
 } from "@crypto-strategy-lab/api-contracts";
-import type { ComponentResult } from "../strategy/domain/combination-policy.js";
+import type { ComponentResult } from "../strategy/index.js";
 
 @Controller("strategies")
 export class StrategyController {

@@ -6,7 +6,10 @@ import { App } from "./App.js";
 
 vi.mock("./api/client.js", () => ({
   getHealth: vi.fn(async () => ({ status: "ok" })),
-  getCandleHistory: vi.fn(async () => ({ candles: [] }))
+  getCandleHistory: vi.fn(async () => ({ candles: [] })),
+  getStrategies: vi.fn(async () => ({ strategies: [] })),
+  createComposite: vi.fn(async () => ({ id: "comp-1" })),
+  evaluatePolicy: vi.fn(async () => ({ action: "hold" }))
 }));
 
 afterEach(() => {
@@ -34,7 +37,7 @@ describe("App routing and shell", () => {
     expect(await screen.findByRole("heading", { name: "Backtest" })).not.toBeNull();
 
     const routes: Array<[string, string]> = [
-      ["Realtime", "Realtime"],
+      ["Realtime", "Realtime Markets"],
       ["Strategy Engine", "Strategy Engine"],
       ["Discovery", "Discovery"],
       ["News", "News"],

@@ -1,9 +1,9 @@
 import { Test, type TestingModule } from "@nestjs/testing";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { StrategyController } from "./strategy.controller.js";
-import { StrategyRegistry } from "../strategy/application/strategy-registry.js";
-import type { Strategy, StrategyResult, AnalysisContext } from "../strategy/domain/strategy.js";
-import type { StrategyParameters } from "../strategy/domain/parameter-schema.js";
+import { StrategyRegistry, CompositeStrategyService, CombinationPolicyRegistry } from "../strategy/index.js";
+import type { Strategy, StrategyResult, AnalysisContext } from "../strategy/index.js";
+import type { StrategyParameters } from "../strategy/index.js";
 
 class FakeStrategy implements Strategy {
   descriptor = {
@@ -30,7 +30,11 @@ describe("StrategyController", () => {
     
     const module: TestingModule = await Test.createTestingModule({
       controllers: [StrategyController],
-      providers: [{ provide: StrategyRegistry, useValue: registry }]
+      providers: [
+        { provide: StrategyRegistry, useValue: registry },
+        { provide: CompositeStrategyService, useValue: { save: vi.fn(), findById: vi.fn(), findAll: vi.fn() } },
+        { provide: CombinationPolicyRegistry, useValue: { getPolicy: vi.fn() } }
+      ]
     }).compile();
 
     const controller = module.get<StrategyController>(StrategyController);
