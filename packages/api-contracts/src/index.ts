@@ -530,3 +530,148 @@ export function isSearchProgressResponse(value: unknown): value is SearchProgres
     Number.isSafeInteger(value.completed) && Number.isSafeInteger(value.failed) &&
     Number.isSafeInteger(value.cancelled) && Number.isSafeInteger(value.inFlight);
 }
+
+// The strategy composition of one leaderboard entry. It mirrors a candidate's
+// complete specification: a single strategy, or a composite that pins its
+// component versions and combination policy. The interface renders it without
+// branching on how the candidate was generated.
+export type ApiLeaderboardStrategy =
+  | {
+      readonly kind: "single";
+      readonly id: string;
+      readonly version: string;
+      readonly parameters: Record<string, unknown>;
+    }
+  | {
+      readonly kind: "composite";
+      readonly composite: ApiCompositeStrategyDefinition;
+    };
+
+/**
+ * One ranked leaderboard entry. `rank` is the stored rank produced by the
+ * experiment's ranking policy; sorting by a metric reorders the array for
+ * display but never changes this value.
+ */
+export interface ApiLeaderboardEntry {
+  readonly rank: number;
+  readonly runId: string;
+  readonly resultId: string;
+  readonly contentHash: string;
+  readonly score: number;
+  readonly strategy: ApiLeaderboardStrategy;
+  readonly metrics: BacktestMetrics;
+}
+
+// The metric a leaderboard read is sorted by for display. `rank` is the default
+// and returns the stored ranking-policy order.
+export type LeaderboardSort =
+  | "rank"
+  | "totalReturn"
+  | "winRate"
+  | "maximumDrawdown"
+  | "numberOfTrades";
+
+export const LEADERBOARD_SORTS: readonly LeaderboardSort[] = [
+  "rank", "totalReturn", "winRate", "maximumDrawdown", "numberOfTrades"
+];
+
+/**
+ * Response body for `GET /experiments/:specId/leaderboard`. A snapshot of the
+ * derived Top-K projection for one search experiment.
+ * Must stay in sync with `apps/backend/src/modules/api/leaderboard.controller.ts`.
+ */
+export interface LeaderboardResponse {
+  readonly specId: string;
+  readonly sort: LeaderboardSort;
+  readonly entries: readonly ApiLeaderboardEntry[];
+}
+
+function isLeaderboardStrategy(value: unknown): value is ApiLeaderboardStrategy {
+  if (!isRecord(value)) return false;
+  if (value.kind === "single") {
+    return typeof value.id === "string" && typeof value.version === "string" && isRecord(value.parameters);
+  }
+  return value.kind === "composite" && isRecord(value.composite);
+}
+
+function isLeaderboardEntry(value: unknown): value is ApiLeaderboardEntry {
+  if (!isRecord(value)) return false;
+  return Number.isSafeInteger(value.rank) && Number(value.rank) >= 1 &&
+    typeof value.runId === "string" && typeof value.resultId === "string" &&
+    typeof value.contentHash === "string" && isFiniteNumber(value.score) &&
+    isLeaderboardStrategy(value.strategy) && isMetrics(value.metrics);
+}
+
+export function isLeaderboardResponse(value: unknown): value is LeaderboardResponse {
+  if (!isRecord(value)) return false;
+  return typeof value.specId === "string" &&
+    LEADERBOARD_SORTS.includes(value.sort as LeaderboardSort) &&
+    Array.isArray(value.entries) && value.entries.every(isLeaderboardEntry);
+}
+
+// One item of the reproducibility checklist. A recorded item carries its value;
+// a not-applicable item declares the input does not apply to this result. The
+// specification item additionally carries its id and hash.
+export interface ProvenanceChecklistItem {
+  readonly status: "recorded" | "not-applicable";
+  readonly value?: unknown;
+  readonly id?: string;
+  readonly hash?: string;
+}
+
+export interface ProvenanceAttempt {
+  readonly attempt: number;
+  readonly runnerId: string;
+  readonly correlationId: string;
+  readonly claimedAt: string;
+  readonly leaseExpiresAt: string | null;
+  readonly completedAt: string | null;
+  readonly failureReason: string | null;
+}
+
+/**
+ * Response body for `GET /backtests/:runId/provenance`. The full reproducibility
+ * checklist for one completed result, resolving the baseline's ten-item list in
+ * one response.
+ * Must stay in sync with `apps/backend/src/modules/api/backtest.controller.ts`.
+ */
+export interface ProvenanceResponse {
+  readonly runId: string;
+  readonly resultId: string;
+  readonly completedAt: string;
+  readonly tradeContentHash: string;
+  readonly checklist: Readonly<Record<string, ProvenanceChecklistItem>>;
+  readonly attempts: readonly ProvenanceAttempt[];
+}
+
+function isChecklistItem(value: unknown): value is ProvenanceChecklistItem {
+  return isRecord(value) && (value.status === "recorded" || value.status === "not-applicable");
+}
+
+export function isProvenanceResponse(value: unknown): value is ProvenanceResponse {
+  if (!isRecord(value)) return false;
+  if (typeof value.runId !== "string" || typeof value.resultId !== "string" ||
+    typeof value.completedAt !== "string" || typeof value.tradeContentHash !== "string") {
+    return false;
+  }
+  if (!isRecord(value.checklist)) return false;
+  const items = Object.values(value.checklist);
+  if (items.length === 0 || !items.every(isChecklistItem)) return false;
+  return Array.isArray(value.attempts);
+}
+
+/**
+ * Response body for `GET /backtests/:runId/annotations`. Visualization
+ * annotations recomputed on demand from the run's frozen specification, never
+ * stored as authoritative for a search candidate.
+ * Must stay in sync with `apps/backend/src/modules/api/backtest.controller.ts`.
+ */
+export interface BacktestAnnotationsResponse {
+  readonly runId: string;
+  readonly annotations: readonly ApiAnnotation[];
+}
+
+export function isBacktestAnnotationsResponse(value: unknown): value is BacktestAnnotationsResponse {
+  return isRecord(value) && typeof value.runId === "string" &&
+    Array.isArray(value.annotations) && value.annotations.every(isApiAnnotation);
+}

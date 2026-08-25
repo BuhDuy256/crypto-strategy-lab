@@ -19,6 +19,12 @@ import { PostgresExperimentSpecificationStore } from "./infrastructure/postgres-
 import { PostgresBacktestRunStore } from "./infrastructure/postgres-backtest-run-store.js";
 import { BacktestResultQuery } from "./application/backtest-result-query.js";
 import { PostgresBacktestResultQuery } from "./infrastructure/postgres-backtest-result-query.js";
+import { LeaderboardQuery } from "./application/leaderboard-query.js";
+import { PostgresLeaderboardQuery } from "./infrastructure/postgres-leaderboard-query.js";
+import { ProvenanceQuery } from "./application/provenance-query.js";
+import { PostgresProvenanceQuery } from "./infrastructure/postgres-provenance-query.js";
+import { SearchAnnotationRecompute } from "./application/search-annotation-recompute.js";
+import { PostgresRunSpecLocator } from "./infrastructure/postgres-run-spec-locator.js";
 import { RankingPolicyRegistry } from "./application/ranking-policy-registry.js";
 import { createBuiltInRankingPolicyRegistry } from "./application/built-in-ranking-policy-registry.js";
 import { PostgresSearchRunStore } from "./infrastructure/postgres-search-run-store.js";
@@ -74,6 +80,38 @@ class ExperimentDatabaseLifecycle implements OnApplicationShutdown {
       useFactory: (pool: Pool) => new PostgresBacktestResultQuery(pool)
     },
     {
+      provide: LeaderboardQuery,
+      inject: [EXPERIMENT_DATABASE_POOL],
+      useFactory: (pool: Pool) => new PostgresLeaderboardQuery(pool)
+    },
+    {
+      provide: ProvenanceQuery,
+      inject: [EXPERIMENT_DATABASE_POOL],
+      useFactory: (pool: Pool) => new PostgresProvenanceQuery(pool)
+    },
+    {
+      provide: SearchAnnotationRecompute,
+      inject: [EXPERIMENT_DATABASE_POOL, ExperimentSpecificationService, DATASET_SERVICE, StrategyRegistry],
+      useFactory: (
+        pool: Pool,
+        specifications: ExperimentSpecificationService,
+        datasets: DatasetService,
+        strategies: StrategyRegistry
+      ) =>
+        new SearchAnnotationRecompute(
+          new PostgresRunSpecLocator(pool),
+          {
+            get: async (specId) => {
+              const value = await specifications.get(specId);
+              if (value.status !== "frozen") throw new Error(`EXPERIMENT_NOT_FROZEN: ${specId}`);
+              return value;
+            }
+          },
+          datasets,
+          strategies
+        )
+    },
+    {
       provide: RankingPolicyRegistry,
       useFactory: createBuiltInRankingPolicyRegistry
     },
@@ -121,6 +159,9 @@ class ExperimentDatabaseLifecycle implements OnApplicationShutdown {
     ExperimentSpecificationService,
     BacktestRunService,
     BacktestResultQuery,
+    LeaderboardQuery,
+    ProvenanceQuery,
+    SearchAnnotationRecompute,
     RankingPolicyRegistry,
     SearchCoordinator,
     LeaderboardProjector

@@ -5,6 +5,10 @@ export { BacktestRunnerModule } from "./backtest-runner.module.js";
 export { ExperimentSpecificationService } from "./application/experiment-specification-service.js";
 export { BacktestRunService } from "./application/backtest-run-service.js";
 export { BacktestResultQuery } from "./application/backtest-result-query.js";
+export { LeaderboardQuery } from "./application/leaderboard-query.js";
+export { ProvenanceQuery } from "./application/provenance-query.js";
+export { SearchAnnotationRecompute } from "./application/search-annotation-recompute.js";
+export type { BacktestRunSpecLocator } from "./application/search-annotation-recompute.js";
 export { BacktestRunnerRuntime } from "./application/backtest-runner-runtime.js";
 export type {
   BacktestExecutor,

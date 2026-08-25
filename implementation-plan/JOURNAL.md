@@ -1193,3 +1193,55 @@ avoiding duplication no longer applies; the decision below replaces it.
 - `SEARCH-04` is `DONE`; `SEARCH-05` is promoted to `READY` (`SEARCH-04` and `EXP-06`
   are both `DONE`). `UI-03` remains `TODO` behind `SEARCH-05`. Not committed; Git
   actions await explicit owner request.
+
+### 2026-08-26 - V3 - SEARCH-05
+
+**Decisions**
+
+- The read surface follows the EXP-10 pattern: query ports are abstract classes in
+  `application`, PostgreSQL adapters in `infrastructure`, and the API composes reads
+  without any metric or ranking calculation. Provenance and annotation reads are
+  keyed by `runId` (not `resultId`) so they line up with the EXP-10 result/trades
+  reads and the SPA never has to discover a separate result id. No new result or
+  trades endpoint was added (AC3): provenance/annotations are extra reads on the
+  existing `BacktestController`, and the progress read (AC2/8) is reused unchanged.
+- Leaderboard sort is a display concern only. The stored ranking-policy `rank` is
+  read straight from `leaderboard_entries`; a metric sort reorders the returned
+  array in the adapter and never rewrites the projection, satisfying AC6 and the
+  "API performs no ranking calculation" invariant.
+- Annotations for a search result are recomputed on demand (AC5) by re-running the
+  run's frozen spec through the same `computeBacktest` + `downsampleAnnotations` the
+  acceptance path uses; the result is never persisted. Running this inside the
+  request handler is CPU work, but SEARCH-05's own constraint explicitly authorizes
+  on-demand recompute, so it stays in the query path for V3's small demo datasets.
+- `ApiLeaderboardEntry` carries `score`, `contentHash`, and the provenance response
+  carries `attempts[]` beyond criterion 1's literal field list. Kept deliberately:
+  they serve traceability and reproducibility item 10 (`PROOF-REP-001`), not scope
+  creep.
+
+**Validation**
+
+- Tests: `postgres-leaderboard-query.test.ts` (4), `postgres-provenance-query.test.ts`
+  (2), `search-annotation-recompute.test.ts` (2 PostgreSQL), `leaderboard.controller.test.ts`
+  (4). Full suite 339/339 in 65 files (was 327 at SEARCH-04); typecheck green across
+  all three packages; changed files lint clean; boundary test clean. No migration.
+
+**Problems worth remembering**
+
+- Two-axis `code-review` (fixed point HEAD/SEARCH-04) surfaced two fixes, both
+  applied. (1) The leaderboard read INNER-JOINed `search_candidates`, so a
+  candidate-less projection row would have silently vanished; switched to a LEFT
+  JOIN that raises `LEADERBOARD_QUERY_CORRUPT`, with a test. (2) The AC5 proof was an
+  in-test re-derivation through the same pipeline; it is now an integration test that
+  compares the recompute against the annotations the real EXP-06 acceptance
+  transaction persisted, so a divergence between the stored downsampling and the
+  recompute would be caught.
+- The provenance read is a faithful pass-through: the baseline ten-item completeness
+  is guaranteed by what EXP-06 stored, not re-asserted by the read. Accepted as the
+  correct separation (the read never invents provenance).
+
+**Ending state**
+
+- `SEARCH-05` is `DONE`; `UI-03` is promoted to `READY` (`SEARCH-05` and `SEARCH-02`
+  are both `DONE`). All V3 slices are now `DONE` except `UI-03`, the last V3 slice.
+  Not committed; Git actions await explicit owner request.

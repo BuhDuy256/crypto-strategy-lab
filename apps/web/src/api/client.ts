@@ -30,7 +30,16 @@ import {
   type StartBacktestRequest,
   type CreateSpecificationRequest,
   type CreateSpecificationResponse,
-  isCreateSpecificationResponse
+  isCreateSpecificationResponse,
+  isLeaderboardResponse,
+  isSearchProgressResponse,
+  isProvenanceResponse,
+  isBacktestAnnotationsResponse,
+  type LeaderboardResponse,
+  type LeaderboardSort,
+  type SearchProgressResponse,
+  type ProvenanceResponse,
+  type BacktestAnnotationsResponse
 } from "@crypto-strategy-lab/api-contracts";
 
 // In dev, Vite proxies "/api/*" to the backend (see vite.config.ts).
@@ -116,6 +125,27 @@ export function createSpecification(request: CreateSpecificationRequest): Promis
 
 export function getStrategies(): Promise<StrategyCatalogResponse> {
   return getJson("/strategies", isStrategyCatalogResponse);
+}
+
+/** Reads the derived Top-K leaderboard of a search experiment. */
+export function getLeaderboard(specId: string, sort: LeaderboardSort = "rank"): Promise<LeaderboardResponse> {
+  const query = new URLSearchParams({ sort });
+  return getJson(`/experiments/${encodeURIComponent(specId)}/leaderboard?${query.toString()}`, isLeaderboardResponse);
+}
+
+/** Reads the complete progress snapshot of a search experiment. */
+export function getSearchProgress(specId: string): Promise<SearchProgressResponse> {
+  return getJson(`/experiments/${encodeURIComponent(specId)}/search/progress`, isSearchProgressResponse);
+}
+
+/** Reads the full reproducibility checklist for one backtest result. */
+export function getBacktestProvenance(runId: string): Promise<ProvenanceResponse> {
+  return getJson(`/backtests/${encodeURIComponent(runId)}/provenance`, isProvenanceResponse);
+}
+
+/** Reads a result's visualization annotations, recomputed on demand. */
+export function getBacktestAnnotations(runId: string): Promise<BacktestAnnotationsResponse> {
+  return getJson(`/backtests/${encodeURIComponent(runId)}/annotations`, isBacktestAnnotationsResponse);
 }
 
 export async function createComposite(req: CreateCompositeRequest): Promise<CreateCompositeResponse> {

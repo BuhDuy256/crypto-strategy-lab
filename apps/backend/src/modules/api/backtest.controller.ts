@@ -2,8 +2,9 @@
 
 import { BadRequestException, Body, Controller, DefaultValuePipe, Get, Inject, NotFoundException, Param, ParseIntPipe, ParseUUIDPipe, Post, Query, Res } from "@nestjs/common";
 import type { Response } from "express";
-import type { BacktestResultResponse, BacktestRunResponse, BacktestTradesResponse } from "@crypto-strategy-lab/api-contracts";
-import { BacktestResultQuery, BacktestRunService } from "../experiment/index.js";
+import type { BacktestAnnotationsResponse, BacktestResultResponse, BacktestRunResponse, BacktestTradesResponse, ProvenanceResponse } from "@crypto-strategy-lab/api-contracts";
+import { isApiAnnotation } from "@crypto-strategy-lab/api-contracts";
+import { BacktestResultQuery, BacktestRunService, ProvenanceQuery, SearchAnnotationRecompute } from "../experiment/index.js";
 import { getRequestId } from "../../platform/request-context.js";
 import { StartBacktestDto } from "./backtest.dto.js";
 
@@ -11,7 +12,9 @@ import { StartBacktestDto } from "./backtest.dto.js";
 export class BacktestController {
   constructor(
     @Inject(BacktestRunService) private readonly runs: BacktestRunService,
-    @Inject(BacktestResultQuery) private readonly results: BacktestResultQuery
+    @Inject(BacktestResultQuery) private readonly results: BacktestResultQuery,
+    @Inject(ProvenanceQuery) private readonly provenance: ProvenanceQuery,
+    @Inject(SearchAnnotationRecompute) private readonly annotations: SearchAnnotationRecompute
   ) {}
 
   @Post()
@@ -60,5 +63,23 @@ export class BacktestController {
       throw new BadRequestException("page must be at least 1 and pageSize must be between 1 and 100");
     }
     return this.results.getTrades(result, { pageNumber, pageSize });
+  }
+
+  @Get(":runId/provenance")
+  async getProvenance(
+    @Param("runId", new ParseUUIDPipe()) runId: string
+  ): Promise<ProvenanceResponse> {
+    const provenance = await this.provenance.getProvenance(runId);
+    if (provenance === undefined) throw new NotFoundException(`BACKTEST_RESULT_NOT_FOUND: ${runId}`);
+    return provenance;
+  }
+
+  @Get(":runId/annotations")
+  async getAnnotations(
+    @Param("runId", new ParseUUIDPipe()) runId: string
+  ): Promise<BacktestAnnotationsResponse> {
+    const annotations = await this.annotations.recompute(runId);
+    if (annotations === undefined) throw new NotFoundException(`BACKTEST_RUN_NOT_FOUND: ${runId}`);
+    return { runId, annotations: annotations.filter((annotation) => isApiAnnotation(annotation)) };
   }
 }
