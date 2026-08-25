@@ -49,4 +49,16 @@ export type {
   CandidateCompositeStrategySpecification,
   GeneratorProvenance
 } from "./domain/candidate-strategy.js";
+export { StrategyGeneratorRegistry } from "./application/strategy-generator-registry.js";
+export type { GeneratorRef } from "./application/strategy-generator-registry.js";
+export { createBuiltInStrategyGeneratorRegistry } from "./application/built-in-strategy-generator-registry.js";
+export { RandomStrategyGenerator } from "./application/random-strategy-generator.js";
+export type {
+  StrategyGenerator,
+  GeneratorDescriptor,
+  GenerateRequest,
+  SearchSpace,
+  ParameterRange,
+  VersionedRef
+} from "./domain/strategy-generator.js";
 export { StrategyModule } from "./strategy.module.js";

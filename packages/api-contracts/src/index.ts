@@ -424,6 +424,23 @@ export function isStrategyCatalogResponse(value: unknown): value is StrategyCata
   return true;
 }
 
+export interface ApiGeneratorDescriptor {
+  readonly id: string;
+  readonly version: string;
+  readonly name: string;
+  readonly description: string;
+  readonly configurationSchema: ApiParameterSchema;
+}
+
+export interface GeneratorCatalogResponse {
+  readonly generators: readonly ApiGeneratorDescriptor[];
+}
+
+export function isGeneratorCatalogResponse(value: unknown): value is GeneratorCatalogResponse {
+  if (!isRecord(value) || !Array.isArray(value.generators)) return false;
+  return true;
+}
+
 export interface ApiComponentStrategyReference {
   readonly id: string;
   readonly version: string;

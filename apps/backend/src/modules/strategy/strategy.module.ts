@@ -4,6 +4,8 @@ import { createBuiltInStrategyRegistry } from "./application/built-in-strategy-r
 import { CombinationPolicyRegistry } from "./application/combination-policy-registry.js";
 import { createBuiltInCombinationPolicyRegistry } from "./application/built-in-combination-policy-registry.js";
 import { CompositeStrategyService } from "./application/composite-strategy.service.js";
+import { StrategyGeneratorRegistry } from "./application/strategy-generator-registry.js";
+import { createBuiltInStrategyGeneratorRegistry } from "./application/built-in-strategy-generator-registry.js";
 import { PostgresCompositeRepository } from "./infrastructure/postgres-composite-repository.js";
 import { loadConfig } from "../../platform/config.js";
 import { createDatabasePool } from "../../platform/database.js";
@@ -33,6 +35,12 @@ class StrategyDatabaseLifecycle implements OnApplicationShutdown {
       useFactory: createBuiltInCombinationPolicyRegistry
     },
     {
+      provide: StrategyGeneratorRegistry,
+      useFactory: (stratReg: StrategyRegistry, polReg: CombinationPolicyRegistry) =>
+        createBuiltInStrategyGeneratorRegistry(stratReg, polReg),
+      inject: [StrategyRegistry, CombinationPolicyRegistry]
+    },
+    {
       provide: PostgresCompositeRepository,
       useFactory: (pool: Pool) => new PostgresCompositeRepository(pool),
       inject: [STRATEGY_DATABASE_POOL]
@@ -48,6 +56,6 @@ class StrategyDatabaseLifecycle implements OnApplicationShutdown {
       inject: [STRATEGY_DATABASE_POOL]
     }
   ],
-  exports: [StrategyRegistry, CombinationPolicyRegistry, CompositeStrategyService]
+  exports: [StrategyRegistry, CombinationPolicyRegistry, CompositeStrategyService, StrategyGeneratorRegistry]
 })
 export class StrategyModule {}
