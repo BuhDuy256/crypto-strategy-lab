@@ -485,6 +485,23 @@ export interface EvaluatePolicyResponse {
 
 export type SearchStopReason = "max-candidates" | "max-duration" | "no-improvement" | "exhausted";
 
+// The durable control state of a search run. The transitional states (pausing,
+// cancelling) are reported while the coordinator converges toward the settled
+// state (paused, cancelled), so the interface can show a control in progress.
+// Must stay in sync with `SearchRunStatus` in
+// `apps/backend/src/modules/experiment/application/search-coordinator.ts`.
+export type SearchRunStatus =
+  | "running"
+  | "pausing"
+  | "paused"
+  | "cancelling"
+  | "cancelled"
+  | "stopped";
+
+const SEARCH_RUN_STATUSES: readonly SearchRunStatus[] = [
+  "running", "pausing", "paused", "cancelling", "cancelled", "stopped"
+];
+
 /**
  * Progress snapshot for a search experiment. A complete snapshot, not a delta,
  * so a later live-push realization can send the same shape.
@@ -492,12 +509,14 @@ export type SearchStopReason = "max-candidates" | "max-duration" | "no-improveme
  */
 export interface SearchProgressResponse {
   readonly specId: string;
-  readonly status: "running" | "stopped";
+  readonly status: SearchRunStatus;
   readonly stopReason: SearchStopReason | null;
   readonly generated: number;
   readonly submitted: number;
   readonly completed: number;
   readonly failed: number;
+  // Candidates the search terminated on cancel, counted separately from `failed`.
+  readonly cancelled: number;
   readonly inFlight: number;
 }
 
@@ -505,9 +524,9 @@ export function isSearchProgressResponse(value: unknown): value is SearchProgres
   if (!isRecord(value)) return false;
   const stopReasons = ["max-candidates", "max-duration", "no-improvement", "exhausted"];
   return typeof value.specId === "string" &&
-    (value.status === "running" || value.status === "stopped") &&
+    SEARCH_RUN_STATUSES.includes(value.status as SearchRunStatus) &&
     (value.stopReason === null || stopReasons.includes(String(value.stopReason))) &&
     Number.isSafeInteger(value.generated) && Number.isSafeInteger(value.submitted) &&
     Number.isSafeInteger(value.completed) && Number.isSafeInteger(value.failed) &&
-    Number.isSafeInteger(value.inFlight);
+    Number.isSafeInteger(value.cancelled) && Number.isSafeInteger(value.inFlight);
 }

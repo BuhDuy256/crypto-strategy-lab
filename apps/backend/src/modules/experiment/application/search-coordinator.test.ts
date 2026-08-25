@@ -120,7 +120,8 @@ describe("SearchCoordinator", () => {
   });
   beforeEach(async () => {
     await pool.query(
-      `TRUNCATE experiment.search_candidates, experiment.search_runs,
+      `TRUNCATE experiment.search_candidate_dispositions,
+        experiment.search_candidates, experiment.search_runs,
         experiment.backtest_result_provenance, experiment.backtest_annotations,
         experiment.backtest_trades, experiment.backtest_results,
         experiment.backtest_attempts, experiment.backtest_runs,
@@ -174,6 +175,254 @@ describe("SearchCoordinator", () => {
       [runId]
     );
   }
+
+  // Simulate a runner claiming a candidate: the run is 'running' under a live lease
+  // with an open attempt row.
+  async function markRunning(runId: string): Promise<void> {
+    await pool.query(
+      "UPDATE experiment.backtest_runs SET status = 'running', lease_expires_at = now() + interval '30 seconds', updated_at = now() WHERE run_id = $1",
+      [runId]
+    );
+    await pool.query(
+      `INSERT INTO experiment.backtest_attempts
+         (run_id, attempt_number, runner_id, correlation_id, claimed_at, lease_expires_at)
+       VALUES ($1, 1, 'runner-test', 'corr-test', now(), now() + interval '30 seconds')`,
+      [runId]
+    );
+  }
+
+  // Simulate a runner that claimed a candidate and then died: the run is left
+  // 'running' with an expired lease and an open (never-completed) attempt.
+  async function markClaimedStale(runId: string): Promise<void> {
+    await pool.query(
+      "UPDATE experiment.backtest_runs SET status = 'running', lease_expires_at = now() - interval '5 seconds', updated_at = now() WHERE run_id = $1",
+      [runId]
+    );
+    await pool.query(
+      `INSERT INTO experiment.backtest_attempts
+         (run_id, attempt_number, runner_id, correlation_id, claimed_at, lease_expires_at)
+       VALUES ($1, 1, 'dead-runner', 'corr-test', now() - interval '35 seconds', now() - interval '5 seconds')`,
+      [runId]
+    );
+  }
+
+  async function runStatus(runId: string): Promise<string> {
+    const result = await pool.query<{ status: string }>(
+      "SELECT status FROM experiment.backtest_runs WHERE run_id = $1",
+      [runId]
+    );
+    return result.rows[0]!.status;
+  }
+
+  it("pauses new submission and reports paused only after in-flight work drains", async () => {
+    const specId = await createExperiment(searchConfiguration({ maxCandidates: 100 }, 10));
+    const coordinator = newCoordinator();
+    await coordinator.start(specId, "request-1");
+    await coordinator.tick(specId);
+
+    await coordinator.pause(specId);
+    expect((await coordinator.progress(specId)).status).toBe("pausing");
+
+    // While pausing with work still in flight, no new candidate is submitted and
+    // the run does not yet report paused.
+    const converging = await coordinator.tick(specId);
+    expect(converging).toEqual({ kind: "converging", target: "paused" });
+    expect(await searchStore.candidateCount(specId)).toBe(1);
+    expect((await coordinator.progress(specId)).status).toBe("pausing");
+
+    await markCompleted(await runIdAt(specId, 0), {
+      totalReturn: 0.1,
+      maximumDrawdown: 0.1,
+      winRate: 0.5,
+      numberOfTrades: 5
+    });
+    const paused = await coordinator.tick(specId);
+    expect(paused).toEqual({ kind: "paused" });
+    expect((await coordinator.progress(specId)).status).toBe("paused");
+    // A tick on a paused run submits nothing further.
+    expect(await coordinator.tick(specId)).toEqual({ kind: "paused" });
+    expect(await searchStore.candidateCount(specId)).toBe(1);
+  });
+
+  it("resumes from durable state after a pause without duplicating candidates", async () => {
+    const search = searchConfiguration({ maxCandidates: 100 }, 10);
+    const specId = await createExperiment(search);
+    const coordinator = newCoordinator();
+    await coordinator.start(specId, "request-1");
+    await coordinator.tick(specId);
+    await coordinator.tick(specId);
+    await markCompleted(await runIdAt(specId, 0), {
+      totalReturn: 0.1, maximumDrawdown: 0.1, winRate: 0.5, numberOfTrades: 5
+    });
+    await markCompleted(await runIdAt(specId, 1), {
+      totalReturn: 0.05, maximumDrawdown: 0.1, winRate: 0.5, numberOfTrades: 5
+    });
+    await coordinator.pause(specId);
+    await coordinator.tick(specId);
+    expect((await coordinator.progress(specId)).status).toBe("paused");
+
+    await coordinator.resume(specId);
+    expect((await coordinator.progress(specId)).status).toBe("running");
+
+    const request: GenerateRequest = {
+      searchSpace: search.searchSpace,
+      seed: search.seed,
+      configuration: search.generatorConfiguration
+    };
+    const oracle = generators.resolve(search.generator).generate(request)[Symbol.iterator]();
+    const expectedThird = [oracle.next(), oracle.next(), oracle.next()][2]!.value.contentHash;
+
+    const resumed = await coordinator.tick(specId);
+    expect(resumed).toEqual({ kind: "submitted", contentHash: expectedThird });
+    expect(await searchStore.candidateCount(specId)).toBe(3);
+  });
+
+  it("cancels new submission, terminates pending work, and keeps completed results", async () => {
+    const specId = await createExperiment(searchConfiguration({ maxCandidates: 100 }, 10));
+    const coordinator = newCoordinator();
+    await coordinator.start(specId, "request-1");
+    await coordinator.tick(specId);
+    await coordinator.tick(specId);
+    const completedRun = await runIdAt(specId, 0);
+    const pendingRun = await runIdAt(specId, 1);
+    await markCompleted(completedRun, {
+      totalReturn: 0.3, maximumDrawdown: 0.1, winRate: 0.6, numberOfTrades: 5
+    });
+
+    await coordinator.cancel(specId);
+    expect((await coordinator.progress(specId)).status).toBe("cancelling");
+
+    const cancelled = await coordinator.tick(specId);
+    expect(cancelled).toEqual({ kind: "cancelled" });
+    expect((await coordinator.progress(specId)).status).toBe("cancelled");
+
+    // No new submission after cancel; pending work is terminated; the completed
+    // result stays intact and auditable.
+    expect(await searchStore.candidateCount(specId)).toBe(2);
+    expect(await runStatus(pendingRun)).toBe("failed");
+    expect(await runStatus(completedRun)).toBe("completed");
+    const result = await pool.query(
+      "SELECT 1 FROM experiment.backtest_results WHERE run_id = $1",
+      [completedRun]
+    );
+    expect(result.rowCount).toBe(1);
+
+    // The pending candidate is marked cancelled first-class in the search's own
+    // disposition ledger, and progress counts it as cancelled, not failed.
+    const disposition = await pool.query<{ content_hash: string }>(
+      `SELECT d.content_hash
+       FROM experiment.search_candidate_dispositions d
+       JOIN experiment.search_candidates c
+         ON c.spec_id = d.spec_id AND c.content_hash = d.content_hash
+       WHERE d.spec_id = $1 AND c.run_id = $2 AND d.disposition = 'cancelled'`,
+      [specId, pendingRun]
+    );
+    expect(disposition.rowCount).toBe(1);
+    const progress = await coordinator.progress(specId);
+    expect(progress).toMatchObject({ status: "cancelled", completed: 1, failed: 0, cancelled: 1 });
+  });
+
+  it("records the cooperative cancellation signal on a running candidate", async () => {
+    const specId = await createExperiment(searchConfiguration({ maxCandidates: 100 }, 10));
+    const coordinator = newCoordinator();
+    await coordinator.start(specId, "request-1");
+    await coordinator.tick(specId);
+    const runningRun = await runIdAt(specId, 0);
+    await markRunning(runningRun);
+
+    await coordinator.cancel(specId);
+    const converging = await coordinator.tick(specId);
+    // Running work is not hard-failed by the coordinator; it is signalled and left
+    // to stop at the runner's cooperative checkpoint, so the run is still draining.
+    expect(converging).toEqual({ kind: "converging", target: "cancelled" });
+    const flagged = await pool.query<{ cancellation_requested: boolean }>(
+      "SELECT cancellation_requested FROM experiment.backtest_runs WHERE run_id = $1",
+      [runningRun]
+    );
+    expect(flagged.rows[0]!.cancellation_requested).toBe(true);
+    expect(await runStatus(runningRun)).toBe("running");
+  });
+
+  it("converges a pause in progress after a coordinator restart", async () => {
+    const specId = await createExperiment(searchConfiguration({ maxCandidates: 100 }, 10));
+    const first = newCoordinator();
+    await first.start(specId, "request-1");
+    await first.tick(specId);
+    await first.pause(specId);
+    // The pause request is durable before convergence.
+    expect((await first.progress(specId)).status).toBe("pausing");
+
+    // A fresh instance simulates the process being killed and restarted mid-pause.
+    const resumed = newCoordinator();
+    await markCompleted(await runIdAt(specId, 0), {
+      totalReturn: 0.1, maximumDrawdown: 0.1, winRate: 0.5, numberOfTrades: 5
+    });
+    expect(await resumed.tick(specId)).toEqual({ kind: "paused" });
+    expect((await resumed.progress(specId)).status).toBe("paused");
+  });
+
+  it("converges a cancel in progress after a coordinator restart", async () => {
+    const specId = await createExperiment(searchConfiguration({ maxCandidates: 100 }, 10));
+    const first = newCoordinator();
+    await first.start(specId, "request-1");
+    await first.tick(specId);
+    await first.cancel(specId);
+    expect((await first.progress(specId)).status).toBe("cancelling");
+
+    const resumed = newCoordinator();
+    expect(await resumed.tick(specId)).toEqual({ kind: "cancelled" });
+    expect((await resumed.progress(specId)).status).toBe("cancelled");
+  });
+
+  it("rejects an illegal control transition", async () => {
+    const specId = await createExperiment(searchConfiguration({ maxCandidates: 100 }, 10));
+    const coordinator = newCoordinator();
+    await coordinator.start(specId, "request-1");
+    await coordinator.tick(specId);
+    await coordinator.cancel(specId);
+    await coordinator.tick(specId);
+    // Once cancelled, the run cannot be paused or resumed.
+    await expect(coordinator.pause(specId)).rejects.toThrow("SEARCH_CANNOT_PAUSE");
+    await expect(coordinator.resume(specId)).rejects.toThrow("SEARCH_CANNOT_RESUME");
+  });
+
+  it("recovers a run abandoned by a dead runner and lets it complete", async () => {
+    const specId = await createExperiment(searchConfiguration({ maxCandidates: 100 }, 10));
+    const coordinator = newCoordinator();
+    await coordinator.start(specId, "request-1");
+    await coordinator.tick(specId);
+    const runId = await runIdAt(specId, 0);
+    await markClaimedStale(runId);
+
+    const swept = await coordinator.sweepStaleClaims(specId);
+    expect(swept).toBe(1);
+    expect(await runStatus(runId)).toBe("queued");
+    const attempt = await pool.query<{ failure_reason: string | null }>(
+      "SELECT failure_reason FROM experiment.backtest_attempts WHERE run_id = $1 AND attempt_number = 1",
+      [runId]
+    );
+    expect(attempt.rows[0]!.failure_reason).toBe("BACKTEST_LEASE_EXPIRED");
+
+    // The recovered run is claimable again and can complete.
+    await markCompleted(runId, {
+      totalReturn: 0.1, maximumDrawdown: 0.1, winRate: 0.5, numberOfTrades: 5
+    });
+    expect(await runStatus(runId)).toBe("completed");
+  });
+
+  it("makes the stale-claim sweep idempotent", async () => {
+    const specId = await createExperiment(searchConfiguration({ maxCandidates: 100 }, 10));
+    const coordinator = newCoordinator();
+    await coordinator.start(specId, "request-1");
+    await coordinator.tick(specId);
+    const runId = await runIdAt(specId, 0);
+    await markClaimedStale(runId);
+
+    expect(await coordinator.sweepStaleClaims(specId)).toBe(1);
+    // A second sweep finds nothing stale and changes nothing.
+    expect(await coordinator.sweepStaleClaims(specId)).toBe(0);
+    expect(await runStatus(runId)).toBe("queued");
+  });
 
   it("rejects a second start for the same experiment", async () => {
     const specId = await createExperiment(searchConfiguration({ maxCandidates: 5 }, 4));

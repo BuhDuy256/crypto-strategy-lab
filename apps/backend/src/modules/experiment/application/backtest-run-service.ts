@@ -6,6 +6,12 @@ import type { ExperimentSpecificationService } from "./experiment-specification-
 
 export type BacktestRunStatus = "queued" | "running" | "completed" | "failed";
 
+// The stable failure reason recorded when a backtest run ends because its search
+// was cancelled. Shared so the runner's cooperative checkpoint (EXP-05) and the
+// coordinator's termination of pending work (SEARCH-02) record the same reason,
+// which keeps cancelled work distinguishable from a genuine failure in an audit.
+export const BACKTEST_CANCELLED_REASON = "Backtest run was cancelled";
+
 export interface BacktestRun {
   readonly runId: string;
   readonly specId: string;

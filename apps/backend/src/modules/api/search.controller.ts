@@ -45,6 +45,39 @@ export class SearchController {
     }
   }
 
+  @Post(":specId/search/pause")
+  async pause(
+    @Param("specId", new ParseUUIDPipe()) specId: string
+  ): Promise<SearchProgressResponse> {
+    try {
+      return this.toResponse(specId, await this.host.pause(specId));
+    } catch (error) {
+      throw this.toHttp(error);
+    }
+  }
+
+  @Post(":specId/search/resume")
+  async resume(
+    @Param("specId", new ParseUUIDPipe()) specId: string
+  ): Promise<SearchProgressResponse> {
+    try {
+      return this.toResponse(specId, await this.host.resume(specId));
+    } catch (error) {
+      throw this.toHttp(error);
+    }
+  }
+
+  @Post(":specId/search/cancel")
+  async cancel(
+    @Param("specId", new ParseUUIDPipe()) specId: string
+  ): Promise<SearchProgressResponse> {
+    try {
+      return this.toResponse(specId, await this.host.cancel(specId));
+    } catch (error) {
+      throw this.toHttp(error);
+    }
+  }
+
   private toResponse(specId: string, progress: SearchProgress): SearchProgressResponse {
     return {
       specId,
@@ -54,13 +87,21 @@ export class SearchController {
       submitted: progress.submitted,
       completed: progress.completed,
       failed: progress.failed,
+      cancelled: progress.cancelled,
       inFlight: progress.inFlight
     };
   }
 
   private toHttp(error: unknown): Error {
     if (!(error instanceof Error)) return new Error("Unknown search error");
-    if (error.message.startsWith("SEARCH_ALREADY_STARTED:")) return new ConflictException(error.message);
+    if (
+      error.message.startsWith("SEARCH_ALREADY_STARTED:") ||
+      error.message.startsWith("SEARCH_CANNOT_PAUSE:") ||
+      error.message.startsWith("SEARCH_CANNOT_RESUME:") ||
+      error.message.startsWith("SEARCH_CANNOT_CANCEL:")
+    ) {
+      return new ConflictException(error.message);
+    }
     if (
       error.message.startsWith("SEARCH_NOT_CONFIGURED:") ||
       error.message.startsWith("SEARCH_CONFIG:") ||

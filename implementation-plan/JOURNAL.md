@@ -1043,3 +1043,83 @@ avoiding duplication no longer applies; the decision below replaces it.
 - `SEARCH-01` is `DONE`. `SEARCH-02` and `SEARCH-04` are promoted to `READY`
   (`SEARCH-05` and `UI-03` remain `TODO` behind them). Not committed; Git actions
   await explicit owner request.
+
+### 2026-08-26 - V3 - SEARCH-02
+
+**Decisions**
+
+- Control is a durable status machine, not a desired-vs-actual column pair:
+  `running -> pausing -> paused` and `running|pausing|paused -> cancelling ->
+  cancelled`, with `stopped` kept for the natural stop conditions. The requested
+  state (`pausing`, `cancelling`) is written first and the coordinator converges
+  toward the settled state inside `tick`, which is what makes "reports paused only
+  after convergence" (AC1) observable and makes a restart mid-transition (AC4)
+  recover: `resumeAll`/`listActive` relaunch loops for `running`, `pausing`, and
+  `cancelling`, not just `running`. Migration `0011` widens the status set and
+  splits the terminal CHECK so only `stopped` carries a `stop_reason` while
+  `cancelled` carries only `stopped_at`.
+- Cancel reuses the EXP-05 cooperative path rather than inventing a second one.
+  Running candidate runs get `cancellation_requested = true` and are left to stop
+  at the runner's existing safe checkpoint (ADR-004: broker/worker controls do not
+  define domain state). Pending (queued, never-claimed) runs would otherwise never
+  drain, because `claimNext` skips cancellation-flagged rows, so the coordinator
+  terminates them directly. The shared `BACKTEST_CANCELLED_REASON` constant is used
+  by both the runner and the coordinator so cancelled work reads identically.
+- Pause policy is "let in-flight work finish": new submission stops immediately,
+  and the run reports `paused` only when `inFlightCount` reaches zero. Documented in
+  code so AC5's "documented and observable" holds.
+- The stale-claim sweep reclaims a dead runner's run by closing its open attempt as
+  `BACKTEST_LEASE_EXPIRED` and requeuing it, keyed on the EXP-04 lease. It is
+  idempotent (a run with no expired lease is untouched) and runs each pass of the
+  driving loop, satisfying "on coordinator start and on a schedule" without a timer.
+- A cancelled pending candidate is marked cancelled first-class in the search's own
+  layer, not only at the backtest-job level. Migration `0012` adds an append-only
+  `experiment.search_candidate_dispositions` ledger; `cancelPendingRuns` records a
+  `cancelled` disposition for each queued candidate before failing its job, and the
+  progress read counts `cancelled` from that ledger and excludes it from `failed`.
+  The candidate ledger itself stays append-only and untouched (SEARCH-01 AC9), so
+  disposition is a separate immutable fact rather than a mutation of the candidate.
+  Chosen over relaxing the append-only trigger (which the SEARCH-01 test guards) and
+  over adding a `cancelled` backtest status (a cross-slice V1 change, see debt).
+
+**Deviations / debt**
+
+- `BacktestRunStatus` (`queued|running|completed|failed`) has no `cancelled` member,
+  so at the backtest-job level a cancelled candidate remains `failed` +
+  `BACKTEST_CANCELLED_REASON`, following the V1 convention already established in
+  `backtest-runner-service.ts`. The search layer distinguishes cancelled from failed
+  first-class (disposition ledger + `progress.cancelled`), which is what AC3 needs;
+  the remaining gap is only that a raw `backtest_runs.status` query still reads a
+  cancelled job as `failed`. Adding a first-class `cancelled` job status was left out
+  on purpose: it is a cross-slice change to the already-`DONE` EXP-04/05/06/10
+  contracts (enum, CHECK, result-query 202/200 logic, run-level counts). The driver
+  to distinguish them at the job level is V6 `SEARCH-07` reconciliation; repay it
+  there. The Project Owner accepted this scoping.
+
+**Validation**
+
+- `search-coordinator.test.ts` (+8 PostgreSQL cases: pause convergence with no
+  submission while pausing, resume with no duplicated candidates against the
+  generator oracle, cancel that terminates pending work, records the `cancelled`
+  disposition, counts it separately from `failed` in progress, and keeps the
+  completed result, the cooperative `cancellation_requested` signal on a running
+  candidate, restart-mid-pause and restart-mid-cancel via a fresh coordinator
+  instance, illegal transition rejection, and stale-claim recovery + sweep
+  idempotence).
+  `search-experiment-host.test.ts` (5, new: `resumeAll`/`listActive` relaunch,
+  resume/cancel relaunch, pause without a second loop, one loop per experiment).
+  `search.controller.test.ts` (+6: pause/resume/cancel mapping and 409/404 codes).
+- Full suite 307/307 in 59 files (was 288 at SEARCH-01), including the two V1
+  runner/result E2E that are environment-sensitive but passed here. Typecheck green
+  across all three packages; changed files lint clean.
+- Two-axis `code-review` (fixed point = SEARCH-01 `HEAD`) applied: migration `0011`
+  made fully re-runnable with `DROP CONSTRAINT IF EXISTS`, reciprocal sync comments
+  added to the mirrored `SearchRunStatus`, and the host restart/relaunch wiring given
+  its own test. The AC3 `failed`-vs-`cancelled` reading was raised and is recorded as
+  accepted debt above.
+
+**Ending state**
+
+- `SEARCH-02` is `DONE`. No new slice becomes `READY`: `UI-03` still waits on
+  `SEARCH-05`, and `SEARCH-04` was already `READY`, so it is the only READY V3 slice.
+  Not committed; Git actions await explicit owner request.

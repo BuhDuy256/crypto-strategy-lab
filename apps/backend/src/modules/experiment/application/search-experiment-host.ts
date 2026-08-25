@@ -33,14 +33,36 @@ export class SearchExperimentHost {
     return this.coordinator.progress(specId);
   }
 
-  // Resume every experiment still marked running in durable state.
+  // Request a pause. The running loop converges toward it; no relaunch is needed.
+  async pause(specId: string): Promise<SearchProgress> {
+    await this.coordinator.pause(specId);
+    return this.coordinator.progress(specId);
+  }
+
+  // Request a resume and relaunch the driving loop from durable state.
+  async resume(specId: string): Promise<SearchProgress> {
+    await this.coordinator.resume(specId);
+    this.launch(specId);
+    return this.coordinator.progress(specId);
+  }
+
+  // Request a cancel and ensure a loop is driving convergence, since a cancel can
+  // start from a paused run that has no active loop.
+  async cancel(specId: string): Promise<SearchProgress> {
+    await this.coordinator.cancel(specId);
+    this.launch(specId);
+    return this.coordinator.progress(specId);
+  }
+
+  // Resume every experiment still being driven in durable state (running plus the
+  // transitional pausing/cancelling states that must converge).
   async resumeAll(): Promise<void> {
-    const running = await this.coordinator.listRunning();
-    for (const specId of running) {
+    const active = await this.coordinator.listActive();
+    for (const specId of active) {
       this.launch(specId);
     }
-    if (running.length > 0) {
-      this.logger.log(`Resumed ${running.length} running search experiment(s)`, "SearchExperimentHost");
+    if (active.length > 0) {
+      this.logger.log(`Resumed ${active.length} active search experiment(s)`, "SearchExperimentHost");
     }
   }
 

@@ -20,9 +20,9 @@ true; keep conversation out of them.
 | Implementation status | `IN PROGRESS` |
 | Current target version | **V3 - Automated Discovery** |
 | Previous version | V2 - Extensible Strategy Engine: 7/7 slices `DONE`, code baseline green. NOT declared absolutely complete — some V2 completion items are deferred (see transition note). |
-| Last verified on | 2026-08-25 |
+| Last verified on | 2026-08-26 |
 | Last tag | None. No version tag exists yet. `v1.0-demo` and `v2.0-demo` are the user's to create; `v2.0-demo` is a deferred V2 completion item (see transition note). |
-| V3 slices | 8 (`DONE` 4, `READY` 2, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 2) |
+| V3 slices | 8 (`DONE` 5, `READY` 1, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 2) |
 | History | [`JOURNAL.md`](JOURNAL.md), section "V3 - Automated Discovery". The V2 section is still pending (deferred, see transition note). |
 
 ## V2 -> V3 transition (2026-08-25)
@@ -221,7 +221,7 @@ Demo contract: [`VERSIONS.md` V3](VERSIONS.md#v3---automated-discovery)
 | STRAT-07 | REQ | M | Generator port, random search, generator catalog | **DONE** | STRAT-06 | | [02](02-strategy-and-composition.md) |
 | SEARCH-03 | REQ | S | Versioned ranking policy | **DONE** | EXP-03 | | [04](04-search-and-leaderboard.md) |
 | SEARCH-01 | REQ | L | Search coordinator and stop conditions | **DONE** | STRAT-07, EXP-05, SEARCH-03 | | [04](04-search-and-leaderboard.md) |
-| SEARCH-02 | REQ | M | Durable pause, resume, cancel | **READY** | SEARCH-01 | | [04](04-search-and-leaderboard.md) |
+| SEARCH-02 | REQ | M | Durable pause, resume, cancel | **DONE** | SEARCH-01 | | Durable control states (migration `0011`: `running`->`pausing`->`paused`, `*`->`cancelling`->`cancelled`) with the requested state written first and the coordinator converging in `tick`. Pause stops new submission and reports `paused` only after in-flight drains; resume continues from the durable ledger with no duplicated candidates; cancel terminates pending (queued) candidate runs as `failed`/`BACKTEST_CANCELLED_REASON`, records a first-class `cancelled` disposition in the append-only `search_candidate_dispositions` ledger (migration `0012`) counted separately from `failed` in progress, and signals running ones via `cancellation_requested` for the EXP-05 cooperative checkpoint, leaving completed results intact. Stale-claim sweep reclaims dead-runner leases (EXP-04) and is idempotent. `resumeAll`/`listActive` relaunch `running`/`pausing`/`cancelling` loops after an API restart. Pause/resume/cancel endpoints added. Tests: `search-coordinator.test.ts` (+8: pause convergence, resume no-dup, cancel keeps completed, cooperative signal, restart-mid-pause, restart-mid-cancel, illegal transition, stale recovery + sweep idempotence), `search-experiment-host.test.ts` (5, restart/relaunch wiring), `search.controller.test.ts` (+6). Full suite 307/307 in 59 files; typecheck green across all three packages; changed files lint clean; two-axis review applied (re-runnable migration, sync comments, host wiring test). Not committed. | [04](04-search-and-leaderboard.md) |
 | SEARCH-04 | REQ | M | Leaderboard projection | **READY** | SEARCH-01, SEARCH-03 | | [04](04-search-and-leaderboard.md) |
 | SEARCH-05 | REQ | M | Experiment and leaderboard query surface | TODO | SEARCH-04, EXP-06 | | [04](04-search-and-leaderboard.md) |
 | UI-03 | REQ | L | Discovery page | TODO | SEARCH-05, SEARCH-02 | | [06](06-ui-and-demo-integration.md) |

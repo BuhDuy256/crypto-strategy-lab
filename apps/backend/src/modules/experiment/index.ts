@@ -27,6 +27,7 @@ export { SearchCoordinator } from "./application/search-coordinator.js";
 export type {
   SearchProgress,
   SearchRunState,
+  SearchRunStatus,
   SearchStopReason,
   TickOutcome
 } from "./application/search-coordinator.js";

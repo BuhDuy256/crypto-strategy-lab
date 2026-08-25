@@ -4,7 +4,7 @@ import type { DatasetService } from "../../market/index.js";
 import type { BacktestOutput } from "../domain/backtester.js";
 import type { EvaluationResult } from "../domain/evaluator.js";
 import type { FrozenExperimentSpecification } from "../domain/experiment-specification.js";
-import type { ClaimedBacktestJob } from "./backtest-run-service.js";
+import { BACKTEST_CANCELLED_REASON, type ClaimedBacktestJob } from "./backtest-run-service.js";
 import type { BacktestComputation } from "./backtest-computation.js";
 
 export interface BacktestWorkQueue {
@@ -140,7 +140,7 @@ export class BacktestRunnerService {
       return true;
     }
     if (!(await this.queue.isCancellationRequested(claim.job.runId))) return false;
-    await this.queue.fail(claim, "Backtest run was cancelled");
+    await this.queue.fail(claim, BACKTEST_CANCELLED_REASON);
     return true;
   }
 }

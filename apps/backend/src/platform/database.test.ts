@@ -47,6 +47,7 @@ describe("database schemas", () => {
         "backtest_results",
         "backtest_runs",
         "backtest_trades",
+        "search_candidate_dispositions",
         "search_candidates",
         "search_runs",
         "specifications"
