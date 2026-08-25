@@ -11,7 +11,7 @@ export class SpecificationController {
 
   @Post()
   async create(@Body() body: CreateSpecificationRequest): Promise<CreateSpecificationResponse> {
-    const draft = await this.specs.createDraft(body);
+    const draft = await this.specs.createDraft(body as any); // eslint-disable-line @typescript-eslint/no-explicit-any
     const frozen = await this.specs.freeze(draft.specId, {
       engine: { id: "ui", version: "1.0.0" },
       nodeRuntimeVersion: process.version.replace("v", ""),

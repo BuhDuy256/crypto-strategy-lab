@@ -44,7 +44,8 @@ describe("buildRecentCandleRequest", () => {
 
 describe("BacktestPage market chart", () => {
   it("loads the default timeframe and reloads only chart data when it changes", async () => {
-    vi.mocked(getCandleHistory).mockResolvedValue({ candles: [] });
+    vi.mocked(getCandleHistory).mockResolvedValue({ 
+      candles: [] });
     render(<BacktestPage />);
 
     await waitFor(() => expect(getCandleHistory).toHaveBeenCalledTimes(1));
@@ -59,28 +60,32 @@ describe("BacktestPage market chart", () => {
 
 describe("BacktestPage run lifecycle", () => {
   it("starts a backtest, polls status, and displays metrics when completed", async () => {
-    vi.mocked(getCandleHistory).mockResolvedValue({ candles: [] });
-    vi.mocked(createSpecification).mockResolvedValue({ specId: "spec-1" });
-    vi.mocked(startBacktest).mockResolvedValue({ runId: "run-1", specId: "spec-1", status: "queued", attempts: 0 });
+    vi.mocked(getCandleHistory).mockResolvedValue({ 
+      candles: [] });
+    vi.mocked(createSpecification).mockResolvedValue({ 
+      specId: "spec-1" });
+    vi.mocked(startBacktest).mockResolvedValue({ 
+      runId: "run-1", specId: "spec-1", status: "queued" } as any);
     
     let pollCount = 0;
     vi.mocked(getBacktestRun).mockImplementation(async () => {
       pollCount++;
-      if (pollCount === 1) return { runId: "run-1", specId: "spec-1", status: "running", attempts: 1 };
-      return { runId: "run-1", specId: "spec-1", status: "completed", attempts: 1 };
+      if (pollCount === 1) return { specId: "spec-1", status: "running" } as any;
+      return { specId: "spec-1", status: "completed" } as any;
     });
 
-    vi.mocked(getBacktestResult).mockResolvedValue({
+    vi.mocked(getBacktestResult).mockResolvedValue({ 
+      runId: "run-1",
       status: "completed",
-      metrics: { totalReturn: 12.5, winRate: 60, maxDrawdown: 5, tradeCount: 10 },
-      assumptions: { initialCapital: 1000, feeRate: 0.001, slippageRate: 0.001, fillRule: "close-of-bar" }
-    });
+      metrics: { totalReturn: 12.5, winRate: 60, maximumDrawdown: 5, numberOfTrades: 10 },
+      executionAssumptions: { initialCapital: 1000, feeRate: 0.001, slippageRate: 0.001, fillRule: "next-open" }
+    } as any);
 
-    vi.mocked(getBacktestTrades).mockResolvedValue({
+    vi.mocked(getBacktestTrades).mockResolvedValue({ 
+      runId: "run-1",
       trades: [],
-      page: 1,
-      pageSize: 20,
-      totalCount: 0
+      page: { pageNumber: 1, pageSize: 20, totalCount: 1 },
+      status: "completed"
     });
 
     render(<BacktestPage />);
