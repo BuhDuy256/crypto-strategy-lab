@@ -23,6 +23,17 @@ export type {
   MetricSetDefinition,
   MetricSetIdentity
 } from "./domain/evaluator.js";
+export { WeightedReturnDrawdownPolicy } from "./domain/weighted-return-drawdown-policy.js";
+export { RankingPolicyRegistry } from "./application/ranking-policy-registry.js";
+export type { RankingPolicyRef } from "./application/ranking-policy-registry.js";
+export { createBuiltInRankingPolicyRegistry } from "./application/built-in-ranking-policy-registry.js";
+export type {
+  RankingPolicy,
+  RankingPolicyDescriptor,
+  RankingInput,
+  RankedResult,
+  MetricDirection
+} from "./domain/ranking-policy.js";
 export type {
   DraftExperimentSpecification,
   ExecutionModelConfiguration,

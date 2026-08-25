@@ -19,6 +19,8 @@ import { PostgresExperimentSpecificationStore } from "./infrastructure/postgres-
 import { PostgresBacktestRunStore } from "./infrastructure/postgres-backtest-run-store.js";
 import { BacktestResultQuery } from "./application/backtest-result-query.js";
 import { PostgresBacktestResultQuery } from "./infrastructure/postgres-backtest-result-query.js";
+import { RankingPolicyRegistry } from "./application/ranking-policy-registry.js";
+import { createBuiltInRankingPolicyRegistry } from "./application/built-in-ranking-policy-registry.js";
 
 export const EXPERIMENT_DATABASE_POOL = Symbol("EXPERIMENT_DATABASE_POOL");
 
@@ -67,6 +69,10 @@ class ExperimentDatabaseLifecycle implements OnApplicationShutdown {
       inject: [EXPERIMENT_DATABASE_POOL],
       useFactory: (pool: Pool) => new PostgresBacktestResultQuery(pool)
     },
+    {
+      provide: RankingPolicyRegistry,
+      useFactory: createBuiltInRankingPolicyRegistry
+    },
     ExperimentDatabaseLifecycle
   ],
   exports: [
@@ -74,7 +80,8 @@ class ExperimentDatabaseLifecycle implements OnApplicationShutdown {
     PostgresBacktestRunStore,
     ExperimentSpecificationService,
     BacktestRunService,
-    BacktestResultQuery
+    BacktestResultQuery,
+    RankingPolicyRegistry
   ]
 })
 export class ExperimentModule {}

@@ -878,3 +878,98 @@ avoiding duplication no longer applies; the decision below replaces it.
 - `STRAT-06` is `DONE`; `STRAT-07` is promoted to `READY`. `SEARCH-03` is `BLOCKED`
   on the ranking-weights human decision. Committed at the slice boundary on
   `feat/v3-automated-discovery`; not pushed.
+
+### 2026-08-25 - V3 - STRAT-07
+
+**Decisions**
+
+- The seeded random source is a new `platform/seeded-random.ts` (mulberry32, with
+  string seeds folded through FNV-1a). It is the only source of randomness the
+  generator draws from, which is what makes a run reproducible across processes.
+- `StrategyGenerator.generate(request)` returns a lazy `Iterable<CandidateStrategy>`.
+  The generator proposes candidates only; the caller decides how many to pull and
+  when to stop, per the slice constraint. The search coordinator (SEARCH-01) will
+  own count and stop policy.
+- Duplicate handling (criterion 5): duplicates are avoided. A candidate whose
+  content hash was already emitted is skipped, and the sequence ends once the
+  generator sees `maxConsecutiveDuplicates` (default 100, a generator config field)
+  already-seen candidates in a row. This bounds a small search space cleanly and
+  stays deterministic.
+- The generator emits a generic combination-policy configuration (one weight per
+  component plus a threshold) rather than branching per policy. Weighted-score
+  consumes both; majority-vote ignores them. This keeps the generator free of any
+  per-policy knowledge.
+- Parameters are drawn within the strategy's own schema bounds, or a search-space
+  `parameterRanges` override, and fall back to the schema default when a numeric
+  parameter has no usable upper bound. Every emitted candidate is validated through
+  the registry before it leaves the generator (criterion 1).
+- A `parameterRanges` override may only narrow within a strategy's own schema
+  bounds, never widen past them: a wider range would draw values the strategy's
+  own validation rejects. Overrides are checked eagerly at the top of `generate()`
+  (`GENERATOR_PARAMETER_RANGE`), so a bad range is a clear configuration error, not
+  a mid-sequence crash. Numeric params with a minimum but no maximum still do not
+  vary without an explicit override; that is an accepted consequence of the search
+  space being explicit configuration, not a defect.
+- Generated composites use a fixed placeholder definition id; a candidate's identity
+  is its content hash, not a composite id, and persistence is out of scope here.
+
+**Validation**
+
+- `seeded-random.test.ts` (10), `random-strategy-generator.test.ts` (9),
+  `strategy-generator-registry.test.ts` (6, incl. throwaway-generator rehearsal for
+  `PROOF-REPLACE-001`), `generator.controller.test.ts` (1), and
+  `random-strategy-generator-cross-process.test.ts` (1: identical sequence from a
+  separate `node --import tsx` process, criterion 2). Boundary test still clean;
+  typecheck green across all three packages.
+- Full suite at end: 249/253. The same 4 pre-existing environment-sensitive V1 E2E
+  fail (`backtest-runner-lifecycle`, `backtest-result-query`); none touch strategy
+  or generator code.
+- Two-axis `code-review` is clean. It raised an unsafe `as unknown as` cast in the
+  catalog controller (replaced with a field-by-field schema mapper), an inline
+  re-declaration of `GeneratorProvenance` (now imported), and the `parameterRanges`
+  widen contradiction above (fixed to narrow-only with eager validation and tests);
+  the re-review confirmed no remaining finding.
+
+**Ending state**
+
+- `STRAT-07` is `DONE`. No V3 slice is `READY`: `SEARCH-01` depends on `SEARCH-03`,
+  which is `BLOCKED` on the ranking-weights and tie-break human decision. V3 needs
+  that decision before search work can continue.
+
+### 2026-08-25 - V3 - SEARCH-03
+
+**Decisions**
+
+- The Project Owner supplied the V1 ranking policy, unblocking `SEARCH-03`. Policy
+  `weighted-return-drawdown@1.0.0`:
+  - `score = weights.totalReturn * totalReturn + weights.maximumDrawdown * maximumDrawdown`,
+    with the accepted config `weights = { totalReturn: +1.0, maximumDrawdown: -1.0 }`.
+  - Gate: a candidate with `numberOfTrades < minTrades` (accepted `minTrades = 5`) is
+    ineligible; its score is `-Infinity` and it cannot enter the Top-K.
+  - Win rate is not part of the score; it is used only in the tie-break.
+  - Tie-break, total and deterministic: score desc, maximumDrawdown asc, totalReturn
+    desc, winRate desc, numberOfTrades desc, contentHash asc.
+- Metric directions are declared explicitly on the policy (`metricDirections`, AC6)
+  rather than implied by a weight's sign. Weights and `minTrades` are configuration
+  carried on the frozen specification and recorded on every ranked result, so a
+  change is a new recorded version and never reinterprets old results.
+- The policy is pure (Experiment domain), mirroring the evaluator and combination
+  policies; the `RankingPolicyRegistry` (application) mirrors the strategy and
+  policy registries. The projection that stores the ranking is `SEARCH-04`, out of
+  scope here.
+
+**Validation**
+
+- `weighted-return-drawdown-policy.test.ts` (14: hand-checked score, trades gate,
+  win-rate-not-in-score, provenance recorded, explicit directions, each tie-break
+  level, eligible-before-gated, strict total order under sort, and config/metric
+  validation) and `ranking-policy-registry.test.ts` (6: list/resolve/duplicate,
+  two coexisting versions each keeping their own, second implementation with no
+  consumer change). Boundary test clean; typecheck green across all three packages.
+- Full suite at end: 273/276. The same 3 pre-existing environment-sensitive V1 E2E
+  fail (`backtest-runner-lifecycle`, `backtest-result-query`); none touch ranking code.
+
+**Ending state**
+
+- `SEARCH-03` is `DONE`; `SEARCH-01` (search coordinator) is promoted to `READY` now
+  that `STRAT-07`, `EXP-05`, and `SEARCH-03` are all `DONE`.
