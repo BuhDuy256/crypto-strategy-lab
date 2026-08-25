@@ -135,7 +135,7 @@ export function BacktestPage() {
           initialCapital: 1000,
           feeRate: 0.001,
           slippageRate: 0.001,
-          signalTiming: "close-of-bar", fillRule: "next-open", maxConcurrentPositions: 1,
+          signalTiming: "close-of-bar", 
           leverage: 1,
           positionSizing: "available-equity",
           allowedDirections: ["long", "short"],
@@ -202,23 +202,23 @@ export function BacktestPage() {
           <div className="metrics">
             <div>Total Return: {result.metrics.totalReturn}%</div>
             <div>Win Rate: {result.metrics.winRate}%</div>
-            <div>Max Drawdown: {result.metrics.maxDrawdown}%</div>
-            <div>Trades: {result.metrics.tradeCount}</div>
+            <div>Max Drawdown: {result.metrics.maximumDrawdown}%</div>
+            <div>Trades: {result.metrics.numberOfTrades}</div>
           </div>
           
           <div className="assumptions-panel">
             <h3>Execution Assumptions</h3>
             <ul>
-              <li>Initial Capital: {result.assumptions.initialCapital}</li>
-              <li>Fee Rate: {result.assumptions.feeRate}</li>
-              <li>Slippage Rate: {result.assumptions.slippageRate}</li>
-              <li>Fill Rule: {result.assumptions.fillRule}</li>
+              <li>Initial Capital: {result.executionAssumptions.initialCapital}</li>
+              <li>Fee Rate: {result.executionAssumptions.feeRate}</li>
+              <li>Slippage Rate: {result.executionAssumptions.slippageRate}</li>
+              <li>Fill Rule: {result.executionAssumptions.fillRule}</li>
             </ul>
           </div>
 
           <div className="trades-table">
             <h3>Trades (Page {page})</h3>
-            {tradesResponse?.trades.length === 0 ? (
+            {(tradesResponse as any)?.trades.length === 0 ? (
               <p>No trades executed.</p>
             ) : (
               <table>
@@ -235,7 +235,7 @@ export function BacktestPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {tradesResponse?.trades.map((t, i) => (
+                  {(tradesResponse as any)?.trades.map((t: any, i: number) => (
                     <tr key={i}>
                       <td>{new Date(t.entryTime).toISOString()}</td>
                       <td>{t.entryPrice}</td>
@@ -252,8 +252,8 @@ export function BacktestPage() {
             )}
             <div className="pagination">
               <button disabled={page === 1} onClick={() => setPage(p => p - 1)}>Prev</button>
-              <span>{page} / {tradesResponse ? Math.ceil(tradesResponse.totalCount / 20) : 1}</span>
-              <button disabled={!tradesResponse || page >= Math.ceil(tradesResponse.totalCount / 20)} onClick={() => setPage(p => p + 1)}>Next</button>
+              <span>{page} / {tradesResponse ? Math.ceil((tradesResponse as any)?.page?.totalCount / 20) : 1}</span>
+              <button disabled={!tradesResponse || page >= Math.ceil((tradesResponse as any)?.page?.totalCount / 20)} onClick={() => setPage(p => p + 1)}>Next</button>
             </div>
           </div>
         </div>
@@ -264,7 +264,7 @@ export function BacktestPage() {
           <strong>BTCUSDT</strong>
           <span>Binance · {timeframe} · latest {CANDLE_COUNT} closed candles</span>
         </div>
-        <CandlestickChart state={chartState} candles={candles} annotations={result?.annotations || []} trades={tradesResponse?.trades || []} selectedTradeId={selectedTradeId} />
+        <CandlestickChart state={chartState} candles={candles} annotations={(result as any)?.annotations || []} trades={(tradesResponse as any)?.trades || []} selectedTradeId={selectedTradeId} />
       </div>
     </section>
   );

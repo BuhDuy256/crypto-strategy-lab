@@ -83,7 +83,8 @@ export function relativeStrengthIndex(
   let avgLoss = 0;
 
   for (let i = 1; i <= period; i++) {
-    const change = values[i] - values[i - 1];
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const change = values[i]! - values[i - 1]!;
     if (change > 0) {
       avgGain += change;
     } else {
@@ -105,7 +106,8 @@ export function relativeStrengthIndex(
   pushRsi();
 
   for (let i = period + 1; i < values.length; i++) {
-    const change = values[i] - values[i - 1];
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const change = values[i]! - values[i - 1]!;
     const gain = change > 0 ? change : 0;
     const loss = change < 0 ? -change : 0;
 

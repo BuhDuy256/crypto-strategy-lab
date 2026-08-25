@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { downsampleAnnotations } from "./annotation-downsampler.js";
-import type { AnnotationPoint, LineMarkerAnnotation } from "../../strategy/index.js";
+import type { AnnotationPoint, LineAnnotation, MarkerAnnotation } from "../../strategy/index.js";
 
 describe("annotation downsampler", () => {
   it("keeps short series intact", () => {

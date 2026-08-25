@@ -41,7 +41,7 @@ export class StrategyController {
   @HttpCode(201)
   async createComposite(@Body() req: CreateCompositeRequest): Promise<CreateCompositeResponse> {
     try {
-      const def = await this.compositeService.save(req.name, req.description, req.components, req.policy);
+      const def = await this.compositeService.save(req.name, req.description, req.components as any, req.policy); // eslint-disable-line @typescript-eslint/no-explicit-any
       return { id: def.id, version: def.version };
     } catch (err: any) {
       throw new BadRequestException(err.message);

@@ -26,6 +26,7 @@ function generateDummyCandles(count: number): ApiCandle[] {
     const volume = Math.random() * 100;
     
     candles.push({
+      provider: "binance", symbol: "BTCUSDT", timeframe: "5m", closed: true, revision: 1,
       openTime: time * 1000,
       closeTime: (time + interval - 1) * 1000,
       open, high, low, close, volume,
