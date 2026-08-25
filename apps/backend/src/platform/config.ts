@@ -19,6 +19,9 @@ export interface PostgresConfig {
 export interface AppConfig {
   readonly postgres: PostgresConfig;
   readonly backtestRunner: { readonly concurrency: number };
+  // Fixed Top-K size of every leaderboard projection. A project-wide value, not a
+  // per-experiment field, so a rebuild always uses the same K.
+  readonly leaderboard: { readonly topK: number };
 }
 
 type RequiredEnvVar =
@@ -66,6 +69,10 @@ export function loadConfig(env: EnvSource = process.env): AppConfig {
   if (!Number.isInteger(concurrency) || concurrency <= 0) {
     throw new Error("Environment variable \"BACKTEST_RUNNER_CONCURRENCY\" must be a positive integer.");
   }
+  const leaderboardTopK = Number(env.LEADERBOARD_TOP_K ?? "10");
+  if (!Number.isInteger(leaderboardTopK) || leaderboardTopK <= 0) {
+    throw new Error("Environment variable \"LEADERBOARD_TOP_K\" must be a positive integer.");
+  }
 
   return {
     postgres: {
@@ -75,6 +82,7 @@ export function loadConfig(env: EnvSource = process.env): AppConfig {
       password,
       database
     },
-    backtestRunner: { concurrency }
+    backtestRunner: { concurrency },
+    leaderboard: { topK: leaderboardTopK }
   };
 }

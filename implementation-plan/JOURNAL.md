@@ -1123,3 +1123,73 @@ avoiding duplication no longer applies; the decision below replaces it.
 - `SEARCH-02` is `DONE`. No new slice becomes `READY`: `UI-03` still waits on
   `SEARCH-05`, and `SEARCH-04` was already `READY`, so it is the only READY V3 slice.
   Not committed; Git actions await explicit owner request.
+
+### 2026-08-26 - V3 - SEARCH-04
+
+**Decisions**
+
+- Leaderboard size (K) is a fixed project configuration value, `LEADERBOARD_TOP_K`
+  (default 10), not a per-experiment specification field. Owner decision. It keeps
+  the SEARCH-01 `SearchConfiguration` contract untouched and, being fixed, a rebuild
+  always uses the same K and reproduces the same content. The default lives only in
+  `config.ts`; the projector requires `topK` explicitly.
+- The projector is built decoupled, "as if event-driven": its public `apply` takes
+  one evaluated result and nothing caller- or transaction-specific (AC8), owns its
+  own serialized transaction, and is idempotent + rebuildable. In V3 it is called
+  synchronously from the acceptance path (`DurableBacktestResultAcceptor`), after the
+  authoritative result commits, best-effort: a projection failure is logged and never
+  un-accepts the result, mirroring how a V6 event consumer behaves. A missed update
+  is recovered by the `leaderboard:rebuild` CLI. This resolves the projection-seam
+  contradiction (see debt) in favour of the plan's repeated, dominant instruction
+  ("write it as if event-driven; input is a result, not a transaction handle; if V6's
+  EXP-09 has to modify it, the V3 seam was wrong").
+- Idempotency and staleness are keyed by result identity and aggregate version (the
+  backtest attempt number). A per-candidate applied-version ledger
+  (`leaderboard_applied_versions`) records the highest version applied per candidate
+  regardless of Top-K membership, so a duplicate or out-of-order result is ignored
+  even for a candidate displaced from the board. Chosen over an on-board-only guard
+  (which the first cut had) because this slice exists to build the V6 duplicate-safety
+  that `PROOF-DUP-001` rehearses, and the on-board-only guard left a hole for
+  displaced candidates.
+- Writes are serialized per leaderboard with `pg_advisory_xact_lock(hashtext(id))`,
+  the concrete answer to the rank-race ADR-005 names. The leaderboard identity is the
+  base search `spec_id`; membership (which leaderboard a result belongs to) is
+  resolved from the run's `search_candidates` row, so a plain single-run backtest,
+  which has no candidate row, is simply ignored by the projector.
+
+**Deviations / debt**
+
+- Projection-seam wording vs AC8. `04-search-and-leaderboard.md` says the projection
+  is updated "synchronously, inside the same transaction that accepts the result",
+  while AC8 and the "write it as if event-driven" constraint forbid sharing the
+  acceptance transaction. Implemented per AC8 (separate, projector-owned transaction).
+  The consequence is a V3 durability gap: a crash between the result commit and the
+  projection leaves the board stale until a manual `leaderboard:rebuild`. Accepted:
+  V3 has no outbox yet; the gap closes when V6's outbox/consumer (`EXP-08`/`EXP-09`)
+  drive the same projector. Flagged to the owner to confirm the reading governs.
+
+**Validation**
+
+- `leaderboard-projector.test.ts` (9 unit, fake store: rank order, enter+displace,
+  worse-than-last no-op, duplicate, stale on-board, stale displaced-candidate,
+  ineligible gate, non-candidate ignored, rebuild equivalence) and
+  `postgres-leaderboard-projection-store.test.ts` (8 PostgreSQL: enter+displace,
+  reject, duplicate hash-equality, stale hash-equality, displaced-stale, rebuild
+  content+hash equivalence, result/spec link resolution, concurrent updates keep a
+  valid contiguous Top-K). `backtest-result-acceptor.test.ts` (+2: projection hook
+  called with the evaluated result; a projection failure keeps the accepted result).
+  `config.test.ts` (+1: `LEADERBOARD_TOP_K`), `database.test.ts` updated for the two
+  new tables.
+- Full suite 327/327 in 61 files (was 307 at SEARCH-02). Typecheck green across all
+  three packages; changed files lint clean; architecture boundary test clean.
+- Two-axis `code-review` (fixed point = HEAD, SEARCH-02): no hard standards violation.
+  Applied fixes: error message names the real knob `LEADERBOARD_TOP_K`; removed the
+  speculative `DEFAULT_LEADERBOARD_SIZE` default (topK now required); extended the
+  stale guard to displaced candidates via the applied-version ledger. The projection
+  seam question was raised and is recorded as debt above.
+
+**Ending state**
+
+- `SEARCH-04` is `DONE`; `SEARCH-05` is promoted to `READY` (`SEARCH-04` and `EXP-06`
+  are both `DONE`). `UI-03` remains `TODO` behind `SEARCH-05`. Not committed; Git
+  actions await explicit owner request.

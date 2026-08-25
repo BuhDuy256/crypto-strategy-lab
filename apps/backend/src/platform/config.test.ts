@@ -21,7 +21,8 @@ describe("loadConfig", () => {
         password: "local-dev-password",
         database: "crypto_strategy_lab"
       },
-      backtestRunner: { concurrency: 1 }
+      backtestRunner: { concurrency: 1 },
+      leaderboard: { topK: 10 }
     });
   });
 
@@ -51,5 +52,12 @@ describe("loadConfig", () => {
       .toEqual({ concurrency: 2 });
     expect(() => loadConfig({ ...VALID_ENV, BACKTEST_RUNNER_CONCURRENCY: "0" }))
       .toThrow(/BACKTEST_RUNNER_CONCURRENCY/);
+  });
+
+  it("loads and validates the leaderboard size", () => {
+    expect(loadConfig({ ...VALID_ENV, LEADERBOARD_TOP_K: "25" }).leaderboard)
+      .toEqual({ topK: 25 });
+    expect(() => loadConfig({ ...VALID_ENV, LEADERBOARD_TOP_K: "0" }))
+      .toThrow(/LEADERBOARD_TOP_K/);
   });
 });

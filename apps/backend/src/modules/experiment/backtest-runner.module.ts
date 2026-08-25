@@ -10,8 +10,11 @@ import { DurableBacktestResultAcceptor } from "./application/backtest-result-acc
 import { BacktestRunnerRuntime } from "./application/backtest-runner-runtime.js";
 import { BacktestRunnerService } from "./application/backtest-runner-service.js";
 import { ExperimentSpecificationService } from "./application/experiment-specification-service.js";
+import { LeaderboardProjector } from "./application/leaderboard-projector.js";
+import { RankingPolicyRegistry } from "./application/ranking-policy-registry.js";
 import { EXPERIMENT_DATABASE_POOL, ExperimentModule } from "./experiment.module.js";
 import { PostgresBacktestRunStore } from "./infrastructure/postgres-backtest-run-store.js";
+import { PostgresLeaderboardProjectionStore } from "./infrastructure/postgres-leaderboard-projection-store.js";
 import { PostgresResultAcceptanceStore } from "./infrastructure/postgres-result-acceptance-store.js";
 import { WorkerThreadBacktestComputation } from "./infrastructure/worker-thread-backtest-computation.js";
 
@@ -24,9 +27,24 @@ import { WorkerThreadBacktestComputation } from "./infrastructure/worker-thread-
       useFactory: (pool: Pool) => new PostgresResultAcceptanceStore(pool)
     },
     {
+      provide: PostgresLeaderboardProjectionStore,
+      inject: [EXPERIMENT_DATABASE_POOL],
+      useFactory: (pool: Pool) => new PostgresLeaderboardProjectionStore(pool)
+    },
+    {
+      provide: LeaderboardProjector,
+      inject: [PostgresLeaderboardProjectionStore, ExperimentSpecificationService, RankingPolicyRegistry],
+      useFactory: (
+        store: PostgresLeaderboardProjectionStore,
+        specifications: ExperimentSpecificationService,
+        rankings: RankingPolicyRegistry
+      ) => new LeaderboardProjector(store, specifications, rankings, loadConfig().leaderboard.topK)
+    },
+    {
       provide: DurableBacktestResultAcceptor,
-      inject: [PostgresResultAcceptanceStore],
-      useFactory: (store: PostgresResultAcceptanceStore) => new DurableBacktestResultAcceptor(store)
+      inject: [PostgresResultAcceptanceStore, LeaderboardProjector],
+      useFactory: (store: PostgresResultAcceptanceStore, projection: LeaderboardProjector) =>
+        new DurableBacktestResultAcceptor(store, projection, new StructuredLogger("leaderboard-projection"))
     },
     {
       provide: WorkerThreadBacktestComputation,

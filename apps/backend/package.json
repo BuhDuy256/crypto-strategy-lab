@@ -8,6 +8,7 @@
     "start:api": "tsx src/main.api.ts",
     "start:backtest-runner": "tsx src/main.backtest-runner.ts",
     "market:backfill": "tsx src/modules/market/infrastructure/run-market-backfill.ts",
+    "leaderboard:rebuild": "tsx src/modules/experiment/infrastructure/run-leaderboard-rebuild.ts",
     "migrate": "tsx src/migrate/run-migrations.ts",
     "migrate:reset": "tsx src/migrate/reset-database.ts"
   },

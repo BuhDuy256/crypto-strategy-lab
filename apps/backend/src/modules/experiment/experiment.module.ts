@@ -22,7 +22,9 @@ import { PostgresBacktestResultQuery } from "./infrastructure/postgres-backtest-
 import { RankingPolicyRegistry } from "./application/ranking-policy-registry.js";
 import { createBuiltInRankingPolicyRegistry } from "./application/built-in-ranking-policy-registry.js";
 import { PostgresSearchRunStore } from "./infrastructure/postgres-search-run-store.js";
+import { PostgresLeaderboardProjectionStore } from "./infrastructure/postgres-leaderboard-projection-store.js";
 import { SearchCoordinator } from "./application/search-coordinator.js";
+import { LeaderboardProjector } from "./application/leaderboard-projector.js";
 
 export const EXPERIMENT_DATABASE_POOL = Symbol("EXPERIMENT_DATABASE_POOL");
 
@@ -81,6 +83,20 @@ class ExperimentDatabaseLifecycle implements OnApplicationShutdown {
       useFactory: (pool: Pool) => new PostgresSearchRunStore(pool)
     },
     {
+      provide: PostgresLeaderboardProjectionStore,
+      inject: [EXPERIMENT_DATABASE_POOL],
+      useFactory: (pool: Pool) => new PostgresLeaderboardProjectionStore(pool)
+    },
+    {
+      provide: LeaderboardProjector,
+      inject: [PostgresLeaderboardProjectionStore, ExperimentSpecificationService, RankingPolicyRegistry],
+      useFactory: (
+        store: PostgresLeaderboardProjectionStore,
+        specifications: ExperimentSpecificationService,
+        rankings: RankingPolicyRegistry
+      ) => new LeaderboardProjector(store, specifications, rankings, loadConfig().leaderboard.topK)
+    },
+    {
       provide: SearchCoordinator,
       inject: [
         ExperimentSpecificationService,
@@ -106,7 +122,8 @@ class ExperimentDatabaseLifecycle implements OnApplicationShutdown {
     BacktestRunService,
     BacktestResultQuery,
     RankingPolicyRegistry,
-    SearchCoordinator
+    SearchCoordinator,
+    LeaderboardProjector
   ]
 })
 export class ExperimentModule {}

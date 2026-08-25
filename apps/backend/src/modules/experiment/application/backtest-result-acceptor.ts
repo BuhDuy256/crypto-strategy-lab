@@ -1,7 +1,20 @@
 // Atomic result-acceptance contract and complete reproducibility checklist.
 
 import type { BacktestRunnerOutcome, BacktestResultAcceptor } from "./backtest-runner-service.js";
+import type { EvaluatedResultRef } from "./leaderboard-projector.js";
 import { BACKTEST_ENGINE } from "../domain/backtester.js";
+
+// The leaderboard projection, seen from the acceptance path. In V3 acceptance
+// calls it directly and synchronously; in V6 an event consumer will call the same
+// projector. Kept as a narrow port so the acceptor does not depend on the
+// projector's concrete class.
+export interface LeaderboardProjectionSink {
+  apply(result: EvaluatedResultRef): Promise<unknown>;
+}
+
+export interface ResultAcceptanceLogger {
+  error(message: string, context?: string): void;
+}
 
 export interface ProvenanceChecklist {
   readonly specification: { readonly status: "recorded"; readonly id: string; readonly hash: string };
@@ -35,7 +48,11 @@ export interface ResultAcceptanceStore {
 }
 
 export class DurableBacktestResultAcceptor implements BacktestResultAcceptor {
-  constructor(private readonly store: ResultAcceptanceStore) {}
+  constructor(
+    private readonly store: ResultAcceptanceStore,
+    private readonly projection?: LeaderboardProjectionSink,
+    private readonly logger?: ResultAcceptanceLogger
+  ) {}
 
   accept(outcome: BacktestRunnerOutcome): Promise<void> {
     const provenance = outcome.specification.content.provenance;
@@ -83,6 +100,27 @@ export class DurableBacktestResultAcceptor implements BacktestResultAcceptor {
         value: { number: outcome.claim.attempt, runnerId: outcome.claim.runnerId }
       }
     };
-    return this.store.accept(outcome, checklist).then(() => undefined);
+    return this.store.accept(outcome, checklist).then((accepted) => this.project(accepted, outcome));
+  }
+
+  // Update the derived leaderboard synchronously, right after the authoritative
+  // result is committed. The projection is rebuildable, so a projection failure
+  // must never un-accept the result: this mirrors the V6 event-consumer path,
+  // where a consumer error does not roll back the committed result. A missed
+  // update is recovered by the rebuild command. Every backtest passes through
+  // here; the projector itself ignores a result that is not a search candidate.
+  private async project(accepted: AcceptedBacktestResult, outcome: BacktestRunnerOutcome): Promise<void> {
+    if (this.projection === undefined) return;
+    try {
+      await this.projection.apply({
+        resultId: accepted.resultId,
+        runId: accepted.runId,
+        aggregateVersion: outcome.claim.attempt,
+        metrics: outcome.evaluation.values
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "leaderboard projection failed";
+      this.logger?.error(message, `run=${outcome.job.runId}`);
+    }
   }
 }

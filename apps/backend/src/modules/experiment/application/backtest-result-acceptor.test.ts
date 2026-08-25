@@ -54,4 +54,33 @@ describe("DurableBacktestResultAcceptor", () => {
     expect(() => new DurableBacktestResultAcceptor({ accept: vi.fn() } as never).accept(changed))
       .toThrow("BACKTEST_PROVENANCE_MISMATCH: engine");
   });
+
+  const projectable = {
+    ...outcome,
+    job: { runId: "run-1" },
+    claim: { attempt: 3, runnerId: "runner" },
+    evaluation: { metricSet: { id: "mvp-metrics", version: "1.0.0" }, values: { totalReturn: 0.2 } }
+  } as unknown as BacktestRunnerOutcome;
+
+  it("hands the accepted result to the leaderboard projection", async () => {
+    const store = { accept: vi.fn(async () => ({ resultId: "result-1", runId: "run-1" })) };
+    const projection = { apply: vi.fn(async () => ({ applied: false, reason: "unchanged" })) };
+    await new DurableBacktestResultAcceptor(store as never, projection).accept(projectable);
+    expect(projection.apply).toHaveBeenCalledWith({
+      resultId: "result-1",
+      runId: "run-1",
+      aggregateVersion: 3,
+      metrics: { totalReturn: 0.2 }
+    });
+  });
+
+  it("keeps an accepted result even when the projection fails", async () => {
+    const store = { accept: vi.fn(async () => ({ resultId: "result-1", runId: "run-1" })) };
+    const projection = { apply: vi.fn(async () => { throw new Error("projection down"); }) };
+    const logger = { error: vi.fn() };
+    await expect(
+      new DurableBacktestResultAcceptor(store as never, projection, logger).accept(projectable)
+    ).resolves.toBeUndefined();
+    expect(logger.error).toHaveBeenCalledOnce();
+  });
 });

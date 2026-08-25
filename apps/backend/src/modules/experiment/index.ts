@@ -33,6 +33,12 @@ export type {
 } from "./application/search-coordinator.js";
 export { SearchExperimentHost } from "./application/search-experiment-host.js";
 export type { SearchHostLogger } from "./application/search-experiment-host.js";
+export { LeaderboardProjector } from "./application/leaderboard-projector.js";
+export type {
+  EvaluatedResultRef,
+  LeaderboardEntry,
+  ProjectionApplication
+} from "./application/leaderboard-projector.js";
 export type { SearchConfiguration, SearchStopConditions } from "./domain/search-specification.js";
 export { WeightedReturnDrawdownPolicy } from "./domain/weighted-return-drawdown-policy.js";
 export { RankingPolicyRegistry } from "./application/ranking-policy-registry.js";
