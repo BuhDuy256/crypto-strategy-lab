@@ -973,3 +973,73 @@ avoiding duplication no longer applies; the decision below replaces it.
 
 - `SEARCH-03` is `DONE`; `SEARCH-01` (search coordinator) is promoted to `READY` now
   that `STRAT-07`, `EXP-05`, and `SEARCH-03` are all `DONE`.
+
+### 2026-08-25 - V3 - SEARCH-01
+
+**Decisions**
+
+- Owner decision gate accepted two choices. (1) The coordinator loop runs **in the
+  API process** (not a new process): `POST /experiments/:specId/search/start` records
+  durable intent and launches a background loop; on API start `SearchExperimentHost`
+  resumes every experiment still marked `running`, which is what makes a coordinator
+  restart recover. (2) Each candidate is backtested by **deriving a per-candidate
+  frozen specification** (clone the base spec's dataset, execution, and metric set;
+  replace the strategy with the candidate's) and submitting it through the existing
+  `BacktestExecutor` unchanged. V3's search space is single-strategy; running a
+  **composite** candidate needs the computation path to resolve composites and is out
+  of this slice's change surface, so `submit()` rejects a composite candidate.
+- **AC1 "freezes its specification" interpretation.** `start()` requires the base
+  experiment already frozen and rejects a draft, rather than freezing inside `start`.
+  This is deliberate: each derived per-candidate spec reuses the base's
+  `content.provenance`, and the runner's result acceptor rejects a result whose
+  provenance does not match the runner's runtime identity. Freezing inside `start`
+  with placeholder provenance (as `SpecificationController` does for the single-run UI
+  path) would make every search backtest fail acceptance. So the base must be frozen
+  with runner-matching provenance before start; AC1 holds across the create-frozen +
+  start flow. Supplying that provenance from the Discovery/demo path is a later
+  concern.
+- The **append-only candidate ledger** (`experiment.search_candidates`, one row per
+  candidate, immutable by trigger) is the idempotency record. A candidate row is
+  written last, after its derived spec and run exist, so it is complete and never
+  edited. Run submission is idempotent by its content-derived key, so a candidate
+  replayed after a crash returns the same run instead of enqueuing a duplicate.
+- **Restart resume** is deterministic: the generator sequence is a function of the
+  seed, so a fresh coordinator rebuilds the iterator and fast-forwards past the
+  already-recorded prefix (its count), then continues. No duplicated candidates, no
+  lost progress.
+- **No-improvement** folds the contiguous terminal prefix of candidate outcomes in
+  sequence order into a durable tracker (best score via the `SEARCH-03` policy,
+  consecutive-no-improvement count). A still-running earlier candidate blocks the ones
+  behind it, keeping the iteration order stable. Stop reasons are `max-candidates`,
+  `max-duration`, `no-improvement`, plus `exhausted` when the generator's unique
+  sequence ends. Stop conditions and `maxInFlight` are configuration on the frozen
+  specification (additive `search` field), never hidden defaults.
+
+**Validation**
+
+- `search-coordinator.test.ts` (8 PostgreSQL integration cases: reject second start,
+  submit + progress snapshot, restart resume with no duplicates against an independent
+  generator oracle, backpressure bound + release, each of the three stop conditions,
+  and append-only enforcement) and `search.controller.test.ts` (4: start snapshot,
+  409 on re-start, 404 on unknown, stopped-run progress). `database.test.ts` updated
+  for the two new experiment tables.
+- Full suite green: 288/288 in 58 files, including the two V1 runner/result E2E that
+  are environment-sensitive but passed on this environment. Typecheck green across all
+  three packages; architecture boundary test still clean. Lint of the new files is
+  clean.
+
+**Problems worth remembering**
+
+- Deriving a per-candidate spec re-resolves the dataset once per candidate through the
+  spec-freeze path. Correct and fine for V3's small demo; if a large search makes this
+  costly, cache the resolved dataset per experiment or add a direct frozen-spec insert.
+- Pre-existing gates still red and untouched by this slice: 43 `apps/web` lint errors
+  in the V2 UI pages (`BacktestPage.tsx`, `StrategyEnginePage.tsx`), and 38 governance
+  issues (mostly broken legacy-doc references, plus the V2->V3 README/AGENTS version
+  mismatch and two missing TRACKING header fields). None involve SEARCH-01 files.
+
+**Ending state**
+
+- `SEARCH-01` is `DONE`. `SEARCH-02` and `SEARCH-04` are promoted to `READY`
+  (`SEARCH-05` and `UI-03` remain `TODO` behind them). Not committed; Git actions
+  await explicit owner request.

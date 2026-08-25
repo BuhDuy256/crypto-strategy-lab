@@ -482,3 +482,32 @@ export interface EvaluatePolicyRequest {
 export interface EvaluatePolicyResponse {
   readonly action: "buy" | "sell" | "hold";
 }
+
+export type SearchStopReason = "max-candidates" | "max-duration" | "no-improvement" | "exhausted";
+
+/**
+ * Progress snapshot for a search experiment. A complete snapshot, not a delta,
+ * so a later live-push realization can send the same shape.
+ * Must stay in sync with `apps/backend/src/modules/api/search.controller.ts`.
+ */
+export interface SearchProgressResponse {
+  readonly specId: string;
+  readonly status: "running" | "stopped";
+  readonly stopReason: SearchStopReason | null;
+  readonly generated: number;
+  readonly submitted: number;
+  readonly completed: number;
+  readonly failed: number;
+  readonly inFlight: number;
+}
+
+export function isSearchProgressResponse(value: unknown): value is SearchProgressResponse {
+  if (!isRecord(value)) return false;
+  const stopReasons = ["max-candidates", "max-duration", "no-improvement", "exhausted"];
+  return typeof value.specId === "string" &&
+    (value.status === "running" || value.status === "stopped") &&
+    (value.stopReason === null || stopReasons.includes(String(value.stopReason))) &&
+    Number.isSafeInteger(value.generated) && Number.isSafeInteger(value.submitted) &&
+    Number.isSafeInteger(value.completed) && Number.isSafeInteger(value.failed) &&
+    Number.isSafeInteger(value.inFlight);
+}

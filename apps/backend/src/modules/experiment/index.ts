@@ -23,6 +23,16 @@ export type {
   MetricSetDefinition,
   MetricSetIdentity
 } from "./domain/evaluator.js";
+export { SearchCoordinator } from "./application/search-coordinator.js";
+export type {
+  SearchProgress,
+  SearchRunState,
+  SearchStopReason,
+  TickOutcome
+} from "./application/search-coordinator.js";
+export { SearchExperimentHost } from "./application/search-experiment-host.js";
+export type { SearchHostLogger } from "./application/search-experiment-host.js";
+export type { SearchConfiguration, SearchStopConditions } from "./domain/search-specification.js";
 export { WeightedReturnDrawdownPolicy } from "./domain/weighted-return-drawdown-policy.js";
 export { RankingPolicyRegistry } from "./application/ranking-policy-registry.js";
 export type { RankingPolicyRef } from "./application/ranking-policy-registry.js";

@@ -10,7 +10,7 @@
 import { Inject, Module, type OnApplicationShutdown } from "@nestjs/common";
 import type { Pool } from "pg";
 import { DATASET_SERVICE, MarketModule, type DatasetService } from "../market/index.js";
-import { StrategyModule, StrategyRegistry } from "../strategy/index.js";
+import { StrategyModule, StrategyRegistry, StrategyGeneratorRegistry } from "../strategy/index.js";
 import { loadConfig } from "../../platform/config.js";
 import { createDatabasePool } from "../../platform/database.js";
 import { ExperimentSpecificationService } from "./application/experiment-specification-service.js";
@@ -21,6 +21,8 @@ import { BacktestResultQuery } from "./application/backtest-result-query.js";
 import { PostgresBacktestResultQuery } from "./infrastructure/postgres-backtest-result-query.js";
 import { RankingPolicyRegistry } from "./application/ranking-policy-registry.js";
 import { createBuiltInRankingPolicyRegistry } from "./application/built-in-ranking-policy-registry.js";
+import { PostgresSearchRunStore } from "./infrastructure/postgres-search-run-store.js";
+import { SearchCoordinator } from "./application/search-coordinator.js";
 
 export const EXPERIMENT_DATABASE_POOL = Symbol("EXPERIMENT_DATABASE_POOL");
 
@@ -73,6 +75,28 @@ class ExperimentDatabaseLifecycle implements OnApplicationShutdown {
       provide: RankingPolicyRegistry,
       useFactory: createBuiltInRankingPolicyRegistry
     },
+    {
+      provide: PostgresSearchRunStore,
+      inject: [EXPERIMENT_DATABASE_POOL],
+      useFactory: (pool: Pool) => new PostgresSearchRunStore(pool)
+    },
+    {
+      provide: SearchCoordinator,
+      inject: [
+        ExperimentSpecificationService,
+        BacktestRunService,
+        StrategyGeneratorRegistry,
+        RankingPolicyRegistry,
+        PostgresSearchRunStore
+      ],
+      useFactory: (
+        specifications: ExperimentSpecificationService,
+        runs: BacktestRunService,
+        generators: StrategyGeneratorRegistry,
+        rankings: RankingPolicyRegistry,
+        store: PostgresSearchRunStore
+      ) => new SearchCoordinator(specifications, runs, generators, rankings, store)
+    },
     ExperimentDatabaseLifecycle
   ],
   exports: [
@@ -81,7 +105,8 @@ class ExperimentDatabaseLifecycle implements OnApplicationShutdown {
     ExperimentSpecificationService,
     BacktestRunService,
     BacktestResultQuery,
-    RankingPolicyRegistry
+    RankingPolicyRegistry,
+    SearchCoordinator
   ]
 })
 export class ExperimentModule {}

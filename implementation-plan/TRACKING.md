@@ -22,7 +22,7 @@ true; keep conversation out of them.
 | Previous version | V2 - Extensible Strategy Engine: 7/7 slices `DONE`, code baseline green. NOT declared absolutely complete — some V2 completion items are deferred (see transition note). |
 | Last verified on | 2026-08-25 |
 | Last tag | None. No version tag exists yet. `v1.0-demo` and `v2.0-demo` are the user's to create; `v2.0-demo` is a deferred V2 completion item (see transition note). |
-| V3 slices | 8 (`DONE` 3, `READY` 1, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 4) |
+| V3 slices | 8 (`DONE` 4, `READY` 2, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 2) |
 | History | [`JOURNAL.md`](JOURNAL.md), section "V3 - Automated Discovery". The V2 section is still pending (deferred, see transition note). |
 
 ## V2 -> V3 transition (2026-08-25)
@@ -220,9 +220,9 @@ Demo contract: [`VERSIONS.md` V3](VERSIONS.md#v3---automated-discovery)
 | STRAT-06 | REQ | M | Candidate contract and canonical hashing | **DONE** | STRAT-04 | | [02](02-strategy-and-composition.md) |
 | STRAT-07 | REQ | M | Generator port, random search, generator catalog | **DONE** | STRAT-06 | | [02](02-strategy-and-composition.md) |
 | SEARCH-03 | REQ | S | Versioned ranking policy | **DONE** | EXP-03 | | [04](04-search-and-leaderboard.md) |
-| SEARCH-01 | REQ | L | Search coordinator and stop conditions | **READY** | STRAT-07, EXP-05, SEARCH-03 | | [04](04-search-and-leaderboard.md) |
-| SEARCH-02 | REQ | M | Durable pause, resume, cancel | TODO | SEARCH-01 | | [04](04-search-and-leaderboard.md) |
-| SEARCH-04 | REQ | M | Leaderboard projection | TODO | SEARCH-01, SEARCH-03 | | [04](04-search-and-leaderboard.md) |
+| SEARCH-01 | REQ | L | Search coordinator and stop conditions | **DONE** | STRAT-07, EXP-05, SEARCH-03 | | [04](04-search-and-leaderboard.md) |
+| SEARCH-02 | REQ | M | Durable pause, resume, cancel | **READY** | SEARCH-01 | | [04](04-search-and-leaderboard.md) |
+| SEARCH-04 | REQ | M | Leaderboard projection | **READY** | SEARCH-01, SEARCH-03 | | [04](04-search-and-leaderboard.md) |
 | SEARCH-05 | REQ | M | Experiment and leaderboard query surface | TODO | SEARCH-04, EXP-06 | | [04](04-search-and-leaderboard.md) |
 | UI-03 | REQ | L | Discovery page | TODO | SEARCH-05, SEARCH-02 | | [06](06-ui-and-demo-integration.md) |
 
