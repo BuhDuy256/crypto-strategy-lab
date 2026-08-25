@@ -18,23 +18,38 @@ true; keep conversation out of them.
 | Field | Value |
 |---|---|
 | Implementation status | `IN PROGRESS` |
-| Current target version | **V2 - Extensible Strategy Engine** |
-| Previous version | V1 - Backtesting Lab, DONE |
-| Last verified on | 2026-08-24 |
-| Last tag | None. No version tag exists yet; `v1.0-demo` is the user's to create once V1's Definition of Demoable passes. |
-| V2 slices | 7 (`DONE` 7, `READY` 0, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 0) |
-| History | [`JOURNAL.md`](JOURNAL.md), section "V2 - Extensible Strategy Engine" |
+| Current target version | **V3 - Automated Discovery** |
+| Previous version | V2 - Extensible Strategy Engine: 7/7 slices `DONE`, code baseline green. NOT declared absolutely complete — some V2 completion items are deferred (see transition note). |
+| Last verified on | 2026-08-25 |
+| Last tag | None. No version tag exists yet. `v1.0-demo` and `v2.0-demo` are the user's to create; `v2.0-demo` is a deferred V2 completion item (see transition note). |
+| V3 slices | 8 (`DONE` 1, `READY` 1, `IN_PROGRESS` 0, `BLOCKED` 1, `TODO` 5) |
+| History | [`JOURNAL.md`](JOURNAL.md), section "V3 - Automated Discovery". The V2 section is still pending (deferred, see transition note). |
 
-All six V1 setup slices (`SETUP-01` through `SETUP-06`) and `MKT-01` are `DONE`. The
-platform foundation exists: pnpm workspace, PostgreSQL topology, a NestJS API with the
-five module boundaries and structured logging, module-owned migrations, automated
-architecture boundary tests, a React SPA shell with a typed API client, and the
-normalized market-provider seam, the Binance historical adapter, and append-only
-candle persistence and snapshots, a typed candle vertical slice, and the Strategy
-contract/registry foundation, a registered SMA crossover strategy, a real BTCUSDT
-candlestick-and-volume chart, and immutable experiment specifications. No slice is
-`EXP-02` through `EXP-06` and `EXP-10` are complete. `EXP-11` and `UI-04` are ready. Provider replaceability has its first recorded
-architecture proof.
+## V2 -> V3 transition (2026-08-25)
+
+Target moved to V3 by the V3 owner. This is an explicit owner decision, not an agent
+action.
+
+Verified in code at commit `535d4e9` (clean working tree):
+
+- All 7 V2 slices (`STRAT-03`, `STRAT-04`, `STRAT-05`, `STRAT-08`, `MKT-08`, `UI-02`,
+  `UI-06`) are `DONE` and present in code.
+- `pnpm run typecheck` is green across all three packages.
+- `pnpm test` last local run: 209 of 212 passed. The 3 failures are V1-area
+  runner/result E2E tests (`backtest-runner-lifecycle.e2e`,
+  `backtest-result-query.e2e`) and are environment-sensitive (stale DB/process state
+  on the local machine), not a V2 code defect. Confirm on a clean environment.
+
+Deferred V2 completion items. The team knows about these and accepts them as NOT
+blocking the start of V3. Because they are open, V2 is NOT declared absolutely
+complete and must not be tagged until they close:
+
+- `PROOF-EXT-001` (strategy extensibility) is still `TODO`: no `MACDStrategy` and no
+  evidence file under `docs/validation/evidence/`.
+- Docker Compose does not yet bring up the full V2 topology (API process, backtest
+  runner process, SPA); `docker-compose.yml` starts PostgreSQL only.
+- `JOURNAL.md` has no "V2 - Extensible Strategy Engine" section yet.
+- No `v2.0-demo` git tag exists (and no `v1.0-demo`).
 
 ## Foundation integration gate (2026-08-22)
 
@@ -177,8 +192,8 @@ None. The decisions for `EXP-02`, `EXP-04`, and `EXP-05` are accepted and record
 
 Demo contract: [`VERSIONS.md` V2](VERSIONS.md#v2---extensible-strategy-engine)
 
-Not the target version. Every slice stays `TODO` until V1 is complete and the user
-names V2 as the target.
+Previous version. All 7 slices are `DONE`; some V2 completion items are still deferred
+(see the "V2 -> V3 transition" note near the top of this file).
 
 | ID | Priority | Effort | Slice | Status | Depends on | Plan |
 |---|---|---|---|---|---|---|
@@ -202,9 +217,9 @@ Demo contract: [`VERSIONS.md` V3](VERSIONS.md#v3---automated-discovery)
 
 | ID | Priority | Effort | Slice | Status | Depends on | Blocker | Plan |
 |---|---|---|---|---|---|---|---|
-| STRAT-06 | REQ | M | Candidate contract and canonical hashing | TODO | STRAT-04 | | [02](02-strategy-and-composition.md) |
-| STRAT-07 | REQ | M | Generator port, random search, generator catalog | TODO | STRAT-06 | | [02](02-strategy-and-composition.md) |
-| SEARCH-03 | REQ | S | Versioned ranking policy | TODO | EXP-03 | Ranking weights and tie-break rule not supplied | [04](04-search-and-leaderboard.md) |
+| STRAT-06 | REQ | M | Candidate contract and canonical hashing | **DONE** | STRAT-04 | | [02](02-strategy-and-composition.md) |
+| STRAT-07 | REQ | M | Generator port, random search, generator catalog | **READY** | STRAT-06 | | [02](02-strategy-and-composition.md) |
+| SEARCH-03 | REQ | S | Versioned ranking policy | **BLOCKED** | EXP-03 | Ranking weights and tie-break rule not supplied | [04](04-search-and-leaderboard.md) |
 | SEARCH-01 | REQ | L | Search coordinator and stop conditions | TODO | STRAT-07, EXP-05, SEARCH-03 | | [04](04-search-and-leaderboard.md) |
 | SEARCH-02 | REQ | M | Durable pause, resume, cancel | TODO | SEARCH-01 | | [04](04-search-and-leaderboard.md) |
 | SEARCH-04 | REQ | M | Leaderboard projection | TODO | SEARCH-01, SEARCH-03 | | [04](04-search-and-leaderboard.md) |

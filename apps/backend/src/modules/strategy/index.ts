@@ -35,4 +35,18 @@ export { CompositeStrategyService } from "./application/composite-strategy.servi
 export { CombinationPolicyRegistry } from "./application/combination-policy-registry.js";
 export type { CombinationPolicy } from "./domain/combination-policy.js";
 export type { ComponentResult } from "./domain/combination-policy.js";
+export type {
+  CompositeStrategyDefinition,
+  ComponentStrategyReference,
+  CombinationPolicyReference
+} from "./domain/composite-strategy.js";
+export { createCandidateStrategy } from "./application/candidate-strategy-factory.js";
+export type { CreateCandidateInput } from "./application/candidate-strategy-factory.js";
+export type {
+  CandidateStrategy,
+  CandidateStrategySpecification,
+  CandidateSingleStrategySpecification,
+  CandidateCompositeStrategySpecification,
+  GeneratorProvenance
+} from "./domain/candidate-strategy.js";
 export { StrategyModule } from "./strategy.module.js";

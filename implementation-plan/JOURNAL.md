@@ -826,3 +826,55 @@ avoiding duplication no longer applies; the decision below replaces it.
 - V1 remains a single shared workspace. This is product context, not an accepted
   architecture change; implementation still requires a proposed ADR and explicit
   owner acceptance.
+
+---
+
+## V3 - Automated Discovery
+
+### 2026-08-25 - V3 - target moved to V3, STRAT-06
+
+**Decisions**
+
+- The V3 owner moved the target to V3. V2's 7 slices are `DONE` and the code
+  baseline is green at commit `535d4e9` (typecheck across all three packages;
+  `pnpm test` 209/212, the 3 failures being environment-sensitive V1 runner/result
+  E2E). Some V2 completion items are deferred, not done: `PROOF-EXT-001` (no
+  `MACDStrategy`, no evidence file), the full Docker Compose topology (PostgreSQL
+  only today), a V2 section here, and version tags. They are recorded in
+  `TRACKING.md`'s transition note and do not block V3, but V2 is not called
+  complete and must not be tagged until they close.
+- `CandidateStrategy` (STRAT-06) hashes its complete content, and the generator
+  seed is part of that content, so two candidates that differ only by seed hash
+  differently. This follows the slice's acceptance criteria directly.
+- The candidate type lives in `strategy/domain`; the factory that computes the hash
+  lives in `strategy/application`, keeping `domain` free of `platform` imports as
+  the rest of the module already does. The hash reuses `platform/canonical-json`'s
+  `canonicalSha256`; no second hasher was written.
+- The stored candidate and its hash come from one canonical clone. The factory
+  validates the input, builds a known-fields-only graph, `structuredClone`s it once,
+  then both hashes that clone and stores it on the candidate. This severs every
+  reference to the caller's input (so freezing the candidate never freezes the
+  caller's objects) and makes it impossible for the stored content and its hash to
+  drift apart.
+
+**Validation**
+
+- STRAT-06: `candidate-strategy-factory.test.ts` (13 cases, one behaviour each:
+  repeat-hash stability, round trip of the produced candidate, key-order
+  insensitivity, component-order sensitivity, parameter/version/policy/seed
+  sensitivity, generator provenance recorded, deep immutability, and three
+  completeness rejections) and `candidate-strategy-cross-process.test.ts` (1 case:
+  identical hash from a separate `node --import tsx` process via
+  `candidate-hash-process.ts`, criterion 7). Strategy module and the architecture
+  boundary test pass; typecheck is green across all three packages.
+- Two-axis `code-review` on both axes is clean: the initial pass raised test
+  granularity (bundled `it` blocks), a stored-vs-hashed drift risk, input frozen by
+  reference, and a weak AC2 round trip; all were fixed and the re-review confirmed
+  no remaining finding, including the follow-up double type assertion that was
+  removed by giving the content builders their real return types.
+
+**Ending state**
+
+- `STRAT-06` is `DONE`; `STRAT-07` is promoted to `READY`. `SEARCH-03` is `BLOCKED`
+  on the ranking-weights human decision. Committed at the slice boundary on
+  `feat/v3-automated-discovery`; not pushed.
