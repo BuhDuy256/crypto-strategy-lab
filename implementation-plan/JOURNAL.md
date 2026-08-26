@@ -1321,3 +1321,55 @@ avoiding duplication no longer applies; the decision below replaces it.
   `DEMO-01` Compose integration gate, and the three V3 proofs
   (`PROOF-REPLACE-001`, `PROOF-CONTROL-001`, `PROOF-REP-001`) remain the owner's
   to run and accept. Not committed; Git actions await explicit owner request.
+
+### 2026-08-26 - V3 - architecture proofs (REPLACE-001, CONTROL-001, REP-001)
+
+**Decisions**
+
+- The three V3 proofs were run on host, against the running PostgreSQL, and
+  recorded as evidence files under `docs/validation/evidence/`. A coding agent
+  does not create the `v3.0-demo` tag or advance the validation status; those
+  remain the owner's.
+- `PROOF-REPLACE-001` needed a genuine second search method, so `grid-search`
+  (`GridStrategyGenerator`) was implemented behind the same `StrategyGenerator`
+  port as `random-search`: a deterministic cartesian grid over each strategy's
+  parameters, no randomness. It was registered in the built-in generator registry.
+  The proof is the empty downstream diff: the only files touched are the new
+  generator, its test, the registry factory, and the module surface export -
+  nothing in the backtester, evaluator, ranking policy, leaderboard projector,
+  candidate/job schemas, coordinator, controllers, or web app. The coordinator's
+  17-test suite stays green with the second generator present, because it treats
+  candidates opaquely.
+- `PROOF-CONTROL-001` is demonstrated by the existing SEARCH-01/02 integration
+  suite, which already exercises every stop condition, pause/resume/cancel
+  convergence to the settled state, coordinator restart recovery, cooperative
+  running-candidate signalling, and stale-runner reclaim. The evidence file maps
+  each required behavior to the named test. This is the V3 PostgreSQL-executor
+  realization; the proof is re-run in V6 against BullMQ (SEARCH-07).
+- `PROOF-REP-001` added one end-to-end integration proof
+  (`leaderboard-reproducibility.proof.test.ts`): a result is accepted through the
+  real `PostgresResultAcceptanceStore` with the real deterministic backtester's
+  trades and a full checklist; a rerun of the recorded input reproduces the exact
+  `canonicalSha256(trades)` stored as the trade content hash; and the resolved
+  checklist carries an explicit, non-alias build identity. Top-1 spec resolution
+  and cross-process hash determinism are cited from the existing
+  leaderboard-query, provenance-query, and backtester-determinism tests.
+
+**Validation**
+
+- New tests: `grid-strategy-generator.test.ts` (6),
+  `leaderboard-reproducibility.proof.test.ts` (2). Full suite 366/366 in 70 files
+  (was 358 at the UI-03 commit; +6 grid, +2 reproducibility). Typecheck green
+  across all three packages; changed files lint clean; architecture boundary test
+  clean.
+- Evidence: `docs/validation/evidence/PROOF-REPLACE-001.md`,
+  `PROOF-CONTROL-001.md`, `PROOF-REP-001.md`. Each records the base commit
+  (`975ce6a`), the environment, the pnpm lock hash, and the commands.
+
+**Ending state**
+
+- All three V3 proofs (`PROOF-REPLACE-001`, `PROOF-CONTROL-001`, `PROOF-REP-001`)
+  are `DONE` with recorded evidence. This does not by itself complete V3: the
+  Definition of Demoable and the `DEMO-01` Compose integration gate are still
+  open, and the version tag and validation-status advance remain the owner's.
+  Not committed; Git actions await explicit owner request.

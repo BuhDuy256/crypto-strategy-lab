@@ -53,6 +53,7 @@ export { StrategyGeneratorRegistry } from "./application/strategy-generator-regi
 export type { GeneratorRef } from "./application/strategy-generator-registry.js";
 export { createBuiltInStrategyGeneratorRegistry } from "./application/built-in-strategy-generator-registry.js";
 export { RandomStrategyGenerator } from "./application/random-strategy-generator.js";
+export { GridStrategyGenerator } from "./application/grid-strategy-generator.js";
 export type {
   StrategyGenerator,
   GeneratorDescriptor,

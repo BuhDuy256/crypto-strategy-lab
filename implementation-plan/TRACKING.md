@@ -232,9 +232,9 @@ should be resolved during V2 so it does not stall V3.
 
 | ID | Proof | Status | Prerequisites |
 |---|---|---|---|
-| PROOF-REPLACE-001 | Search replaceability | TODO | STRAT-06, STRAT-07, SEARCH-01, SEARCH-04, UI-03 |
-| PROOF-CONTROL-001 | Pause, resume, cancel, stop | TODO | SEARCH-01, SEARCH-02, EXP-05, UI-03 |
-| PROOF-REP-001 | Leaderboard reproducibility | TODO | MKT-10, EXP-01, EXP-02, EXP-06, SEARCH-03, SEARCH-04, SEARCH-05 |
+| PROOF-REPLACE-001 | Search replaceability | **DONE** — [evidence](../docs/validation/evidence/PROOF-REPLACE-001.md): second generator `grid-search` added through the port; downstream diff empty (only strategy module + registry changed); 364/364 tests. Not committed. | STRAT-06, STRAT-07, SEARCH-01, SEARCH-04, UI-03 |
+| PROOF-CONTROL-001 | Pause, resume, cancel, stop | **DONE** — [evidence](../docs/validation/evidence/PROOF-CONTROL-001.md): all three stop conditions, pause/resume/cancel converging to the settled state, and restart recovery proven by 31 integration tests (V3 PostgreSQL realization; re-run in V6). Not committed. | SEARCH-01, SEARCH-02, EXP-05, UI-03 |
+| PROOF-REP-001 | Leaderboard reproducibility | **DONE** — [evidence](../docs/validation/evidence/PROOF-REP-001.md): a rerun of the recorded backtest reproduces the stored canonical trade hash, the full provenance checklist resolves with an explicit non-alias build identity, and Top-1 resolves to its spec (new proof test + cited leaderboard/provenance/determinism tests). Not committed. | MKT-10, EXP-01, EXP-02, EXP-06, SEARCH-03, SEARCH-04, SEARCH-05 |
 
 ---
 
