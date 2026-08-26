@@ -236,6 +236,19 @@ should be resolved during V2 so it does not stall V3.
 | PROOF-CONTROL-001 | Pause, resume, cancel, stop | **DONE** — [evidence](../docs/validation/evidence/PROOF-CONTROL-001.md): all three stop conditions, pause/resume/cancel converging to the settled state, and restart recovery proven by 31 integration tests (V3 PostgreSQL realization; re-run in V6). Not committed. | SEARCH-01, SEARCH-02, EXP-05, UI-03 |
 | PROOF-REP-001 | Leaderboard reproducibility | **DONE** — [evidence](../docs/validation/evidence/PROOF-REP-001.md): a rerun of the recorded backtest reproduces the stored canonical trade hash, the full provenance checklist resolves with an explicit non-alias build identity, and Top-1 resolves to its spec (new proof test + cited leaderboard/provenance/determinism tests). Not committed. | MKT-10, EXP-01, EXP-02, EXP-06, SEARCH-03, SEARCH-04, SEARCH-05 |
 
+## V3 Definition of Demoable (host path)
+
+**PASS** on the host (pnpm) path — [evidence](../docs/validation/evidence/V3-DEFINITION-OF-DEMOABLE.md).
+All seven conditions confirmed at commit `970e6b1`: the three stop conditions,
+pause/resume/cancel across a restart, seed reproducibility, Top-K enter/displace,
+projection delete-and-rebuild reproducing the same content **and** hash through the
+real `leaderboard:rebuild` CLI, every leaderboard row resolving to its result and
+frozen spec, and V1+V2 still green (full suite 366/366). A real host demo run was
+walked end to end (backfill 1,001 candles -> `start:api` + `start:backtest-runner` +
+`start:ui` -> press Start on the Discovery page -> leaderboard filled and ordered).
+This is **not** the Compose integration gate (`DEMO-01`, deferred), does **not** tag
+`v3.0-demo`, and does **not** advance the validation status; those remain the owner's.
+
 ---
 
 # V4 - Realtime Market Data

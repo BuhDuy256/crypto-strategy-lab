@@ -1373,3 +1373,46 @@ avoiding duplication no longer applies; the decision below replaces it.
   Definition of Demoable and the `DEMO-01` Compose integration gate are still
   open, and the version tag and validation-status advance remain the owner's.
   Not committed; Git actions await explicit owner request.
+
+### 2026-08-26 - V3 - Definition of Demoable executed on the host path
+
+**Validation**
+
+- All seven V3 Definition-of-Demoable conditions confirmed on the host (pnpm) path at
+  commit `970e6b1`. Evidence: `docs/validation/evidence/V3-DEFINITION-OF-DEMOABLE.md`.
+  Fresh runs: the eight cited V3 test files 48/48, and the full suite 366/366 in 70
+  files (V1+V2 green, condition 7).
+- The gap the roadmap flagged - condition 5 through the actual operator CLI, not only
+  the projector's own test - was closed with a live run. On the demo leaderboard
+  (experiment `1d26d815`), the projection hash was `abf30c80...0726` (7 entries), the
+  entry and applied-version rows were deleted (0 entries), `pnpm run leaderboard:rebuild`
+  reproduced exactly `abf30c80...0726` (7 entries, same ranks and scores). The
+  authoritative hash was read with `LeaderboardProjector.projectionHash` via a throwaway
+  script that was deleted afterward.
+- A real host demo was walked: backfill 1,001 BTCUSDT 1h candles over
+  `[1704067200000, 1707667200000]`, then `start:api` + `start:backtest-runner` +
+  `start:ui`, then a search (random-search, four MVP strategies, seed 42,
+  `maxCandidates 12`) via `POST /experiments/search` + start. The run stopped on
+  `max-candidates`, the leaderboard filled with seven ranked entries, and the top row
+  resolved through the result and provenance endpoints to its result and its derived
+  frozen spec (condition 6). The Discovery page press-Start walk filled and ordered the
+  leaderboard and showed the stop reason; the generator selector listed both
+  `random-search` and `grid-search` (catalog-driven).
+
+**Problems worth remembering**
+
+- The `RandomStrategyGenerator` emits `rsi` candidates with `buyThreshold >= sellThreshold`.
+  Each drawn parameter is within its own field range and `validateParameters` passes, but
+  the RSI cross-field relation is enforced only at execution, so those candidates fail the
+  backtest with `STRATEGY_PARAMETER_RELATION` (about 11 of 25 candidates in one run). It
+  breaks no Demoable condition - the search counts them `failed`, continues, and the board
+  still fills from valid candidates - but it wastes backtest slots and is a gap against
+  STRAT-07 criterion 1. Flagged for a separate session; not fixed here (out of scope for
+  executing the Definition of Demoable).
+
+**Ending state**
+
+- V3 Definition of Demoable recorded PASS on the host path. Still open before V3 is
+  complete: the `DEMO-01` Compose integration gate. The `v3.0-demo` tag and the
+  validation-status advance remain the owner's. Not committed; Git actions await
+  explicit owner request.
