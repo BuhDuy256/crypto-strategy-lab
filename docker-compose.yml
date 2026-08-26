@@ -1,13 +1,33 @@
-# Local development topology for Crypto Strategy Lab.
+# Full-system integration and demo topology for Crypto Strategy Lab.
 #
-# V1 needs durable storage only, so this file starts PostgreSQL.
-# Redis is added by a later slice (V4 live fan-out); when that happens,
-# add a "redis" service below without rewriting the "postgres" service.
+# This assembles the whole process topology the current product version needs,
+# from a clean checkout, with one command:
 #
-# Usage:
-#   1. cp .env.example .env
-#   2. docker compose up -d
-#   3. docker compose ps   (wait for "healthy")
+#   docker compose up --build
+#
+# The topology here is V1's, unchanged through V2 and V3 (see
+# implementation-plan/VERSIONS.md, "Compose integration gate"): PostgreSQL, a
+# one-shot migration step, the API process, the backtest runner process, and
+# the SPA. No later-version service (Redis, market ingest, news worker, BullMQ
+# workers) belongs here yet; the version tables in VERSIONS.md are the only
+# source for which roles a version requires.
+#
+# Host development is a separate, still-supported path that runs the API and
+# SPA as pnpm commands against a PostgreSQL container; see README.md. This file
+# is the full-system path, not a replacement for it.
+#
+# Configuration comes from the repository-root .env (Compose interpolates
+# ${VAR} from it). The backend services reach PostgreSQL by its service name
+# on the Compose network, so they set POSTGRES_HOST=postgres and the internal
+# POSTGRES_PORT=5432 here rather than the host values in .env.
+
+# Shared PostgreSQL connection for every backend process role.
+x-backend-postgres-env: &backend-postgres-env
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  POSTGRES_USER: ${POSTGRES_USER}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+  POSTGRES_DB: ${POSTGRES_DB}
 
 services:
   postgres:
@@ -28,6 +48,92 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+
+  # One-shot: apply every pending migration, then exit. api and runner wait for
+  # it to complete so they never start against an unmigrated database. Safe to
+  # run repeatedly; already-applied migrations are a no-op (SETUP-04).
+  migrate:
+    build:
+      context: .
+      target: backend
+    image: crypto-strategy-lab-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *backend-postgres-env
+    command: ["pnpm", "run", "migrate"]
+    restart: "no"
+
+  # The NestJS API/HTTP process role.
+  api:
+    build:
+      context: .
+      target: backend
+    image: crypto-strategy-lab-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      <<: *backend-postgres-env
+      PORT: "3000"
+      LEADERBOARD_TOP_K: ${LEADERBOARD_TOP_K:-10}
+      # Runtime build identity. The API freezes each search spec with these,
+      # so the runner (below) must carry the same values or acceptance fails.
+      DEPENDENCY_LOCK_HASH: ${DEPENDENCY_LOCK_HASH}
+      APPLICATION_COMMIT: ${APPLICATION_COMMIT}
+      WORKER_COMMIT: ${WORKER_COMMIT}
+      DETERMINISTIC_CONFIG_VERSION: ${DETERMINISTIC_CONFIG_VERSION:-1.0.0}
+    command: ["pnpm", "run", "start:api"]
+    ports:
+      - "${API_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
+
+  # The separate PostgreSQL-backed backtest runner process role. It is its own
+  # process on purpose (ADR-010): stopping the API mid-run does not stop it.
+  runner:
+    build:
+      context: .
+      target: backend
+    image: crypto-strategy-lab-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      <<: *backend-postgres-env
+      LEADERBOARD_TOP_K: ${LEADERBOARD_TOP_K:-10}
+      BACKTEST_RUNNER_CONCURRENCY: ${BACKTEST_RUNNER_CONCURRENCY:-1}
+      # Must match the api service's values (see note above).
+      DEPENDENCY_LOCK_HASH: ${DEPENDENCY_LOCK_HASH}
+      APPLICATION_COMMIT: ${APPLICATION_COMMIT}
+      WORKER_COMMIT: ${WORKER_COMMIT}
+      DETERMINISTIC_CONFIG_VERSION: ${DETERMINISTIC_CONFIG_VERSION:-1.0.0}
+    command: ["pnpm", "run", "start:backtest-runner"]
+    restart: unless-stopped
+
+  # The React SPA, built and served by Nginx, which proxies /api to the api
+  # process (apps/web/nginx.conf).
+  web:
+    build:
+      context: .
+      target: web
+    image: crypto-strategy-lab-web
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    restart: unless-stopped
 
 volumes:
   postgres_data:

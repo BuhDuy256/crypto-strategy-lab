@@ -1416,3 +1416,61 @@ avoiding duplication no longer applies; the decision below replaces it.
   complete: the `DEMO-01` Compose integration gate. The `v3.0-demo` tag and the
   validation-status advance remain the owner's. Not committed; Git actions await
   explicit owner request.
+
+### 2026-08-26 - V3 - DEMO-01 Compose integration gate
+
+**Decisions**
+
+- `DEMO-01` recurs per version; for V3 its open item was the Compose integration
+  gate. The V3 topology is V1's, unchanged (`VERSIONS.md` roles table), so the work
+  was to build the full topology once and walk V3's demo scenario on it, with no
+  later-version service. Built: one `Dockerfile` (a single backend image serving
+  the migrate/api/runner roles by command, plus an Nginx web image), `.dockerignore`,
+  `apps/web/nginx.conf`, and the `postgres`/`migrate`/`api`/`runner`/`web` services
+  in `docker-compose.yml`. Migrations run as a one-shot `migrate` service that api
+  and runner wait on, so each role's start command stays pure and the migration is an
+  explicit, observable step rather than a hidden one.
+- Container config is supplied by Compose, not by editing `.env`: backend services
+  reach PostgreSQL by service name (`POSTGRES_HOST=postgres`, internal port 5432),
+  and the api and runner receive the same real `DEPENDENCY_LOCK_HASH` /
+  `APPLICATION_COMMIT` / `WORKER_COMMIT` (the api freezes each spec with them, so a
+  mismatch would fail acceptance). A shared YAML anchor carries the Postgres block to
+  all three backend services.
+- Two defects were exposed only by assembling the topology and running a real search;
+  host tests do not catch either. Both fixes are infrastructure - no `.ts` source
+  changed. (1) The runner's Worker Thread runs TypeScript through the tsx ESM loader,
+  and Node 20 does not apply an `--import`-registered loader to a worker's own entry
+  module, so every backtest failed with `Unknown file extension ".ts"`; Node 22 (the
+  host runtime this code is already proven on, and allowed by `engines >=20.12`)
+  applies it. Base image moved to `node:22-alpine`. (2) Nginx resolves an upstream
+  host once at startup, so after the demo's deliberate `docker compose restart api`
+  the proxy pinned a dead IP and returned 502; the api host is now resolved through
+  Docker's embedded DNS with a short TTL via a variable upstream.
+- Composite (multi-strategy) search is rejected by the search path today
+  (`SEARCH_COMPOSITE_UNSUPPORTED`) and is not part of the V3 demo scenario, which uses
+  single-strategy random search. Left as-is; out of scope for `DEMO-01`.
+
+**Validation**
+
+- `docker compose up --build` brings up the topology in dependency order from a clean
+  checkout (postgres healthy -> migrate exit 0 -> api healthy -> runner -> web), with
+  `docker compose config --services` = `api migrate postgres runner web` (no Redis,
+  BullMQ, outbox, or news). Backfill of 1000 real Binance 1h BTCUSDT candles ran via
+  the documented `docker compose exec api pnpm run market:backfill` command.
+- V3 demo scenario walked end to end on the assembled topology, driven through the
+  SPA's own `/api` proxy: start with candidate counter rising and a 9-entry ranked
+  leaderboard; pause -> converged `paused` and resume -> `running`; `docker compose
+  restart api` with run state surviving and the proxy healthy across the restart;
+  `max-candidates` stop reason; top-entry paged trades, Bollinger overlay annotations,
+  and the full provenance checklist (engine, attempt, dataset snapshot + integrity
+  hash); cancel -> converged `cancelling` -> `cancelled` with completed results
+  intact; and the second generator (`grid-search`) present in the catalog. Full
+  record in
+  [`docs/validation/evidence/V3-COMPOSE-INTEGRATION-GATE.md`](../docs/validation/evidence/V3-COMPOSE-INTEGRATION-GATE.md).
+
+**Ending state**
+
+- `DEMO-01`'s V3 Compose integration gate PASS. This was the last open V3
+  demoability item on the Compose path; the host-path Definition of Demoable was
+  already PASS. The `v3.0-demo` tag and the validation-status advance remain the
+  owner's. Not committed; Git actions await explicit owner request.

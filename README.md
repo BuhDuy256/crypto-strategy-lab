@@ -233,7 +233,12 @@ The rule itself is not repeated here. It lives in [`AGENTS.md`](AGENTS.md) under
 
 ### Status of the full-system path
 
-Today `docker-compose.yml` starts PostgreSQL only, which is exactly what V1's completed setup slices required. The application services and the single `docker compose up --build` command are built by `DEMO-01`, the last V1 slice, once the API, the backtest runner, and the Backtest page exist to assemble. Until then, use the host development path below.
+`docker-compose.yml` brings up the full V1 topology — PostgreSQL, a one-shot
+migration step, the API process, the backtest runner process, and the SPA —
+through one `docker compose up --build` command, built by `DEMO-01`. Through V3
+this topology is unchanged. See [Full-system integration and demo
+path](#full-system-integration-and-demo-path) below for the command and the
+service roles.
 
 The topology grows with the roadmap and never ahead of it: Redis and the market ingest process arrive in V4, the news worker in V5, and the outbox dispatcher and BullMQ backtest workers in V6.
 
@@ -359,14 +364,34 @@ annotation vocabulary. The tracker below remains the authoritative next-work vie
 
 ## Full-system integration and demo path
 
-The full-system path brings up every process required for the current version (V1: Backtesting Lab) using Docker Compose.
+The full-system path brings up the whole process topology the current product
+version needs, from a clean checkout, with one Docker Compose command. It is how
+a version is proven demoable; it does not replace the host development path above.
+
+The topology is defined in [`docker-compose.yml`](docker-compose.yml). Through V3
+it is V1's topology, unchanged, and contains no later-version service (no Redis,
+no BullMQ, no news worker):
+
+| Service | Role |
+|---|---|
+| `postgres` | PostgreSQL, the authoritative durable store |
+| `migrate` | One-shot: applies every pending migration, then exits. `api` and `runner` wait for it |
+| `api` | The NestJS API/HTTP process |
+| `runner` | The separate PostgreSQL-backed backtest runner process |
+| `web` | The built React SPA served by Nginx, which proxies `/api` to `api` |
 
 ### 1. Configure environment variables
 
 ```powershell
 cp .env.example .env
 ```
-Ensure you have copied the example environment variables. `docker-compose.yml` uses them, but overrides `DATABASE_URL` internally to route between containers using Docker network hostnames.
+
+Compose reads this repository-root `.env` for `${VAR}` values. The backend
+services reach PostgreSQL by its service name on the Compose network, so they set
+`POSTGRES_HOST=postgres` and the internal `POSTGRES_PORT=5432` in
+`docker-compose.yml` rather than the host values in `.env` — you do not edit
+`.env` to switch paths. Set real `DEPENDENCY_LOCK_HASH`, `APPLICATION_COMMIT`,
+and `WORKER_COMMIT` values in `.env`; the runner requires explicit build identity.
 
 ### 2. Start the topology
 
@@ -374,20 +399,33 @@ Ensure you have copied the example environment variables. `docker-compose.yml` u
 docker compose up --build -d
 ```
 
-This brings up:
-- `postgres`: The database
-- `api`: The NestJS API process
-- `runner`: The PostgreSQL-backed backtest execution process
-- `web`: The React frontend served by Nginx
+This builds the images and starts every service in dependency order: PostgreSQL
+becomes healthy, `migrate` applies the schema and exits, `api` starts and passes
+its health check, `runner` starts, and `web` comes up. Migrations run
+automatically as the `migrate` service; there is no manual migration step. `-d`
+runs it detached so the next steps use the same terminal; drop `-d` to watch the
+logs in the foreground and use a second terminal for the commands below.
 
-### 3. Run migrations
+### 3. Load candle history
 
-The database must be migrated. Run the migration script inside the `api` container (or on your host):
+The demo needs candles in the dataset window. Run the documented backfill command
+against the running stack (it fetches from Binance and stores append-only):
+
 ```powershell
-docker compose exec api npx tsx apps/backend/src/migrate/migration-runner.ts
+docker compose exec api pnpm run market:backfill -- --symbol BTCUSDT --timeframe 1h --startTime 1704067200000 --endTime 1707663600000
 ```
-*(Or simply run `pnpm run migrate` on your host while the stack is running).*
 
 ### 4. Walk the demo scenario
 
-Once the stack is healthy, refer to the [V1 Demo Script](docs/demo-script.md) for the explicit steps to verify the version end-to-end.
+Open the SPA at <http://localhost:8080> and follow the numbered walkthrough in the
+[demo script](docs/demo-script.md). The API is also reachable directly at
+<http://localhost:3000> and through the SPA proxy at <http://localhost:8080/api>.
+
+### 5. Stop the topology
+
+```powershell
+docker compose down
+```
+
+Candle and result data persist in the `postgres_data` volume across
+`down` / `up`. Add `-v` only to permanently delete local data.

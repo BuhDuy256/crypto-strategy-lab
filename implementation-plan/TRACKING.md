@@ -46,8 +46,12 @@ complete and must not be tagged until they close:
 
 - `PROOF-EXT-001` (strategy extensibility) is still `TODO`: no `MACDStrategy` and no
   evidence file under `docs/validation/evidence/`.
-- Docker Compose does not yet bring up the full V2 topology (API process, backtest
-  runner process, SPA); `docker-compose.yml` starts PostgreSQL only.
+- ~~Docker Compose does not yet bring up the full V2 topology (API process, backtest
+  runner process, SPA); `docker-compose.yml` starts PostgreSQL only.~~ **Closed
+  2026-08-26 by `DEMO-01`:** `docker compose up --build` now brings up the full V1
+  topology (unchanged through V2 and V3) and the V3 Compose integration gate passed.
+  See the `DEMO-01` Evidence cell and
+  [evidence](../docs/validation/evidence/V3-COMPOSE-INTEGRATION-GATE.md).
 - `JOURNAL.md` has no "V2 - Extensible Strategy Engine" section yet.
 - No `v2.0-demo` git tag exists (and no `v1.0-demo`).
 
@@ -174,7 +178,7 @@ more than one session.
 | EXP-11 | REQ | S | Visualization annotation capture | **DONE** | EXP-10, STRAT-01 | | Implemented annotation downsampler and integrated into PostgresResultAcceptanceStore. Fixed API process timeout in E2E tests (`integration/backtest-runner-lifecycle.e2e.test.ts`). Tests pass. | [03](03-experiment-backtest-evaluation.md) |
 | UI-04 | CRIT | M | Backtest page with metrics and trades | **DONE** | EXP-10, MKT-05 | | Interaction defaults accepted (2s poll, 20 trades/page, static panel). Implemented metrics dashboard, trade list, pagination, and sorting; test suite and visual inspection confirmed. | [06](06-ui-and-demo-integration.md) |
 | UI-05 | REQ | M | Signal and trade visualization | **DONE** | UI-04, EXP-11 | | Passed on local, 2026-08-24 | [06](06-ui-and-demo-integration.md) |
-| DEMO-01 | CRIT | M | Run documentation, Compose topology, and V1 demo script | **DONE** | UI-04, UI-05 | | Passed on local, 2026-08-24 | [06](06-ui-and-demo-integration.md) |
+| DEMO-01 | CRIT | M | Run documentation, Compose topology, and version demo script | **DONE** | UI-04, UI-05 | | Docs + demo script passed on local, 2026-08-24. Compose topology built and the Compose integration gate walked for V3 on 2026-08-26 (this slice recurs per version): full V1 topology (`postgres`, one-shot `migrate`, `api`, `runner`, `web`) comes up from a clean checkout via `docker compose up --build`, no later-version service present, and the V3 demo scenario ran end to end on it. New: `Dockerfile`, `.dockerignore`, `apps/web/nginx.conf`, expanded `docker-compose.yml`, `docs/demo-script.md`, README + `.env.example` both-paths wiring. Two topology-only defects found and fixed (Node 22 base for the tsx worker-thread loader; dynamic Docker-DNS upstream in nginx so the proxy survives an api restart) — no `.ts` source changed. [Evidence](../docs/validation/evidence/V3-COMPOSE-INTEGRATION-GATE.md). Not committed. | [06](06-ui-and-demo-integration.md) |
 
 ## V1 proof
 
@@ -246,8 +250,23 @@ real `leaderboard:rebuild` CLI, every leaderboard row resolving to its result an
 frozen spec, and V1+V2 still green (full suite 366/366). A real host demo run was
 walked end to end (backfill 1,001 candles -> `start:api` + `start:backtest-runner` +
 `start:ui` -> press Start on the Discovery page -> leaderboard filled and ordered).
-This is **not** the Compose integration gate (`DEMO-01`, deferred), does **not** tag
-`v3.0-demo`, and does **not** advance the validation status; those remain the owner's.
+This does **not** tag `v3.0-demo` and does **not** advance the validation status;
+those remain the owner's.
+
+## V3 Compose integration gate (Compose path)
+
+**PASS** on 2026-08-26 — [evidence](../docs/validation/evidence/V3-COMPOSE-INTEGRATION-GATE.md).
+`DEMO-01` built the full V1 topology (unchanged through V3) and the gate was
+walked: `docker compose up --build` brings up `postgres`, one-shot `migrate`,
+`api`, `runner`, and `web` from a clean checkout with no later-version service,
+and the V3 demo scenario ran end to end on that assembled topology (start,
+leaderboard fill and reorder, pause/resume/cancel converged, api-restart
+survival, `max-candidates` stop, and top-entry trades/overlays/provenance). Two
+topology-only defects were found and fixed (Node 22 base image for the tsx
+worker-thread loader; dynamic Docker-DNS nginx upstream surviving an api
+restart); no `.ts` source changed. This is the last open V3 demoability item on
+the Compose path. It does **not** tag `v3.0-demo` and does **not** advance the
+validation status.
 
 ---
 
