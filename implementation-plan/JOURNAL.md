@@ -1245,3 +1245,79 @@ avoiding duplication no longer applies; the decision below replaces it.
 - `SEARCH-05` is `DONE`; `UI-03` is promoted to `READY` (`SEARCH-05` and `SEARCH-02`
   are both `DONE`). All V3 slices are now `DONE` except `UI-03`, the last V3 slice.
   Not committed; Git actions await explicit owner request.
+
+### 2026-08-26 - V3 - UI-03
+
+**Decisions**
+
+- UI-03 could not be a pure frontend slice. Its AC1 ("configure ... then start")
+  and the V3 demo scenario need the page to create a runnable search experiment,
+  but no endpoint could: the single-run `POST /specifications` has no `search`
+  field and freezes with placeholder provenance (`engine: ui`, zero lock hash),
+  which the backtest runner rejects at result acceptance
+  (`BACKTEST_PROVENANCE_MISMATCH`), so every candidate would fail and the
+  leaderboard would never fill. This was surfaced to the owner as a missing backend
+  capability rather than worked around in the browser. The owner authorized the
+  context-fit option: add a minimal backend enabler so the demo runs end to end.
+- The enabler is `POST /experiments/search` (`SearchExperimentController` ->
+  `SearchExperimentCreationService`). The service resolves a real dataset for the
+  chosen window, uses the first allowed strategy with its schema defaults as the
+  base template each candidate replaces, fills the fixed V1 parts a person does not
+  choose per run (the V1 execution profile, the `mvp-metrics` metric set, and the
+  `weighted-return-drawdown@1.0.0` ranking policy with its accepted config), carries
+  the caller's search configuration, and freezes with the API process's runtime
+  provenance. The API process shares the runner's root env (both call
+  `loadRootEnvFile`), so the stamped provenance matches the runner's runtime
+  identity and candidate results are accepted. The browser cannot know that
+  provenance, which is exactly why the assembly cannot live in the page.
+- The page holds no strategy, backtest, evaluation, or ranking logic. The read side
+  (progress snapshot + Top-K leaderboard) sits behind one `SearchDataSource`
+  interface, so V6's SEARCH-06 can swap the poll for a push without touching a
+  component (AC9). The generator selector is fed by the STRAT-07 catalog, so a new
+  generator appears with no change under `apps/web` (AC7). Pause/resume/cancel show
+  the converged state the control endpoint returns, never an optimistic requested
+  state (AC4). The last run's spec id is persisted so a refresh restores the view
+  from a snapshot (AC6).
+
+**Validation**
+
+- Tests: `search-experiment-creation-service.test.ts` (7: dataset resolution,
+  carried search config, fixed ranking/metric set, valid base template, injected
+  provenance + returned spec id, empty-strategy and no-stop-condition rejections),
+  `search-experiment.controller.test.ts` (4: request mapping, config-error -> 400,
+  unknown strategy -> 400, malformed body -> 400 before the service),
+  `DiscoveryPage.test.tsx` (6: render from an injected data source, refresh
+  recovery, converged control state, catalog-driven generator list, configured
+  start, entry detail opens trades + provenance), api-contracts guard (+2).
+- Full suite 358/358 in 68 files (was 339 at SEARCH-05). Typecheck green across all
+  three packages; changed files lint clean; architecture boundary test clean.
+  `BACKTEST_ENGINE` and `SearchExperimentCreationService` added to the experiment
+  module surface; the new controller reaches the service through that index only.
+
+**Problems worth remembering**
+
+- Two-axis `code-review` (fixed point HEAD/SEARCH-05) applied four fixes. (1) The
+  create endpoint took an interface body with no shape validation, so a malformed
+  request threw a 500; a shape guard now maps it to 400 while the service keeps the
+  domain-rule checks. (2) Entry-detail chart candles were fetched from the current
+  form window, which a refresh resets, so an opened entry's backdrop could mismatch
+  its real dataset; the window is now read from the run's provenance. (3) Only the
+  candidate-limit stop condition was exposed; all three are now configurable, which
+  the V3 Definition of Demoable requires. (4) `defaultParametersFor` now fails
+  clearly if a base strategy has a required parameter without a default, instead of
+  an opaque freeze-time rejection.
+- Accepted as consistent with existing precedent, not changed: HTTP error
+  classification by message prefix (mirrors `search.controller.ts`), and interface
+  request bodies instead of class-validator DTOs (mirrors `specification`/`strategy`
+  controllers). The dataset provider/symbol stay fixed to binance/BTCUSDT and the
+  search space to single-strategy (`compositeSizes: [1]`), which is the accepted V3
+  scope, not a shortcut.
+
+**Ending state**
+
+- `UI-03` is `DONE`. All 8 V3 slices are now `DONE`. This does not declare V3
+  complete or authorize V4: the V3 Definition of Demoable (all three stop
+  conditions, control across a restart, the reproducibility checklist), the
+  `DEMO-01` Compose integration gate, and the three V3 proofs
+  (`PROOF-REPLACE-001`, `PROOF-CONTROL-001`, `PROOF-REP-001`) remain the owner's
+  to run and accept. Not committed; Git actions await explicit owner request.

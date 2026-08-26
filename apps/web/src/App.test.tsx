@@ -8,6 +8,7 @@ vi.mock("./api/client.js", () => ({
   getHealth: vi.fn(async () => ({ status: "ok" })),
   getCandleHistory: vi.fn(async () => ({ candles: [] })),
   getStrategies: vi.fn(async () => ({ strategies: [] })),
+  getGenerators: vi.fn(async () => ({ generators: [] })),
   createComposite: vi.fn(async () => ({ id: "comp-1" })),
   evaluatePolicy: vi.fn(async () => ({ action: "hold" }))
 }));

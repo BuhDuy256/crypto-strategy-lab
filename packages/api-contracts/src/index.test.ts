@@ -2,9 +2,23 @@ import { describe, expect, it } from "vitest";
 import {
   isBacktestResultResponse,
   isBacktestTradesResponse,
+  isCreateSearchExperimentResponse,
   isHealthResponse,
   type HealthResponse
 } from "./index.js";
+
+describe("CreateSearchExperimentResponse", () => {
+  it("accepts a response that carries a string specId", () => {
+    expect(isCreateSearchExperimentResponse({ specId: "spec-1" })).toBe(true);
+  });
+
+  it("rejects null, non-objects, and a missing or non-string specId", () => {
+    expect(isCreateSearchExperimentResponse(null)).toBe(false);
+    expect(isCreateSearchExperimentResponse("spec-1")).toBe(false);
+    expect(isCreateSearchExperimentResponse({})).toBe(false);
+    expect(isCreateSearchExperimentResponse({ specId: 1 })).toBe(false);
+  });
+});
 
 describe("HealthResponse", () => {
   it("accepts a well-formed health response", () => {

@@ -483,6 +483,63 @@ export interface EvaluatePolicyResponse {
   readonly action: "buy" | "sell" | "hold";
 }
 
+// One versioned reference the interface passes through to the backend without
+// interpreting it (a strategy, a generator, or a combination policy).
+export interface ApiVersionedRef {
+  readonly id: string;
+  readonly version: string;
+}
+
+// The stop conditions a person configures on a search run. Each is optional; the
+// backend requires at least one so a run cannot loop without control. These are
+// entered as configuration and are never applied in the browser.
+export interface SearchStopConditionsRequest {
+  readonly maxCandidates?: number;
+  readonly maxDurationMs?: number;
+  readonly noImprovementIterations?: number;
+}
+
+/**
+ * Request body for `POST /experiments/search`. Configures and freezes a search
+ * experiment: the dataset window, the generator and its search space, the seed,
+ * the stop conditions, and the backpressure bound. The backend supplies the
+ * fixed V1 parts (execution profile, metric set, ranking policy) and the runtime
+ * provenance that the backtest runner requires, none of which the browser knows.
+ * Must stay in sync with `apps/backend/src/modules/api/search-experiment.controller.ts`.
+ */
+export interface CreateSearchExperimentRequest {
+  readonly dataset: {
+    readonly provider: "binance";
+    readonly symbol: "BTCUSDT";
+    readonly timeframe: ApiTimeframe;
+    readonly startTime: number;
+    readonly endTime: number;
+  };
+  readonly generator: {
+    readonly id: string;
+    readonly version: string;
+    readonly configuration?: Record<string, unknown>;
+  };
+  readonly searchSpace: {
+    readonly strategies: readonly ApiVersionedRef[];
+    readonly compositeSizes: readonly number[];
+    readonly policies: readonly ApiVersionedRef[];
+  };
+  readonly seed: number | string;
+  readonly stopConditions: SearchStopConditionsRequest;
+  readonly maxInFlight: number;
+}
+
+export interface CreateSearchExperimentResponse {
+  readonly specId: string;
+}
+
+export function isCreateSearchExperimentResponse(
+  value: unknown
+): value is CreateSearchExperimentResponse {
+  return isRecord(value) && typeof value.specId === "string";
+}
+
 export type SearchStopReason = "max-candidates" | "max-duration" | "no-improvement" | "exhausted";
 
 // The durable control state of a search run. The transitional states (pausing,

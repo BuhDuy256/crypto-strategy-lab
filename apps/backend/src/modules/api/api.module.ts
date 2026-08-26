@@ -21,6 +21,7 @@ import { StrategyController } from "./strategy.controller.js";
 import { GeneratorController } from "./generator.controller.js";
 import { SpecificationController } from "./specification.controller.js";
 import { SearchController } from "./search.controller.js";
+import { SearchExperimentController } from "./search-experiment.controller.js";
 import { LeaderboardController } from "./leaderboard.controller.js";
 
 // Drives the search host across the API process lifecycle: resume running
@@ -48,6 +49,7 @@ class SearchExperimentLifecycle implements OnApplicationBootstrap, OnApplication
     StrategyController,
     GeneratorController,
     SearchController,
+    SearchExperimentController,
     LeaderboardController
   ],
   providers: [

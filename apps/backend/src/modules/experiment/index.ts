@@ -17,8 +17,14 @@ export type {
   BacktestRunStatus,
   ClaimedBacktestJob
 } from "./application/backtest-run-service.js";
-export { Backtester } from "./domain/backtester.js";
+export { Backtester, BACKTEST_ENGINE } from "./domain/backtester.js";
 export type { BacktestInput, BacktestOutput, BacktestTrade } from "./domain/backtester.js";
+export { SearchExperimentCreationService } from "./application/search-experiment-creation-service.js";
+export type {
+  CreateSearchExperimentInput,
+  SearchExperimentDatasets,
+  SearchExperimentSpecifications
+} from "./application/search-experiment-creation-service.js";
 export { Evaluator, MVP_METRIC_SET } from "./domain/evaluator.js";
 export type {
   EvaluationInput,

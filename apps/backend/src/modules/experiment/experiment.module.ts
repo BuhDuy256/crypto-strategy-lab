@@ -31,6 +31,24 @@ import { PostgresSearchRunStore } from "./infrastructure/postgres-search-run-sto
 import { PostgresLeaderboardProjectionStore } from "./infrastructure/postgres-leaderboard-projection-store.js";
 import { SearchCoordinator } from "./application/search-coordinator.js";
 import { LeaderboardProjector } from "./application/leaderboard-projector.js";
+import { SearchExperimentCreationService } from "./application/search-experiment-creation-service.js";
+import { BACKTEST_ENGINE } from "./domain/backtester.js";
+import type { FreezeProvenance } from "./domain/experiment-specification.js";
+
+// The API process shares the backtest runner's build environment (both load the
+// same root env), so it can stamp the provenance a search experiment must carry
+// for its candidate results to be accepted. Values mirror the runner's runtime
+// identity in backtest-runner.module.ts.
+function apiRuntimeProvenance(): FreezeProvenance {
+  return {
+    engine: BACKTEST_ENGINE,
+    nodeRuntimeVersion: process.versions.node,
+    dependencyLockHash: process.env.DEPENDENCY_LOCK_HASH ?? "unavailable",
+    applicationCommit: process.env.APPLICATION_COMMIT ?? "unavailable",
+    workerCommit: process.env.WORKER_COMMIT ?? "unavailable",
+    deterministicConfigVersion: process.env.DETERMINISTIC_CONFIG_VERSION ?? "1.0.0"
+  };
+}
 
 export const EXPERIMENT_DATABASE_POOL = Symbol("EXPERIMENT_DATABASE_POOL");
 
@@ -151,6 +169,21 @@ class ExperimentDatabaseLifecycle implements OnApplicationShutdown {
         store: PostgresSearchRunStore
       ) => new SearchCoordinator(specifications, runs, generators, rankings, store)
     },
+    {
+      provide: SearchExperimentCreationService,
+      inject: [DATASET_SERVICE, ExperimentSpecificationService, StrategyRegistry],
+      useFactory: (
+        datasets: DatasetService,
+        specifications: ExperimentSpecificationService,
+        strategies: StrategyRegistry
+      ) =>
+        new SearchExperimentCreationService(
+          datasets,
+          specifications,
+          strategies,
+          apiRuntimeProvenance()
+        )
+    },
     ExperimentDatabaseLifecycle
   ],
   exports: [
@@ -164,7 +197,8 @@ class ExperimentDatabaseLifecycle implements OnApplicationShutdown {
     SearchAnnotationRecompute,
     RankingPolicyRegistry,
     SearchCoordinator,
-    LeaderboardProjector
+    LeaderboardProjector,
+    SearchExperimentCreationService
   ]
 })
 export class ExperimentModule {}

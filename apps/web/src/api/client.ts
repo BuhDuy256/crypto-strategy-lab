@@ -1,6 +1,11 @@
 import {
   isStrategyCatalogResponse,
+  isGeneratorCatalogResponse,
+  isCreateSearchExperimentResponse,
   type StrategyCatalogResponse,
+  type GeneratorCatalogResponse,
+  type CreateSearchExperimentRequest,
+  type CreateSearchExperimentResponse,
   type CreateCompositeRequest,
   type CreateCompositeResponse,
   type ApiCompositeStrategyDefinition,
@@ -125,6 +130,46 @@ export function createSpecification(request: CreateSpecificationRequest): Promis
 
 export function getStrategies(): Promise<StrategyCatalogResponse> {
   return getJson("/strategies", isStrategyCatalogResponse);
+}
+
+/** Reads the catalog of registered strategy generators (for the search method selector). */
+export function getGenerators(): Promise<GeneratorCatalogResponse> {
+  return getJson("/generators", isGeneratorCatalogResponse);
+}
+
+/** Configures and freezes a search experiment, returning its specification id. */
+export function createSearchExperiment(
+  request: CreateSearchExperimentRequest
+): Promise<CreateSearchExperimentResponse> {
+  return postJson("/experiments/search", request, isCreateSearchExperimentResponse);
+}
+
+function postSearchControl(specId: string, action: string): Promise<SearchProgressResponse> {
+  return postJson(
+    `/experiments/${encodeURIComponent(specId)}/search/${action}`,
+    {},
+    isSearchProgressResponse
+  );
+}
+
+/** Starts the configured search run and returns its first progress snapshot. */
+export function startSearch(specId: string): Promise<SearchProgressResponse> {
+  return postSearchControl(specId, "start");
+}
+
+/** Requests a pause; the returned snapshot reflects the converged (not requested) state. */
+export function pauseSearch(specId: string): Promise<SearchProgressResponse> {
+  return postSearchControl(specId, "pause");
+}
+
+/** Requests a resume and returns the converged snapshot. */
+export function resumeSearch(specId: string): Promise<SearchProgressResponse> {
+  return postSearchControl(specId, "resume");
+}
+
+/** Requests a cancel and returns the converged snapshot. */
+export function cancelSearch(specId: string): Promise<SearchProgressResponse> {
+  return postSearchControl(specId, "cancel");
 }
 
 /** Reads the derived Top-K leaderboard of a search experiment. */
