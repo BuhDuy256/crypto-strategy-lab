@@ -8,9 +8,9 @@ import {
   type CreateSearchExperimentResponse,
   type CreateCompositeRequest,
   type CreateCompositeResponse,
-  type ApiCompositeStrategyDefinition,
-  type EvaluatePolicyRequest,
-  type EvaluatePolicyResponse
+  type ApiCompositeCatalogEntry,
+  type EvaluateCompositeRequest,
+  type EvaluateCompositeResponse
 } from "@crypto-strategy-lab/api-contracts";
 // The single module through which the SPA talks to the backend.
 //
@@ -59,6 +59,23 @@ export class ApiContractError extends Error {
     super(`Response from ${endpoint} did not match the expected contract.`);
     this.name = "ApiContractError";
   }
+}
+
+async function backendError(response: Response, fallback: string): Promise<Error> {
+  try {
+    const body: unknown = await response.json();
+    if (
+      typeof body === "object" &&
+      body !== null &&
+      "message" in body &&
+      typeof body.message === "string"
+    ) {
+      return new Error(body.message);
+    }
+  } catch {
+    // Use the status-based fallback when an error response has no JSON body.
+  }
+  return new Error(fallback);
 }
 
 async function getJson<T>(path: string, isValid: (value: unknown) => value is T): Promise<T> {
@@ -197,26 +214,38 @@ export async function createComposite(req: CreateCompositeRequest): Promise<Crea
   const response = await fetch(`${API_BASE_URL}/strategies/composites`, {
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(req)
   });
-  if (!response.ok) throw new Error(`Failed to create composite: ${response.status}`);
+  if (!response.ok) {
+    throw await backendError(response, `Failed to create composite: ${response.status}`);
+  }
   return response.json();
 }
 
-export async function listComposites(): Promise<ApiCompositeStrategyDefinition[]> {
+export async function listComposites(): Promise<ApiCompositeCatalogEntry[]> {
   const response = await fetch(`${API_BASE_URL}/strategies/composites`);
   if (!response.ok) throw new Error(`Failed to list composites: ${response.status}`);
   return response.json();
 }
 
-export async function getComposite(id: string): Promise<ApiCompositeStrategyDefinition> {
+export async function getComposite(id: string): Promise<ApiCompositeCatalogEntry> {
   const response = await fetch(`${API_BASE_URL}/strategies/composites/${id}`);
   if (!response.ok) throw new Error(`Failed to fetch composite: ${response.status}`);
   return response.json();
 }
 
-export async function evaluatePolicy(req: EvaluatePolicyRequest): Promise<EvaluatePolicyResponse> {
-  const response = await fetch(`${API_BASE_URL}/strategies/composites/evaluate-policy`, {
-    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(req)
-  });
-  if (!response.ok) throw new Error(`Failed to evaluate policy: ${response.status}`);
+export async function evaluateComposite(
+  id: string,
+  request: EvaluateCompositeRequest
+): Promise<EvaluateCompositeResponse> {
+  const response = await fetch(
+    `${API_BASE_URL}/strategies/composites/${encodeURIComponent(id)}/evaluate`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(request)
+    }
+  );
+  if (!response.ok) {
+    throw await backendError(response, `Failed to evaluate composite: ${response.status}`);
+  }
   return response.json();
 }

@@ -52,7 +52,10 @@ export function bollingerBands(
       continue;
     }
     const window = values.slice(index - period + 1, index + 1);
-    const mean: any = middle[index - period + 1];
+    const mean = middle[index - period + 1];
+    if (mean === undefined) {
+      throw new Error(`BOLLINGER_MEAN: moving average missing at index ${index - period + 1}`);
+    }
     let variance = 0;
     for (const v of window) {
       variance += Math.pow(v - mean, 2);
@@ -83,7 +86,6 @@ export function relativeStrengthIndex(
   let avgLoss = 0;
 
   for (let i = 1; i <= period; i++) {
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const change = values[i]! - values[i - 1]!;
     if (change > 0) {
       avgGain += change;
@@ -106,7 +108,6 @@ export function relativeStrengthIndex(
   pushRsi();
 
   for (let i = period + 1; i < values.length; i++) {
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const change = values[i]! - values[i - 1]!;
     const gain = change > 0 ? change : 0;
     const loss = change < 0 ? -change : 0;

@@ -1,7 +1,7 @@
 import type { BandAnnotation } from "./annotation.js";
 import { bollingerBands } from "./indicators.js";
 import type { StrategyParameters } from "./parameter-schema.js";
-import type { AnalysisContext, PriceBar, Strategy, StrategyDescriptor, StrategyResult } from "./strategy.js";
+import type { AnalysisContext, Strategy, StrategyDescriptor, StrategyResult } from "./strategy.js";
 
 const PRICE_SOURCES = ["open", "high", "low", "close"] as const;
 type PriceSource = (typeof PRICE_SOURCES)[number];

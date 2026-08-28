@@ -1,4 +1,4 @@
-import { Inject, Module, type OnApplicationShutdown } from "@nestjs/common";
+import { Module, type OnApplicationShutdown } from "@nestjs/common";
 import { StrategyRegistry } from "./application/strategy-registry.js";
 import { createBuiltInStrategyRegistry } from "./application/built-in-strategy-registry.js";
 import { CombinationPolicyRegistry } from "./application/combination-policy-registry.js";

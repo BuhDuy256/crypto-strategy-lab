@@ -1,7 +1,12 @@
 // CPU computation seam kept separate from runner lease orchestration.
 
 import type { Candle } from "../../market/index.js";
-import type { Annotation, Signal, StrategyRegistry } from "../../strategy/index.js";
+import type {
+  Annotation,
+  CompositeStrategyDefinition,
+  Signal,
+  StrategyRegistry
+} from "../../strategy/index.js";
 import { Backtester, type BacktestOutput } from "../domain/backtester.js";
 import { Evaluator, type EvaluationResult } from "../domain/evaluator.js";
 import type { FrozenExperimentSpecification } from "../domain/experiment-specification.js";
@@ -9,6 +14,7 @@ import type { FrozenExperimentSpecification } from "../domain/experiment-specifi
 export interface BacktestComputationInput {
   readonly specification: FrozenExperimentSpecification;
   readonly candles: readonly Candle[];
+  readonly compositeDefinition?: CompositeStrategyDefinition;
 }
 
 export interface BacktestComputationOutput {

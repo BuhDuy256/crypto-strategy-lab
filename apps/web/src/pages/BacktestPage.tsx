@@ -1,24 +1,46 @@
+// The Backtest page (UI-04) plus trade-row selection and chart highlight (UI-06).
+//
+// The page holds no strategy, backtest, evaluation, or ranking logic. It only
+// collects user choices - the dataset window, the strategy, and its parameters -
+// and posts them. The backend resolves the dataset manifest, supplies the
+// execution profile and the metric set, stamps provenance, and computes every
+// number shown here. The strategy list and its parameter form come from the
+// strategy catalog endpoint, so no strategy identifier is written in this file.
+
 import {
   API_TIMEFRAMES,
   type ApiCandle,
+  type ApiParameterSchema,
+  type ApiStrategyDescriptor,
+  type ApiStrategyParameters,
+  type ApiStrategyParameterValue,
   type ApiTimeframe,
-  type CandleHistoryRequest,
   type BacktestRunResponse,
   type BacktestResultResponse,
-  type BacktestTradesResponse
+  type BacktestTradePageResponse,
+  type BacktestTradesResponse,
+  type CandleHistoryRequest,
+  type CompletedBacktestResultResponse
 } from "@crypto-strategy-lab/api-contracts";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   getCandleHistory,
   createSpecification,
+  getStrategies,
+  listComposites,
   startBacktest,
   getBacktestRun,
   getBacktestResult,
   getBacktestTrades
 } from "../api/client.js";
 import { CandlestickChart, type ChartState } from "../components/CandlestickChart.js";
+import { GenericParameterForm } from "../components/GenericParameterForm.js";
 
 const CANDLE_COUNT = 200;
+const TRADE_PAGE_SIZE = 20;
+const POLL_INTERVAL_MS = 2_000;
+const SYMBOLS = ["BTCUSDT"] as const;
+type Symbol = (typeof SYMBOLS)[number];
 const TIMEFRAME_MILLISECONDS: Readonly<Record<ApiTimeframe, number>> = {
   "1m": 60_000,
   "5m": 300_000,
@@ -29,6 +51,11 @@ const TIMEFRAME_MILLISECONDS: Readonly<Record<ApiTimeframe, number>> = {
   "4h": 14_400_000,
   "1d": 86_400_000
 };
+
+interface TimeRange {
+  readonly startTime: number;
+  readonly endTime: number;
+}
 
 export function buildRecentCandleRequest(
   timeframe: ApiTimeframe,
@@ -46,126 +73,291 @@ export function buildRecentCandleRequest(
   };
 }
 
+function recentRange(timeframe: ApiTimeframe, now: number): TimeRange {
+  const request = buildRecentCandleRequest(timeframe, now);
+  return { startTime: request.startTime, endTime: request.endTime };
+}
+
+/** Formats an epoch millisecond value for a `type="date"` input (UTC calendar day). */
+function toDateInputValue(epochMs: number): string {
+  return new Date(epochMs).toISOString().slice(0, 10);
+}
+
+// Snaps a chosen instant back to the candle open time that contains it. A dataset
+// window is addressed by candle open times, so an unaligned bound is rejected by
+// the backend; this keeps a calendar-day choice expressible for every timeframe.
+function alignToCandleOpen(epochMs: number, timeframe: ApiTimeframe): number {
+  const duration = TIMEFRAME_MILLISECONDS[timeframe];
+  return Math.floor(epochMs / duration) * duration;
+}
+
+function failureMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function completedResult(
+  result: BacktestResultResponse | null
+): CompletedBacktestResultResponse | null {
+  return result !== null && result.status === "completed" ? result : null;
+}
+
+function tradePage(
+  trades: BacktestTradesResponse | null
+): BacktestTradePageResponse | null {
+  return trades !== null && trades.status === "completed" ? trades : null;
+}
+
+// Keeps only the parameters the selected strategy's schema declares.
+//
+// The shared parameter form fills its schema defaults by calling back up, so
+// right after a strategy switch a value belonging to the previously selected
+// schema can still arrive. Scoping the collected values to the current schema
+// means the request always describes the strategy actually selected.
+function parametersForSchema(
+  schema: ApiParameterSchema | undefined,
+  values: ApiStrategyParameters
+): ApiStrategyParameters {
+  if (schema === undefined) return {};
+  const scoped: Record<string, ApiStrategyParameterValue> = {};
+  for (const name of Object.keys(schema.properties)) {
+    const value = values[name];
+    if (value !== undefined) scoped[name] = value;
+  }
+  return scoped;
+}
+
 export function BacktestPage() {
+  const [symbol, setSymbol] = useState<Symbol>("BTCUSDT");
   const [timeframe, setTimeframe] = useState<ApiTimeframe>("1h");
+  const [range, setRange] = useState<TimeRange>(() => recentRange("1h", Date.now()));
   const [candles, setCandles] = useState<readonly ApiCandle[]>([]);
   const [chartState, setChartState] = useState<ChartState>("loading");
+  const [chartError, setChartError] = useState<string | null>(null);
 
-  const [strategy, setStrategy] = useState("ma-crossover");
-  const [fastPeriod, setFastPeriod] = useState(10);
-  const [slowPeriod, setSlowPeriod] = useState(20);
-  
+  const [strategies, setStrategies] = useState<readonly ApiStrategyDescriptor[]>([]);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [compositeCatalogError, setCompositeCatalogError] = useState<string | null>(null);
+  const [strategyId, setStrategyId] = useState<string | null>(null);
+  const [collectedParameters, setCollectedParameters] = useState<ApiStrategyParameters>({});
+
   const [run, setRun] = useState<BacktestRunResponse | null>(null);
   const [result, setResult] = useState<BacktestResultResponse | null>(null);
   const [tradesResponse, setTradesResponse] = useState<BacktestTradesResponse | null>(null);
   const [page, setPage] = useState(1);
   const [selectedTradeId, setSelectedTradeId] = useState<number | null>(null);
 
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
+  const [runError, setRunError] = useState<string | null>(null);
+
+  const selectedStrategy = useMemo(
+    () => strategies.find((descriptor) => descriptor.id === strategyId) ?? null,
+    [strategies, strategyId]
+  );
+  const parameters = useMemo(
+    () => parametersForSchema(selectedStrategy?.parameterSchema, collectedParameters),
+    [selectedStrategy, collectedParameters]
+  );
+
+  // The strategy catalog owns the list, the versions, and the parameter schema.
+  useEffect(() => {
+    let active = true;
+    Promise.all([
+      getStrategies(),
+      listComposites().catch((error: unknown) => {
+        if (active) setCompositeCatalogError(failureMessage(error));
+        return [];
+      })
+    ])
+      .then(([response, composites]) => {
+        if (!active) return;
+        const compositeDescriptors: ApiStrategyDescriptor[] = composites.map(
+          (composite) => composite.descriptor
+        );
+        const options = [...response.strategies, ...compositeDescriptors];
+        setStrategies(options);
+        setStrategyId(options[0]?.id ?? null);
+        setCatalogError(null);
+      })
+      .catch((error: unknown) => {
+        if (active) setCatalogError(failureMessage(error));
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // The chart shows exactly the window the backtest will run on. The server caps
+  // how many candles one read may return, so a wide window at a fine timeframe is
+  // refused. The backtest itself has no such cap, so this must report the server's
+  // own reason instead of failing silently: the run stays valid, only the drawing
+  // is unavailable.
   useEffect(() => {
     let active = true;
     setChartState("loading");
-    void getCandleHistory(buildRecentCandleRequest(timeframe, Date.now()))
+    setChartError(null);
+    void getCandleHistory({
+      provider: "binance",
+      symbol,
+      timeframe,
+      startTime: range.startTime,
+      endTime: range.endTime
+    })
       .then((response) => {
         if (active) {
           setCandles(response.candles);
           setChartState("ready");
         }
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (active) {
           setCandles([]);
+          setChartError(failureMessage(error));
           setChartState("error");
         }
       });
     return () => {
       active = false;
     };
-  }, [timeframe]);
+  }, [symbol, timeframe, range.startTime, range.endTime]);
 
-  // Polling loop
+  // Execution is asynchronous, so the page polls the run status until it settles.
   useEffect(() => {
-    if (!run || run.status === "completed" || run.status === "failed") return;
-
-    let timeoutId: NodeJS.Timeout;
-    const poll = async () => {
+    if (run === null || run.status === "completed" || run.status === "failed") return;
+    let active = true;
+    let timeoutId: ReturnType<typeof setTimeout>;
+    const poll = async (): Promise<void> => {
       try {
-        const nextRun = await getBacktestRun(run.runId);
-        setRun(nextRun);
-        if (nextRun.status === "completed") {
-          const res = await getBacktestResult(nextRun.runId);
-          setResult(res);
-          const trs = await getBacktestTrades(nextRun.runId, 1, 20);
-          setTradesResponse(trs);
-          setPage(1);
-        } else if (nextRun.status === "failed") {
-          const res = await getBacktestResult(nextRun.runId);
-          setResult(res);
-        } else {
-          timeoutId = setTimeout(poll, 2000);
-        }
-      } catch {
-        timeoutId = setTimeout(poll, 2000);
+        const next = await getBacktestRun(run.runId);
+        if (!active) return;
+        setRunError(null);
+        setRun(next);
+      } catch (error: unknown) {
+        if (!active) return;
+        // A status read can fail transiently; report it and keep polling rather
+        // than leaving the page stuck on an unexplained "running".
+        setRunError(failureMessage(error));
+        timeoutId = setTimeout(() => void poll(), POLL_INTERVAL_MS);
       }
     };
-    timeoutId = setTimeout(poll, 2000);
-    return () => clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => void poll(), POLL_INTERVAL_MS);
+    return () => {
+      active = false;
+      clearTimeout(timeoutId);
+    };
   }, [run]);
 
-  // Pagination effect
-  useEffect(() => {
-    if (run?.status === "completed") {
-      void getBacktestTrades(run.runId, page, 20).then(setTradesResponse);
-    }
-  }, [page, run?.status, run?.runId]);
+  const runId = run?.runId;
+  const runStatus = run?.status;
 
-  const handleStart = async () => {
+  // A settled run has a readable result: metrics and assumptions, or a reason.
+  useEffect(() => {
+    if (runId === undefined || (runStatus !== "completed" && runStatus !== "failed")) return;
+    let active = true;
+    void getBacktestResult(runId)
+      .then((value) => {
+        if (active) setResult(value);
+      })
+      .catch((error: unknown) => {
+        if (active) setRunError(failureMessage(error));
+      });
+    return () => {
+      active = false;
+    };
+  }, [runId, runStatus]);
+
+  // Trades page against the server; the page never loads them all at once.
+  useEffect(() => {
+    if (runId === undefined || runStatus !== "completed") return;
+    let active = true;
+    void getBacktestTrades(runId, page, TRADE_PAGE_SIZE)
+      .then((value) => {
+        if (active) setTradesResponse(value);
+      })
+      .catch((error: unknown) => {
+        if (active) setRunError(failureMessage(error));
+      });
+    return () => {
+      active = false;
+    };
+  }, [runId, runStatus, page]);
+
+  // The chosen window survives a timeframe change; only its resolution changes.
+  const handleTimeframeChange = (next: ApiTimeframe): void => {
+    setTimeframe(next);
+    setRange((current) => ({
+      startTime: alignToCandleOpen(current.startTime, next),
+      endTime: alignToCandleOpen(current.endTime, next)
+    }));
+  };
+
+  const handleStrategyChange = (nextId: string): void => {
+    setStrategyId(nextId);
+    setCollectedParameters({});
+  };
+
+  const handleParametersChange = useCallback((next: ApiStrategyParameters): void => {
+    setCollectedParameters(next);
+  }, []);
+
+  const handleStart = async (): Promise<void> => {
+    if (selectedStrategy === null) {
+      setStartError("Select a strategy before starting a backtest.");
+      return;
+    }
+    setStarting(true);
+    setStartError(null);
+    setRunError(null);
     setRun(null);
     setResult(null);
     setTradesResponse(null);
+    setSelectedTradeId(null);
+    setPage(1);
     try {
-      const spec = await createSpecification({
+      const specification = await createSpecification({
         schemaVersion: "v1",
-        datasetRef: { datasetId: "binance-BTCUSDT-1h", version: 1, manifestVersion: "v1", provider: "binance", symbols: ["BTCUSDT"], timeframe: "1h", range: { startTime: 0, endTime: 1 }, revisionWatermark: 1, integrityHash: "hash" },
+        dataset: {
+          provider: "binance",
+          symbol,
+          timeframe,
+          startTime: range.startTime,
+          endTime: range.endTime
+        },
         strategy: {
-          id: strategy,
-          version: "1.0.0",
-          parameters: { fastPeriod, slowPeriod }
-        },
-        execution: {
-          initialCapital: 1000,
-          feeRate: 0.001,
-          slippageRate: 0.001,
-          signalTiming: "close-of-bar", 
-          leverage: 1,
-          positionSizing: "available-equity",
-          allowedDirections: ["long", "short"],
-          stopLoss: { enabled: false },
-          takeProfit: { enabled: false },
-          sameBarExitPriority: "stop-loss-first",
-          finalPositionPolicy: "liquidate-at-final-close",
-          decimalPlaces: 8
-        },
-        metricSet: { id: "core", version: "1.0.0" }
+          id: selectedStrategy.id,
+          version: selectedStrategy.version,
+          parameters
+        }
       });
-      const newRun = await startBacktest({ specId: spec.specId });
-      setRun(newRun);
-    } catch (e) {
-      console.error(e);
+      setRun(await startBacktest({ specId: specification.specId }));
+    } catch (error: unknown) {
+      setStartError(failureMessage(error));
+    } finally {
+      setStarting(false);
     }
   };
+
+  const handleTradeClick = (sequenceNumber: number): void => {
+    setSelectedTradeId((current) => (current === sequenceNumber ? null : sequenceNumber));
+  };
+
+  const completed = completedResult(result);
+  const trades = tradePage(tradesResponse);
+  const totalPages =
+    trades === null ? 1 : Math.max(1, Math.ceil(trades.page.totalCount / trades.page.pageSize));
 
   return (
     <section className="backtest-page">
       <div className="page-heading">
         <div>
           <h1>Backtest</h1>
-          <p>Inspect normalized BTCUSDT history before configuring an experiment.</p>
+          <p>Configure a single backtest over normalized BTCUSDT history and read its result.</p>
         </div>
         <label className="timeframe-control">
           <span>Timeframe</span>
           <select
             value={timeframe}
-            onChange={(event) => setTimeframe(event.target.value as ApiTimeframe)}
+            onChange={(event) => handleTimeframeChange(event.target.value as ApiTimeframe)}
           >
             {API_TIMEFRAMES.map((option) => (
               <option key={option} value={option}>{option}</option>
@@ -176,49 +368,120 @@ export function BacktestPage() {
 
       <div className="configuration-panel">
         <label>
-          <span>Strategy</span>
-          <input value={strategy} onChange={e => setStrategy(e.target.value)} />
+          <span>Symbol</span>
+          <select
+            value={symbol}
+            onChange={(event) => setSymbol(event.target.value as Symbol)}
+          >
+            {SYMBOLS.map((option) => (
+              <option key={option} value={option}>{option}</option>
+            ))}
+          </select>
         </label>
         <label>
-          <span>Fast Period</span>
-          <input type="number" value={fastPeriod} onChange={e => setFastPeriod(Number(e.target.value))} />
+          <span>Start date</span>
+          <input
+            type="date"
+            value={toDateInputValue(range.startTime)}
+            onChange={(event) => {
+              const parsed = Date.parse(`${event.target.value}T00:00:00.000Z`);
+              if (Number.isFinite(parsed)) {
+                setRange((current) => ({
+                  ...current,
+                  startTime: alignToCandleOpen(parsed, timeframe)
+                }));
+              }
+            }}
+          />
         </label>
         <label>
-          <span>Slow Period</span>
-          <input type="number" value={slowPeriod} onChange={e => setSlowPeriod(Number(e.target.value))} />
+          <span>End date</span>
+          <input
+            type="date"
+            value={toDateInputValue(range.endTime)}
+            onChange={(event) => {
+              const parsed = Date.parse(`${event.target.value}T23:59:59.999Z`);
+              if (Number.isFinite(parsed)) {
+                setRange((current) => ({
+                  ...current,
+                  endTime: alignToCandleOpen(parsed, timeframe)
+                }));
+              }
+            }}
+          />
         </label>
-        <button onClick={handleStart}>Start Backtest</button>
+
+        {catalogError !== null ? (
+          <p role="alert">Could not load the strategy catalog: {catalogError}</p>
+        ) : (
+          <label>
+            <span>Strategy</span>
+            <select
+              value={strategyId ?? ""}
+              disabled={strategies.length === 0}
+              onChange={(event) => handleStrategyChange(event.target.value)}
+            >
+              {strategies.length === 0 && <option value="">Loading strategies...</option>}
+              {strategies.map((descriptor) => (
+                <option key={descriptor.id} value={descriptor.id}>{descriptor.name}</option>
+              ))}
+            </select>
+          </label>
+        )}
+        {compositeCatalogError !== null && (
+          <p role="alert">Could not load saved composites: {compositeCatalogError}</p>
+        )}
+
+        {selectedStrategy !== null && (
+          <GenericParameterForm
+            schema={selectedStrategy.parameterSchema}
+            values={parameters}
+            onChange={handleParametersChange}
+          />
+        )}
+
+        <button onClick={() => void handleStart()} disabled={starting || selectedStrategy === null}>
+          Start Backtest
+        </button>
+        {startError !== null && <p role="alert">Could not start the backtest: {startError}</p>}
       </div>
 
-      {run && (
+      {run !== null && (
         <div className="run-status">
           <h2>Status: {run.status}</h2>
-          {result?.status === "failed" && <p>Error: {result.failureReason}</p>}
+          {result?.status === "failed" && <p role="alert">Error: {result.failureReason}</p>}
+          {runError !== null && <p role="alert">Could not read the run: {runError}</p>}
         </div>
       )}
 
-      {result?.status === "completed" && (
+      {completed !== null && (
         <div className="results-panel">
           <div className="metrics">
-            <div>Total Return: {result.metrics.totalReturn}%</div>
-            <div>Win Rate: {result.metrics.winRate}%</div>
-            <div>Max Drawdown: {result.metrics.maximumDrawdown}%</div>
-            <div>Trades: {result.metrics.numberOfTrades}</div>
+            <div>Total Return: {completed.metrics.totalReturn}</div>
+            <div>Win Rate: {completed.metrics.winRate}</div>
+            <div>Max Drawdown: {completed.metrics.maximumDrawdown}</div>
+            <div>Trades: {completed.metrics.numberOfTrades}</div>
           </div>
-          
+
           <div className="assumptions-panel">
             <h3>Execution Assumptions</h3>
             <ul>
-              <li>Initial Capital: {result.executionAssumptions.initialCapital}</li>
-              <li>Fee Rate: {result.executionAssumptions.feeRate}</li>
-              <li>Slippage Rate: {result.executionAssumptions.slippageRate}</li>
-              <li>Fill Rule: {result.executionAssumptions.fillRule}</li>
+              <li>Initial Capital: {completed.executionAssumptions.initialCapital}</li>
+              <li>Fee Rate: {completed.executionAssumptions.feeRate}</li>
+              <li>Slippage Rate: {completed.executionAssumptions.slippageRate}</li>
+              <li>Fill Rule: {completed.executionAssumptions.fillRule}</li>
+              <li>Signal Timing: {completed.executionAssumptions.signalTiming}</li>
             </ul>
+            <p>Specification: {completed.specId}</p>
+            <p>Specification hash: {completed.specificationHash}</p>
+            <p>Metric set: {completed.metricSet.id} {completed.metricSet.version}</p>
           </div>
 
           <div className="trades-table">
-            <h3>Trades (Page {page})</h3>
-            {(tradesResponse as any)?.trades.length === 0 ? (
+            <h3>Trades (Page {page} of {totalPages})</h3>
+            {trades === null ? (
+              <p role="status">Loading trades...</p>
+            ) : trades.trades.length === 0 ? (
               <p>No trades executed.</p>
             ) : (
               <table>
@@ -229,31 +492,48 @@ export function BacktestPage() {
                     <th>Exit Time</th>
                     <th>Exit Price</th>
                     <th>Direction</th>
-                    <th>Fees</th>
+                    <th>Entry Fee</th>
+                    <th>Exit Fee</th>
                     <th>Slippage</th>
                     <th>PnL</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {(tradesResponse as any)?.trades.map((t: any, i: number) => (
-                    <tr key={i}>
-                      <td>{new Date(t.entryTime).toISOString()}</td>
-                      <td>{t.entryPrice}</td>
-                      <td>{t.exitTime ? new Date(t.exitTime).toISOString() : ""}</td>
-                      <td>{t.exitPrice}</td>
-                      <td>{t.direction}</td>
-                      <td>{t.fees}</td>
-                      <td>{t.slippage}</td>
-                      <td>{t.profitAndLoss}</td>
+                  {trades.trades.map((trade) => (
+                    <tr
+                      key={trade.sequenceNumber}
+                      onClick={() => handleTradeClick(trade.sequenceNumber)}
+                      aria-selected={selectedTradeId === trade.sequenceNumber}
+                      className={selectedTradeId === trade.sequenceNumber ? "selected" : undefined}
+                    >
+                      <td>{new Date(trade.entryTime).toISOString()}</td>
+                      <td>{trade.entryPrice}</td>
+                      <td>{new Date(trade.exitTime).toISOString()}</td>
+                      <td>{trade.exitPrice}</td>
+                      <td>{trade.direction}</td>
+                      <td>{trade.entryFee}</td>
+                      <td>{trade.exitFee}</td>
+                      <td>{trade.slippage}</td>
+                      <td>{trade.profitAndLoss}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             )}
             <div className="pagination">
-              <button disabled={page === 1} onClick={() => setPage(p => p - 1)}>Prev</button>
-              <span>{page} / {tradesResponse ? Math.ceil((tradesResponse as any)?.page?.totalCount / 20) : 1}</span>
-              <button disabled={!tradesResponse || page >= Math.ceil((tradesResponse as any)?.page?.totalCount / 20)} onClick={() => setPage(p => p + 1)}>Next</button>
+              <button disabled={page === 1} onClick={() => setPage((current) => current - 1)}>
+                Prev
+              </button>
+              <span>{page} / {totalPages}</span>
+              <button
+                disabled={page >= totalPages}
+                onClick={() => setPage((current) => current + 1)}
+              >
+                Next
+              </button>
+              {selectedTradeId !== null && (
+                <button onClick={() => setSelectedTradeId(null)}>Clear selection</button>
+              )}
             </div>
           </div>
         </div>
@@ -261,10 +541,17 @@ export function BacktestPage() {
 
       <div className="chart-card">
         <div className="chart-title">
-          <strong>BTCUSDT</strong>
-          <span>Binance · {timeframe} · latest {CANDLE_COUNT} closed candles</span>
+          <strong>{symbol}</strong>
+          <span>Binance · {timeframe} · selected window</span>
         </div>
-        <CandlestickChart state={chartState} candles={candles} annotations={(result as any)?.annotations || []} trades={(tradesResponse as any)?.trades || []} selectedTradeId={selectedTradeId} />
+        <CandlestickChart
+          state={chartState}
+          candles={candles}
+          annotations={completed?.annotations ?? []}
+          trades={trades?.trades ?? []}
+          selectedTradeId={selectedTradeId}
+          errorMessage={chartError}
+        />
       </div>
     </section>
   );

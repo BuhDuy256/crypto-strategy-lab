@@ -116,9 +116,16 @@ export class GridStrategyGenerator implements StrategyGenerator {
         const axis = axes[i]!;
         parameters[field] = axis[odometer[i]!]!;
       }
-      // Every emitted candidate must pass the strategy's own validation.
-      runnable.validateParameters(parameters);
-      yield parameters;
+      // Relational constraints can invalidate an otherwise schema-valid point.
+      // Skip that point while keeping the odometer order deterministic.
+      try {
+        runnable.validateParameters(parameters);
+        yield parameters;
+      } catch (error) {
+        if (!(error instanceof Error) || !error.message.startsWith("STRATEGY_PARAMETER_RELATION:")) {
+          throw error;
+        }
+      }
       for (let i = axes.length - 1; i >= 0; i -= 1) {
         const next = odometer[i]! + 1;
         if (next < axes[i]!.length) {

@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { MajorityVotePolicy, WeightedScorePolicy } from "./combination-policy.js";
 import { CompositeStrategy, type CompositeStrategyDefinition } from "./composite-strategy.js";
 import type { AnalysisContext, Strategy, StrategyResult } from "./strategy.js";
-import type { StrategyParameters } from "./parameter-schema.js";
 import type { Annotation } from "./annotation.js";
+import type { StrategyParameters } from "./parameter-schema.js";
 
 // Mock strategy for testing
 class MockStrategy implements Strategy {
@@ -16,6 +16,7 @@ class MockStrategy implements Strategy {
   constructor(private action: "buy" | "sell" | "hold", private annotationId: string) {}
 
   evaluate(context: AnalysisContext, parameters: StrategyParameters): StrategyResult {
+    void parameters;
     const ann: Annotation = { type: "level", id: this.annotationId, label: "", value: 1 };
     return {
       signal: { action: this.action, effectiveTime: context.evaluationTime },
@@ -91,6 +92,30 @@ describe("Combination Policies and CompositeStrategy", () => {
 
     const composite = new CompositeStrategy(def, [s1, s2, s3], new WeightedScorePolicy());
     const result = composite.evaluate(context, {});
+
+    expect(result.signal.action).toBe("buy");
+  });
+
+  it("Weighted score accepts the indexed weight map stored by the composite writer", () => {
+    const definition: CompositeStrategyDefinition = {
+      id: "comp1", version: "1.0", name: "", description: "",
+      components: [
+        { id: "s1", version: "1.0", parameters: {} },
+        { id: "s2", version: "1.0", parameters: {} },
+        { id: "s3", version: "1.0", parameters: {} }
+      ],
+      policy: {
+        id: "weighted-score",
+        version: "1.0",
+        configuration: { weights: { "comp-0": 0.2, "comp-1": 0.3, "comp-2": 0.5 }, threshold: 0.3 }
+      }
+    };
+
+    const result = new CompositeStrategy(
+      definition,
+      [new MockStrategy("buy", "a1"), new MockStrategy("sell", "a2"), new MockStrategy("buy", "a3")],
+      new WeightedScorePolicy()
+    ).evaluate(context, {});
 
     expect(result.signal.action).toBe("buy");
   });

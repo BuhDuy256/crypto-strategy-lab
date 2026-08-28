@@ -33,7 +33,7 @@ function mergeAnnotations(componentResults: readonly ComponentResult[]): Annotat
 export class MajorityVotePolicy implements CombinationPolicy {
   readonly descriptor = { id: "majority-vote", version: "1.0.0" };
 
-  combine(componentResults: readonly ComponentResult[], config: Record<string, unknown>): StrategyResult {
+  combine(componentResults: readonly ComponentResult[]): StrategyResult {
     let buyCount = 0;
     let sellCount = 0;
     
@@ -75,11 +75,23 @@ export class WeightedScorePolicy implements CombinationPolicy {
   readonly descriptor = { id: "weighted-score", version: "1.0.0" };
 
   combine(componentResults: readonly ComponentResult[], config: Record<string, unknown>): StrategyResult {
-    const weights = config.weights as number[] | undefined;
-    const threshold = typeof config.threshold === "number" ? config.threshold : 0.3;
+    const configuredWeights = config.weights;
+    const weights = Array.isArray(configuredWeights)
+      ? configuredWeights
+      : configuredWeights !== null && typeof configuredWeights === "object"
+        ? componentResults.map((_, index) => (configuredWeights as Record<string, unknown>)[`comp-${index}`])
+        : undefined;
+    const threshold = config.threshold;
 
-    if (!Array.isArray(weights) || weights.length !== componentResults.length) {
-      throw new Error("WEIGHTED_POLICY_CONFIG: weights must be an array of numbers with the same length as components");
+    if (
+      !Array.isArray(weights) ||
+      weights.length !== componentResults.length ||
+      weights.some((weight) => typeof weight !== "number" || !Number.isFinite(weight))
+    ) {
+      throw new Error("WEIGHTED_POLICY_CONFIG: weights must contain one finite number per component");
+    }
+    if (typeof threshold !== "number" || !Number.isFinite(threshold) || threshold < 0) {
+      throw new Error("WEIGHTED_POLICY_CONFIG: threshold must be a non-negative finite number");
     }
 
     let score = 0;
@@ -87,7 +99,7 @@ export class WeightedScorePolicy implements CombinationPolicy {
 
     for (let i = 0; i < componentResults.length; i++) {
       const { result } = componentResults[i]!;
-      const weight = weights[i]!;
+      const weight = weights[i] as number;
       
       if (result.signal.effectiveTime > effectiveTime) {
         effectiveTime = result.signal.effectiveTime;

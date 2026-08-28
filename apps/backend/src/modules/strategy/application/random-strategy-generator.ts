@@ -70,12 +70,22 @@ export class RandomStrategyGenerator implements StrategyGenerator {
       seed: request.seed
     };
 
-    const self = this;
+    const generateOne = (space: SearchSpace, random: SeededRandom, provenance: GeneratorProvenance) =>
+      this.generateOne(space, random, provenance);
     function* sequence(): Generator<CandidateStrategy> {
       const seen = new Set<string>();
       let consecutiveDuplicates = 0;
       while (consecutiveDuplicates < maxConsecutiveDuplicates) {
-        const candidate = self.generateOne(space, random, provenance);
+        let candidate: CandidateStrategy;
+        try {
+          candidate = generateOne(space, random, provenance);
+        } catch (error) {
+          if (!(error instanceof Error) || !error.message.startsWith("STRATEGY_PARAMETER_RELATION:")) {
+            throw error;
+          }
+          consecutiveDuplicates += 1;
+          continue;
+        }
         if (seen.has(candidate.contentHash)) {
           consecutiveDuplicates += 1;
           continue;

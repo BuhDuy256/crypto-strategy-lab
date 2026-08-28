@@ -1474,3 +1474,87 @@ avoiding duplication no longer applies; the decision below replaces it.
   demoability item on the Compose path; the host-path Definition of Demoable was
   already PASS. The `v3.0-demo` tag and the validation-status advance remain the
   owner's. Not committed; Git actions await explicit owner request.
+
+---
+
+## V1/V2 recovery
+
+### 2026-08-28 — V1 and V2 — audit of every slice claimed complete
+
+**Decisions**
+
+- Repair the affected V1 and V2 slices in place as `REOPENED` rather than opening a
+  recovery version. V3's own Definition of Demoable already requires "Everything in
+  V1 and V2 still passes", so the failures are V3 exit-criteria failures, not a new
+  scope. The target version stays V3 and no agent touched it.
+- Added a `REOPENED` status to `TRACKING.md`'s vocabulary. The existing words did not
+  fit: `TODO` means a dependency is missing, `READY` is reserved for the current
+  target version, and neither carries the fact that a `DONE` claim was disproved.
+  Original Evidence text is kept beside each reopened note so the wrong claim stays
+  visible instead of being quietly overwritten.
+- Added an Evidence column to the V2 slice table. It never had one. Seven slices were
+  marked `DONE` with nowhere to record what proved it, which is a large part of why
+  nothing was caught for four days.
+
+**Deviations / debt**
+
+- The `v3.0-demo` tag exists on `2b98139` and sits on a baseline whose V1 and V2
+  regressions do not pass. Retagging or moving it is the owner's decision; no agent
+  touched it. `TRACKING.md` previously claimed no tag existed.
+- `JOURNAL.md` still has no "V2 - Extensible Strategy Engine" section. It was never
+  written, so V2's decisions and deviations are unrecoverable except from diffs. This
+  entry does not attempt to reconstruct them.
+
+**Validation**
+
+- Clean `pnpm install --frozen-lockfile`, then: `typecheck` green; `lint` **fails**
+  with 43 errors across 21 files, every one in V1/V2 code and none in V3; `test`
+  **360/366**, 6 failures. With the Compose `api`/`runner` containers stopped to rule
+  out database contention, 5 of those 6 remain and all are `EXP-05`.
+- Boundary and module-graph tests pass 8/8: the architecture boundaries themselves
+  are clean. The defects are inside modules, not across them.
+- Governance validator fails with 40 issues, all pre-existing and confined to the archived-artefact folder
+  and `legacy-architecture-comparison.md`. Unrelated to the recovery.
+- Live Compose run: real Binance backfill and a full V3 search reaching
+  `max-candidates` both work. V3's own machinery is sound.
+
+**Problems worth remembering**
+
+- A green test suite hid all of this. The suite never covered: a backtest started from
+  the page, a composite executed, four charts loading real data, or a strategy id
+  appearing as a literal under `apps/web`. `BacktestPage.test.tsx` mocks the entire
+  API client, so a payload missing `execution.fillRule` and carrying an invented
+  `datasetRef` passed for four days. When a Definition-of-Demoable condition says a
+  user-visible flow works, at least one check must exercise that flow, not a mock of
+  it.
+- `pnpm test` resets the schemas of whatever database it points at, including the one
+  the Compose stack is using. Two agents or a test run plus a live stack will corrupt
+  each other. This is why recovery clusters run sequentially rather than in parallel.
+- The composite gap was visible in the source the whole time:
+  `search-coordinator.ts:426` throws `SEARCH_COMPOSITE_UNSUPPORTED` with a comment
+  saying the computation path cannot resolve composites. It was read as a V3 scope
+  note; it was actually reporting that V2 had never been finished.
+- The weighted-policy representation is safe to change: `strategy.composites` holds no
+  rows, and no composite candidate has ever been persisted because the coordinator
+  throws before submission, so no stored canonical hash depends on the current shape.
+
+**Ending state**
+
+- Audit complete at `2b98139`, clean tree, nothing committed. Nine slices moved to
+  `REOPENED`: `UI-04`, `UI-05`, `EXP-05`, `DEMO-01`, `STRAT-04`, `STRAT-08`, `MKT-08`,
+  `UI-02`, `UI-06`. Recovery order R1-R8 is recorded in `TRACKING.md`. V4 is not
+  authorized.
+
+### 2026-08-28 — R1 — V1 single-backtest path functionally restored
+
+The Backtest path now resolves a real Market dataset, uses the registered strategy
+catalog, freezes a complete specification with runtime provenance, and completes in
+the separate Compose runner. The smoke run used 1,000 real BTCUSDT one-hour candles
+and returned 58 trades plus all four MVP metrics.
+
+`integration/specification-api.e2e.test.ts` now stubs only the external market
+provider and exercises the real DatasetService, StrategyRegistry, specification
+service, and PostgreSQL store. UI-04 AC9 remains a historical deviation: the slice
+required no backend changes, but its pre-existing endpoint could not produce a
+runner-acceptable specification. The recovery added only the missing backend
+application path and did not change frozen architecture boundaries.

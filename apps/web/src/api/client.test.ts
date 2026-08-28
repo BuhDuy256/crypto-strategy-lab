@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiContractError, getHealth } from "./client.js";
+import { ApiContractError, createComposite, getHealth } from "./client.js";
 
 describe("getHealth", () => {
   afterEach(() => {
@@ -43,5 +43,29 @@ describe("getHealth", () => {
     );
 
     await expect(getHealth()).rejects.toBeInstanceOf(ApiContractError);
+  });
+});
+
+describe("createComposite", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("preserves the backend parameter-validation message", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: false,
+        status: 400,
+        json: async () => ({ message: "COMPONENT_INVALID: STRATEGY_PARAMETER_RELATION" })
+      }))
+    );
+
+    await expect(createComposite({
+      name: "Invalid",
+      description: "Invalid parameters",
+      components: [],
+      policy: { id: "majority-vote", version: "1.0.0", configuration: {} }
+    })).rejects.toThrow("COMPONENT_INVALID: STRATEGY_PARAMETER_RELATION");
   });
 });

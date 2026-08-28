@@ -43,8 +43,8 @@ legacy contracts unchanged.
 
 Sources: [current baseline](architecture-baseline.md),
 [current implementation tracker](../../implementation-plan/TRACKING.md),
-[legacy baseline](../../../final_cryptolab/docs/01_ARCHITECTURE_BASELINE.md), and
-[legacy integrated status](../../../final_cryptolab/docs/03_PROJECT_STATUS.md).
+legacy baseline (`final_cryptolab/docs/01_ARCHITECTURE_BASELINE.md`), and
+legacy integrated status (`final_cryptolab/docs/03_PROJECT_STATUS.md`).
 
 ## Snapshot: target architecture versus code today
 
@@ -58,9 +58,9 @@ Sources: [current baseline](architecture-baseline.md),
 | Live path | Binance WS, backend WS, Redis support | Planned; mapper exists only for REST fixture | Separate market ingest, Redis Pub/Sub, NestJS Gateway, snapshot recovery | Not implemented in V1 foundation |
 | Architecture enforcement | Two Python import scans plus review | Implemented | Six source-tree dependency rules plus proof plan and governance validator | Boundary test and governance automation implemented; CI is not yet present |
 
-Evidence: [legacy technology ADR](../../../final_cryptolab/docs/adr/ADR-002-technology-stack.md),
-[legacy contracts](../../../final_cryptolab/backend/app/shared/contracts/),
-[legacy migration](../../../final_cryptolab/backend/migrations/versions/20260817_0001_schema_baseline.py),
+Evidence: legacy technology ADR (`final_cryptolab/docs/adr/ADR-002-technology-stack.md`),
+legacy contracts (`final_cryptolab/backend/app/shared/contracts/`),
+legacy migration (`final_cryptolab/backend/migrations/versions/20260817_0001_schema_baseline.py`),
 [current technology ADR](../adr/ADR-009-technology-realization.md),
 [current migration](../../apps/backend/migrations/0001_create_module_schemas.sql),
 [current contract package](../../packages/api-contracts/src/index.ts), and
@@ -84,8 +84,8 @@ The legacy dependency rules are correct in direction, but the code-level test on
 checks forbidden framework/infrastructure imports in `app/modules` and forbidden
 imports in shared contracts. It does not encode every allowed module edge or stop a
 consumer from reaching another module's internal files. See the
-[legacy baseline module table](../../../final_cryptolab/docs/01_ARCHITECTURE_BASELINE.md)
-and [legacy architecture test](../../../final_cryptolab/backend/tests/test_architecture.py).
+legacy baseline module table (`final_cryptolab/docs/01_ARCHITECTURE_BASELINE.md`)
+and legacy architecture test (`final_cryptolab/backend/tests/test_architecture.py`).
 
 ### Current structure
 
@@ -132,20 +132,20 @@ UTC timestamps, and use `Decimal` for price, money, and ratios. It implements:
 - normalized `NewsItem` and versioned `SentimentResult`;
 - JSON examples and round-trip/invalid-payload tests.
 
-See [legacy common contract rules](../../../final_cryptolab/backend/app/shared/contracts/common.py),
-[market contract](../../../final_cryptolab/backend/app/shared/contracts/market.py),
-[strategy contract](../../../final_cryptolab/backend/app/shared/contracts/strategy.py),
-[experiment contract](../../../final_cryptolab/backend/app/shared/contracts/experiment.py),
-[news contract](../../../final_cryptolab/backend/app/shared/contracts/news.py), and
-[contract tests](../../../final_cryptolab/backend/tests/test_contract_validation.py).
+See legacy common contract rules (`final_cryptolab/backend/app/shared/contracts/common.py`),
+market contract (`final_cryptolab/backend/app/shared/contracts/market.py`),
+strategy contract (`final_cryptolab/backend/app/shared/contracts/strategy.py`),
+experiment contract (`final_cryptolab/backend/app/shared/contracts/experiment.py`),
+news contract (`final_cryptolab/backend/app/shared/contracts/news.py`), and
+contract tests (`final_cryptolab/backend/tests/test_contract_validation.py`).
 
 The legacy `MarketDataProvider` and `NewsProvider` are framework-free async Python
 protocols with immutable queries and stable error categories. The Binance REST mapper
 normalizes a fixture without live network access. See
-[legacy Market port](../../../final_cryptolab/backend/app/modules/market/ports.py),
-[legacy Binance mapper](../../../final_cryptolab/backend/app/modules/market/mappers.py),
-[legacy Market tests](../../../final_cryptolab/backend/tests/test_market_provider.py),
-and [legacy News port](../../../final_cryptolab/backend/app/modules/news/ports.py).
+legacy Market port (`final_cryptolab/backend/app/modules/market/ports.py`),
+legacy Binance mapper (`final_cryptolab/backend/app/modules/market/mappers.py`),
+legacy Market tests (`final_cryptolab/backend/tests/test_market_provider.py`),
+and legacy News port (`final_cryptolab/backend/app/modules/news/ports.py`).
 
 ### What changes in the current architecture
 
@@ -187,9 +187,9 @@ The legacy direction uses FastAPI for API/WebSocket, Python for the worker, Cele
 over Redis, PostgreSQL, and React. Its Compose file already starts PostgreSQL and
 Redis, but Celery is not listed in the Python dependencies and no worker entry point
 exists. Therefore the worker topology is an accepted design, not implemented
-behavior. See [legacy ADR-001](../../../final_cryptolab/docs/adr/ADR-001-modular-monolith-and-worker.md),
-[legacy backend dependencies](../../../final_cryptolab/backend/pyproject.toml), and
-[legacy Compose file](../../../final_cryptolab/docker-compose.yml).
+behavior. See legacy ADR-001 (`final_cryptolab/docs/adr/ADR-001-modular-monolith-and-worker.md`),
+legacy backend dependencies (`final_cryptolab/backend/pyproject.toml`), and
+legacy Compose file (`final_cryptolab/docker-compose.yml`).
 
 The current direction uses one TypeScript build with NestJS module composition and
 role-specific entry commands for API/WebSocket, market ingest, backtest workers,
@@ -211,7 +211,7 @@ scoping, but it means the current code does not yet provide the dependency-aware
 PostgreSQL/Redis health path that the legacy walking skeleton had. See
 [current Compose](../../docker-compose.yml),
 [current health controller](../../apps/backend/src/modules/api/health.controller.ts),
-and [legacy FND-10 evidence](../../../final_cryptolab/docs/status/updates/FND-10.md).
+and legacy FND-10 evidence (`final_cryptolab/docs/status/updates/FND-10.md`).
 
 **Assessment:** the current final topology is clearer and safer. The staged topology
 is also smaller for V1. The immediate regression is operational visibility: current
@@ -224,9 +224,9 @@ The legacy baseline assigns data groups to modules and states that PostgreSQL is
 source of truth. The code has SQLAlchemy metadata and an Alembic baseline, but the
 first migration creates no schemas or domain tables. Ownership is a documented rule,
 not a database-visible structure. See
-[legacy data ownership](../../../final_cryptolab/docs/01_ARCHITECTURE_BASELINE.md),
-[legacy database support](../../../final_cryptolab/backend/app/infrastructure/database.py),
-and [legacy migration](../../../final_cryptolab/backend/migrations/versions/20260817_0001_schema_baseline.py).
+legacy data ownership (`final_cryptolab/docs/01_ARCHITECTURE_BASELINE.md`),
+legacy database support (`final_cryptolab/backend/app/infrastructure/database.py`),
+and legacy migration (`final_cryptolab/backend/migrations/versions/20260817_0001_schema_baseline.py`).
 
 The current repository creates one PostgreSQL schema for each data-owning bounded
 context. The migration is idempotent and creates no early domain tables. This makes
@@ -242,7 +242,7 @@ leaderboard is derived and rebuildable. The legacy baseline says Experiment is t
 source of truth and Leaderboard may be rebuildable, but does not define this atomic
 acceptance invariant. See
 [ADR-005](../adr/ADR-005-transactional-results-leaderboard.md) and
-[legacy data ownership](../../../final_cryptolab/docs/01_ARCHITECTURE_BASELINE.md).
+legacy data ownership (`final_cryptolab/docs/01_ARCHITECTURE_BASELINE.md`).
 
 **Assessment:** current data ownership and result consistency are materially
 stronger. They are still claims until the V1 Experiment migrations and integration
@@ -254,8 +254,8 @@ The legacy architecture correctly says long-running backtests must use a separat
 worker and that job payloads need versions and idempotency keys. It lists a draft
 event catalogue and Redis/Celery delivery, but leaves ACK, retry, dead-letter,
 reconciliation, and result-publication behavior for later decisions. See
-[legacy contract-first ADR](../../../final_cryptolab/docs/adr/ADR-003-contract-first-integration.md)
-and [legacy event catalogue](../../../final_cryptolab/docs/01_ARCHITECTURE_BASELINE.md).
+legacy contract-first ADR (`final_cryptolab/docs/adr/ADR-003-contract-first-integration.md`)
+and legacy event catalogue (`final_cryptolab/docs/01_ARCHITECTURE_BASELINE.md`).
 
 The current architecture defines the full correctness path:
 
@@ -286,7 +286,7 @@ The legacy `Provenance` model records strategy definition/version, candidate
 version, dataset ID, engine version, and score version. This is useful but cannot by
 itself reproduce execution assumptions, exact dependency/build identity, full data
 revision, model inputs, or every random source. See
-[legacy Provenance](../../../final_cryptolab/backend/app/shared/contracts/experiment.py).
+legacy Provenance (`final_cryptolab/backend/app/shared/contracts/experiment.py`).
 
 The current baseline requires a completed result to resolve ten categories of
 inputs, including strategy order and parameters, generator configuration and seed,
@@ -306,9 +306,9 @@ model.
 The legacy repository has strong team rules: one task per branch, explicit owner
 approval for architecture and shared contracts, task handoff reports, a shared
 project-status document, issue templates, CODEOWNERS, and five CI jobs. See
-[legacy AGENTS.md](../../../final_cryptolab/AGENTS.md),
-[legacy status process](../../../final_cryptolab/docs/03_PROJECT_STATUS.md), and
-[legacy CI](../../../final_cryptolab/.github/workflows/ci.yml).
+legacy AGENTS.md (`final_cryptolab/AGENTS.md`),
+legacy status process (`final_cryptolab/docs/03_PROJECT_STATUS.md`), and
+legacy CI (`final_cryptolab/.github/workflows/ci.yml`).
 
 The current repository adds a normative source hierarchy, a versioned frozen
 baseline, immutable ADR history, plan slices as the work unit, a live tracker,
@@ -336,9 +336,9 @@ The legacy repository has valuable executable evidence:
 - API error, request correlation, database, migration, health, and frontend tests;
 - CI jobs for backend lint/test, frontend lint/test/build, and Compose validation.
 
-See [legacy backend tests](../../../final_cryptolab/backend/tests/),
-[legacy frontend tests](../../../final_cryptolab/frontend/src/), and
-[legacy CI](../../../final_cryptolab/.github/workflows/ci.yml).
+See legacy backend tests (`final_cryptolab/backend/tests/`),
+legacy frontend tests (`final_cryptolab/frontend/src/`), and
+legacy CI (`final_cryptolab/.github/workflows/ci.yml`).
 
 The current repository improves architecture-specific test design with six boundary
 rules and twelve named proof obligations for replaceability, realtime recovery,

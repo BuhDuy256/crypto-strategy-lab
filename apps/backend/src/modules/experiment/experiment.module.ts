@@ -10,7 +10,12 @@
 import { Inject, Module, type OnApplicationShutdown } from "@nestjs/common";
 import type { Pool } from "pg";
 import { DATASET_SERVICE, MarketModule, type DatasetService } from "../market/index.js";
-import { StrategyModule, StrategyRegistry, StrategyGeneratorRegistry } from "../strategy/index.js";
+import {
+  CompositeStrategyService,
+  StrategyModule,
+  StrategyRegistry,
+  StrategyGeneratorRegistry
+} from "../strategy/index.js";
 import { loadConfig } from "../../platform/config.js";
 import { createDatabasePool } from "../../platform/database.js";
 import { ExperimentSpecificationService } from "./application/experiment-specification-service.js";
@@ -32,6 +37,7 @@ import { PostgresLeaderboardProjectionStore } from "./infrastructure/postgres-le
 import { SearchCoordinator } from "./application/search-coordinator.js";
 import { LeaderboardProjector } from "./application/leaderboard-projector.js";
 import { SearchExperimentCreationService } from "./application/search-experiment-creation-service.js";
+import { SingleBacktestExperimentCreationService } from "./application/single-backtest-experiment-creation-service.js";
 import { BACKTEST_ENGINE } from "./domain/backtester.js";
 import type { FreezeProvenance } from "./domain/experiment-specification.js";
 
@@ -74,12 +80,18 @@ class ExperimentDatabaseLifecycle implements OnApplicationShutdown {
     },
     {
       provide: ExperimentSpecificationService,
-      inject: [PostgresExperimentSpecificationStore, DATASET_SERVICE, StrategyRegistry],
+      inject: [
+        PostgresExperimentSpecificationStore,
+        DATASET_SERVICE,
+        StrategyRegistry,
+        CompositeStrategyService
+      ],
       useFactory: (
         store: PostgresExperimentSpecificationStore,
         datasets: DatasetService,
-        strategies: StrategyRegistry
-      ) => new ExperimentSpecificationService(store, datasets, strategies)
+        strategies: StrategyRegistry,
+        composites: CompositeStrategyService
+      ) => new ExperimentSpecificationService(store, datasets, strategies, composites)
     },
     {
       provide: PostgresBacktestRunStore,
@@ -109,12 +121,19 @@ class ExperimentDatabaseLifecycle implements OnApplicationShutdown {
     },
     {
       provide: SearchAnnotationRecompute,
-      inject: [EXPERIMENT_DATABASE_POOL, ExperimentSpecificationService, DATASET_SERVICE, StrategyRegistry],
+      inject: [
+        EXPERIMENT_DATABASE_POOL,
+        ExperimentSpecificationService,
+        DATASET_SERVICE,
+        StrategyRegistry,
+        CompositeStrategyService
+      ],
       useFactory: (
         pool: Pool,
         specifications: ExperimentSpecificationService,
         datasets: DatasetService,
-        strategies: StrategyRegistry
+        strategies: StrategyRegistry,
+        composites: CompositeStrategyService
       ) =>
         new SearchAnnotationRecompute(
           new PostgresRunSpecLocator(pool),
@@ -126,7 +145,8 @@ class ExperimentDatabaseLifecycle implements OnApplicationShutdown {
             }
           },
           datasets,
-          strategies
+          strategies,
+          composites
         )
     },
     {
@@ -184,6 +204,16 @@ class ExperimentDatabaseLifecycle implements OnApplicationShutdown {
           apiRuntimeProvenance()
         )
     },
+    {
+      provide: SingleBacktestExperimentCreationService,
+      inject: [DATASET_SERVICE, ExperimentSpecificationService],
+      useFactory: (datasets: DatasetService, specifications: ExperimentSpecificationService) =>
+        new SingleBacktestExperimentCreationService(
+          datasets,
+          specifications,
+          apiRuntimeProvenance()
+        )
+    },
     ExperimentDatabaseLifecycle
   ],
   exports: [
@@ -198,7 +228,8 @@ class ExperimentDatabaseLifecycle implements OnApplicationShutdown {
     RankingPolicyRegistry,
     SearchCoordinator,
     LeaderboardProjector,
-    SearchExperimentCreationService
+    SearchExperimentCreationService,
+    SingleBacktestExperimentCreationService
   ]
 })
 export class ExperimentModule {}

@@ -7,7 +7,7 @@ Crypto Strategy Lab is an architecture-first platform for crypto market data, st
 - **Architecture:** `FROZEN v1.2`
 - **Validation:** `PENDING IMPLEMENTATION PROOFS`
 - **Implementation:** `IN PROGRESS`
-- **Current product version:** `V1`
+- **Current product version:** `V2`
 
 `FROZEN ≠ PROVEN`: the baseline is normative for implementation, but its proof obligations still require implementation evidence.
 
@@ -353,7 +353,9 @@ Every request gets an `x-request-id` header on the response: the inbound header'
 
 ## Next phase
 
-Implementation against the frozen baseline continues as a Walking Skeleton / architecture proof-oriented vertical slice inside **V1 - Backtesting Lab**.
+Implementation against the frozen baseline is currently authorized through **V2 - Extensible Strategy Engine**. V1 and V2 recovery is being certified before any later-version work is authorized.
+
+The original Walking Skeleton was the repository's architecture proof-oriented vertical slice. The current review-ready next phase is the consolidated V1/V2 recovery certification recorded in the tracker; it does not authorize a new product version.
 
 All six V1 setup slices are complete. Market Data now has normalized provider
 contracts, Binance history, immutable candle revisions, dataset snapshots, and the

@@ -3,7 +3,7 @@
 import { Module } from "@nestjs/common";
 import type { Pool } from "pg";
 import { DATASET_SERVICE, MarketModule, type DatasetService } from "../market/index.js";
-import { StrategyModule } from "../strategy/index.js";
+import { CompositeStrategyService, StrategyModule, StrategyRegistry } from "../strategy/index.js";
 import { loadConfig } from "../../platform/config.js";
 import { StructuredLogger } from "../../platform/logger.js";
 import { DurableBacktestResultAcceptor } from "./application/backtest-result-acceptor.js";
@@ -48,7 +48,9 @@ import { WorkerThreadBacktestComputation } from "./infrastructure/worker-thread-
     },
     {
       provide: WorkerThreadBacktestComputation,
-      useFactory: () => new WorkerThreadBacktestComputation()
+      inject: [StrategyRegistry, CompositeStrategyService],
+      useFactory: (strategies: StrategyRegistry, composites: CompositeStrategyService) =>
+        new WorkerThreadBacktestComputation(strategies, composites)
     },
     {
       provide: BacktestRunnerService,

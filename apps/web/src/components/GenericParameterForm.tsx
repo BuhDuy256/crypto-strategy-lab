@@ -1,10 +1,23 @@
-import type { ApiParameterSchema } from "@crypto-strategy-lab/api-contracts";
-import { useState, useEffect } from "react";
+import type {
+  ApiParameterProperty,
+  ApiParameterSchema,
+  ApiStrategyParameters,
+  ApiStrategyParameterValue
+} from "@crypto-strategy-lab/api-contracts";
+import { useEffect } from "react";
 
 interface GenericParameterFormProps {
   schema: ApiParameterSchema;
-  values: Record<string, any>;
-  onChange: (values: Record<string, any>) => void;
+  values: ApiStrategyParameters;
+  onChange: (values: ApiStrategyParameters) => void;
+}
+
+function isParameterValue(value: unknown): value is ApiStrategyParameterValue {
+  return (
+    typeof value === "string" ||
+    typeof value === "boolean" ||
+    (typeof value === "number" && Number.isFinite(value))
+  );
 }
 
 export function GenericParameterForm({ schema, values, onChange }: GenericParameterFormProps) {
@@ -12,7 +25,7 @@ export function GenericParameterForm({ schema, values, onChange }: GenericParame
     const newValues = { ...values };
     let changed = false;
     for (const [key, prop] of Object.entries(schema.properties)) {
-      if (newValues[key] === undefined && prop.default !== undefined) {
+      if (newValues[key] === undefined && isParameterValue(prop.default)) {
         newValues[key] = prop.default;
         changed = true;
       }
@@ -22,8 +35,8 @@ export function GenericParameterForm({ schema, values, onChange }: GenericParame
     }
   }, [schema, values, onChange]);
 
-  const handleChange = (key: string, value: any, type: string) => {
-    let parsedValue = value;
+  const handleChange = (key: string, value: string, type: ApiParameterProperty["type"]) => {
+    let parsedValue: ApiStrategyParameterValue = value;
     if (type === "number" || type === "integer") {
       parsedValue = value === "" ? "" : Number(value);
     } else if (type === "boolean") {
@@ -48,7 +61,7 @@ export function GenericParameterForm({ schema, values, onChange }: GenericParame
           {prop.type === "enum" && prop.values ? (
             <select
               className="bg-[#181b25] border border-gray-700/80 hover:border-gray-600 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded px-3 py-2 text-sm text-gray-200 outline-none transition-all"
-              value={values[key] ?? ""}
+              value={String(values[key] ?? "")}
               onChange={(e) => handleChange(key, e.target.value, prop.type)}
             >
               <option value="" disabled>Select...</option>
@@ -72,7 +85,7 @@ export function GenericParameterForm({ schema, values, onChange }: GenericParame
             <input
               type={prop.type === "number" || prop.type === "integer" ? "number" : "text"}
               className="bg-[#181b25] border border-gray-700/80 hover:border-gray-600 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded px-3 py-2 text-sm text-gray-200 font-mono outline-none transition-all shadow-inner"
-              value={values[key] ?? ""}
+              value={String(values[key] ?? "")}
               onChange={(e) => handleChange(key, e.target.value, prop.type)}
               min={prop.minimum}
               max={prop.maximum}

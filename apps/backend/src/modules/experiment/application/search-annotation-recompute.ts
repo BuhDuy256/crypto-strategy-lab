@@ -8,7 +8,11 @@
 // persisted as authoritative; it is a read, cached only for the request.
 
 import type { DatasetService } from "../../market/index.js";
-import type { Annotation, StrategyRegistry } from "../../strategy/index.js";
+import {
+  StrategyRegistry,
+  type Annotation,
+  type CompositeStrategyService
+} from "../../strategy/index.js";
 import { computeBacktest } from "./backtest-computation.js";
 import { downsampleAnnotations } from "./annotation-downsampler.js";
 import type { FrozenSpecificationReader } from "./backtest-runner-service.js";
@@ -25,7 +29,8 @@ export class SearchAnnotationRecompute {
     private readonly locator: BacktestRunSpecLocator,
     private readonly specifications: FrozenSpecificationReader,
     private readonly datasets: DatasetService,
-    private readonly strategies: StrategyRegistry
+    private readonly strategies: StrategyRegistry,
+    private readonly composites?: CompositeStrategyService
   ) {}
 
   // Returns the recomputed annotations for `runId`, or undefined when the run is
@@ -35,9 +40,26 @@ export class SearchAnnotationRecompute {
     if (specId === undefined) return undefined;
     const specification = await this.specifications.get(specId);
     const dataset = await this.datasets.resolveDataset(specification.content.datasetRef);
+    let executionStrategies = this.strategies;
+    try {
+      executionStrategies.resolve(specification.content.strategy);
+    } catch (error) {
+      if (
+        !(error instanceof Error) ||
+        !error.message.startsWith("STRATEGY_NOT_FOUND:") ||
+        this.composites === undefined
+      ) {
+        throw error;
+      }
+      const composite = await this.composites.resolve(
+        specification.content.strategy.id,
+        specification.content.strategy.version
+      );
+      executionStrategies = new StrategyRegistry([composite]);
+    }
     const { simulation } = computeBacktest(
       { specification, candles: dataset.candles },
-      this.strategies
+      executionStrategies
     );
     return downsampleAnnotations(simulation.annotations);
   }

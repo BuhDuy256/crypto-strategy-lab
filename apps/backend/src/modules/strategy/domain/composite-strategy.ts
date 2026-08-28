@@ -53,6 +53,7 @@ export class CompositeStrategy implements Strategy {
   }
 
   evaluate(context: AnalysisContext, parameters: StrategyParameters): StrategyResult {
+    void parameters;
     const componentResults = this.componentStrategies.map((strategy, index) => {
       const ref = this.definition.components[index]!;
       const result = strategy.evaluate(context, ref.parameters);

@@ -2,6 +2,11 @@
 
 import { describe, expect, it } from "vitest";
 import type { BacktestComputationInput } from "../application/backtest-computation.js";
+import {
+  createBuiltInStrategyRegistry,
+  type CompositeStrategyDefinition,
+  type CompositeStrategyService
+} from "../../strategy/index.js";
 import { WorkerThreadBacktestComputation } from "./worker-thread-backtest-computation.js";
 
 const input = {
@@ -40,6 +45,49 @@ describe("WorkerThreadBacktestComputation", () => {
     await expect(new WorkerThreadBacktestComputation().compute(input, controller.signal))
       .rejects.toThrow("BACKTEST_COMPUTATION_ABORTED");
   });
+
+  it("resolves and executes a saved composite inside the worker", async () => {
+    const definition: CompositeStrategyDefinition = {
+      id: "composite-worker-test",
+      version: "1.0.0",
+      name: "Worker composite",
+      description: "Two real strategies",
+      components: [
+        {
+          id: "moving-average",
+          version: "1.0.0",
+          parameters: { fastPeriod: 2, slowPeriod: 3, priceSource: "close" }
+        },
+        {
+          id: "rsi",
+          version: "1.0.0",
+          parameters: { period: 2, buyThreshold: 30, sellThreshold: 70, priceSource: "close" }
+        }
+      ],
+      policy: { id: "majority-vote", version: "1.0.0", configuration: {} }
+    };
+    const compositeInput = {
+      ...input,
+      specification: {
+        ...input.specification,
+        content: {
+          ...input.specification.content,
+          strategy: { id: definition.id, version: definition.version, parameters: {} }
+        }
+      }
+    };
+    const composites = { load: async () => definition } as unknown as CompositeStrategyService;
+
+    const output = await new WorkerThreadBacktestComputation(
+      createBuiltInStrategyRegistry(),
+      composites
+    ).compute(compositeInput);
+
+    expect(output.simulation.annotations.some((annotation) => annotation.componentId === "moving-average"))
+      .toBe(true);
+    expect(output.simulation.annotations.some((annotation) => annotation.componentId === "rsi"))
+      .toBe(true);
+  }, 60_000);
 
   it("keeps the orchestration event loop responsive during CPU work", async () => {
     let ticks = 0;

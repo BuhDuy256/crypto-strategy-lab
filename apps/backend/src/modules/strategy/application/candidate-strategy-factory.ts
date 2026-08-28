@@ -7,7 +7,6 @@
 // list keep their order and therefore do affect it.
 
 import { canonicalSha256 } from "../../../platform/canonical-json.js";
-import type { StrategyParameters } from "../domain/parameter-schema.js";
 import type {
   CandidateStrategy,
   CandidateStrategySpecification,

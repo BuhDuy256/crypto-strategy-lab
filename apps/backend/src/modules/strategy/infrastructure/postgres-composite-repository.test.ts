@@ -38,5 +38,12 @@ describe("PostgresCompositeRepository", () => {
     expect(loaded?.name).toBe("Test Comp");
     expect(loaded?.components).toEqual(def.components);
     expect(loaded?.policy).toEqual(def.policy);
+
+    await expect(
+      pool.query("UPDATE strategy.composites SET name = 'mutated' WHERE id = 'comp-1'")
+    ).rejects.toThrow("strategy composites are immutable");
+    await expect(
+      pool.query("DELETE FROM strategy.composites WHERE id = 'comp-1'")
+    ).rejects.toThrow("strategy composites are immutable");
   });
 });

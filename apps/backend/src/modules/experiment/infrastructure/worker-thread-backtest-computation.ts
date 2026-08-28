@@ -2,12 +2,13 @@
 
 import { Worker } from "node:worker_threads";
 import { existsSync } from "node:fs";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import type {
   BacktestComputation,
   BacktestComputationInput,
   BacktestComputationOutput
 } from "../application/backtest-computation.js";
+import type { CompositeStrategyService, StrategyRegistry } from "../../strategy/index.js";
 
 interface WorkerResponse {
   readonly ok: boolean;
@@ -16,6 +17,11 @@ interface WorkerResponse {
 }
 
 export class WorkerThreadBacktestComputation implements BacktestComputation {
+  constructor(
+    private readonly strategies?: StrategyRegistry,
+    private readonly composites?: CompositeStrategyService
+  ) {}
+
   async compute(
     input: BacktestComputationInput,
     signal?: AbortSignal
@@ -24,12 +30,36 @@ export class WorkerThreadBacktestComputation implements BacktestComputation {
     const compiledUrl = new URL("./backtest-computation.worker.js", import.meta.url);
     const sourceUrl = new URL("./backtest-computation.worker.ts", import.meta.url);
     const useSource = !existsSync(fileURLToPath(compiledUrl));
-    const loaderPath = fileURLToPath(
-      new URL("../../../../node_modules/tsx/dist/loader.mjs", import.meta.url)
+    const tsconfigPath = fileURLToPath(new URL("../../../../tsconfig.json", import.meta.url));
+    const sourceBootstrap = new URL(
+      `data:text/javascript,${encodeURIComponent(`
+        import { tsImport } from ${JSON.stringify(
+          new URL("../../../../node_modules/tsx/dist/esm/api/index.mjs", import.meta.url).href
+        )};
+        await tsImport(${JSON.stringify(sourceUrl.href)}, {
+          parentURL: import.meta.url,
+          tsconfig: ${JSON.stringify(tsconfigPath)}
+        });
+      `)}`
     );
-    const worker = new Worker(useSource ? sourceUrl : compiledUrl, {
-      workerData: input, env: { ...process.env, TSX_TSCONFIG: fileURLToPath(new URL("../../../../tsconfig.json", import.meta.url)) },
-      ...(useSource ? { execArgv: ["--import", pathToFileURL(loaderPath).href] } : {})
+    let workerInput = input;
+    if (this.strategies !== undefined && this.composites !== undefined) {
+      try {
+        this.strategies.resolve(input.specification.content.strategy);
+      } catch (error) {
+        if (!(error instanceof Error) || !error.message.startsWith("STRATEGY_NOT_FOUND:")) throw error;
+        const definition = await this.composites.load(input.specification.content.strategy.id);
+        if (definition.version !== input.specification.content.strategy.version) {
+          throw new Error(
+            `COMPOSITE_VERSION_MISMATCH: expected ${definition.version}, received ${input.specification.content.strategy.version}`
+          );
+        }
+        workerInput = { ...input, compositeDefinition: definition };
+      }
+    }
+    const worker = new Worker(useSource ? sourceBootstrap : compiledUrl, {
+      workerData: workerInput,
+      env: { ...process.env, TSX_TSCONFIG: tsconfigPath }
     });
     return new Promise((resolve, reject) => {
       const abort = (): void => {

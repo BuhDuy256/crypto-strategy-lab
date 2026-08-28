@@ -31,8 +31,12 @@ export type {
   StrategyDescriptor,
   StrategyResult
 } from "./domain/strategy.js";
-export { CompositeStrategyService } from "./application/composite-strategy.service.js";
+export {
+  CompositeStrategyService,
+  instantiateCompositeStrategy
+} from "./application/composite-strategy.service.js";
 export { CombinationPolicyRegistry } from "./application/combination-policy-registry.js";
+export { createBuiltInCombinationPolicyRegistry } from "./application/built-in-combination-policy-registry.js";
 export type { CombinationPolicy } from "./domain/combination-policy.js";
 export type { ComponentResult } from "./domain/combination-policy.js";
 export type {

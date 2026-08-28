@@ -2,7 +2,7 @@
 
 import { randomUUID } from "node:crypto";
 import type { DatasetService } from "../../market/index.js";
-import { StrategyRegistry } from "../../strategy/index.js";
+import { CompositeStrategyService, StrategyRegistry } from "../../strategy/index.js";
 import { canonicalSha256 } from "../../../platform/canonical-json.js";
 import type {
   DraftExperimentSpecification,
@@ -179,7 +179,8 @@ export class ExperimentSpecificationService {
   constructor(
     private readonly store: ExperimentSpecificationStore,
     private readonly datasets: DatasetService,
-    private readonly strategies: StrategyRegistry
+    private readonly strategies: StrategyRegistry,
+    private readonly composites?: CompositeStrategyService
   ) {}
 
   createDraft(content: ExperimentDraftContent): Promise<DraftExperimentSpecification> {
@@ -204,9 +205,28 @@ export class ExperimentSpecificationService {
     assertDraft(current.content);
     assertProvenance(provenance);
     await this.datasets.resolveDataset(current.content.datasetRef);
-    const runnable = this.strategies.resolve(current.content.strategy);
-    runnable.validateParameters(current.content.strategy.parameters);
-    if (runnable.descriptor.requiredInputs.includes("sentiment-series")) {
+    let requiredInputs: readonly string[];
+    try {
+      const runnable = this.strategies.resolve(current.content.strategy);
+      runnable.validateParameters(current.content.strategy.parameters);
+      requiredInputs = runnable.descriptor.requiredInputs;
+    } catch (error) {
+      if (
+        !(error instanceof Error) ||
+        !error.message.startsWith("STRATEGY_NOT_FOUND:") ||
+        this.composites === undefined
+      ) {
+        throw error;
+      }
+      if (Object.keys(current.content.strategy.parameters).length !== 0) {
+        throw new Error("STRATEGY_PARAMETER_UNKNOWN: composite strategies accept no run-time parameters");
+      }
+      requiredInputs = (await this.composites.resolve(
+        current.content.strategy.id,
+        current.content.strategy.version
+      )).descriptor.requiredInputs;
+    }
+    if (requiredInputs.includes("sentiment-series")) {
       throw new Error("EXPERIMENT_FIELD_REQUIRED: sentimentInputRef");
     }
     const content: FrozenExperimentContent = { ...current.content, provenance };

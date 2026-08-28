@@ -23,13 +23,17 @@ interface CandlestickChartProps {
   readonly annotations?: readonly ApiAnnotation[];
   readonly trades?: readonly ApiBacktestTrade[];
   readonly selectedTradeId?: number | null;
+  // Reason the market data could not be loaded, shown instead of the generic
+  // message. A caller that knows why (for example a range the server refuses)
+  // passes it so the reader is not left guessing.
+  readonly errorMessage?: string | null;
 }
 
 function chartTime(openTime: number): UTCTimestamp {
   return Math.floor(openTime / 1_000) as UTCTimestamp;
 }
 
-export function CandlestickChart({ state, candles, annotations = [], trades = [], selectedTradeId = null }: CandlestickChartProps) {
+export function CandlestickChart({ state, candles, annotations = [], trades = [], selectedTradeId = null, errorMessage = null }: CandlestickChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -101,9 +105,9 @@ export function CandlestickChart({ state, candles, annotations = [], trades = []
         axisLabelVisible: true,
         title: "Entry",
       });
-      chart.timeScale().setVisibleLogicalRange({
-        from: chart.timeScale().coordinateToLogical(chart.timeScale().timeToCoordinate(chartTime(selectedTrade.entryTime)) || 0) || 0,
-        to: chart.timeScale().coordinateToLogical(chart.timeScale().timeToCoordinate(chartTime(selectedTrade.exitTime)) || 0) || 0,
+      chart.timeScale().setVisibleRange({
+        from: chartTime(selectedTrade.entryTime),
+        to: chartTime(selectedTrade.exitTime)
       });
     }
 
@@ -189,7 +193,13 @@ export function CandlestickChart({ state, candles, annotations = [], trades = []
     return <div role="status" className="chart-state">Loading market data...</div>;
   }
   if (state === "error") {
-    return <div role="alert" className="chart-state chart-error">Could not load market data.</div>;
+    return (
+      <div role="alert" className="chart-state chart-error">
+        {errorMessage === null || errorMessage.trim() === ""
+          ? "Could not load market data."
+          : `Could not load market data: ${errorMessage}`}
+      </div>
+    );
   }
   if (candles.length === 0) {
     return <div role="status" className="chart-state">No candles available for this timeframe.</div>;

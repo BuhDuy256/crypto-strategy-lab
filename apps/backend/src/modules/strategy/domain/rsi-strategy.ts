@@ -1,7 +1,7 @@
 import type { LevelAnnotation } from "./annotation.js";
 import { relativeStrengthIndex } from "./indicators.js";
 import type { StrategyParameters } from "./parameter-schema.js";
-import type { AnalysisContext, PriceBar, Strategy, StrategyDescriptor, StrategyResult } from "./strategy.js";
+import type { AnalysisContext, Strategy, StrategyDescriptor, StrategyResult } from "./strategy.js";
 
 const PRICE_SOURCES = ["open", "high", "low", "close"] as const;
 type PriceSource = (typeof PRICE_SOURCES)[number];
@@ -63,14 +63,17 @@ function getNumber(parameters: StrategyParameters, field: string): number {
 export class RsiStrategy implements Strategy {
   readonly descriptor = RSI_STRATEGY_DESCRIPTOR;
 
+  validateParameters(parameters: StrategyParameters): void {
+    if (getNumber(parameters, "buyThreshold") >= getNumber(parameters, "sellThreshold")) {
+      throw new Error("STRATEGY_PARAMETER_RELATION: buyThreshold must be strictly smaller than sellThreshold");
+    }
+  }
+
   evaluate(context: AnalysisContext, parameters: StrategyParameters): StrategyResult {
+    this.validateParameters(parameters);
     const period = getNumber(parameters, "period");
     const buyThreshold = getNumber(parameters, "buyThreshold");
     const sellThreshold = getNumber(parameters, "sellThreshold");
-
-    if (buyThreshold >= sellThreshold) {
-      throw new Error("STRATEGY_PARAMETER_RELATION: buyThreshold must be strictly smaller than sellThreshold");
-    }
 
     const priceSource = parameters.priceSource as PriceSource;
     const priceBars = context.inputs.find((input) => input.kind === "price-bars");

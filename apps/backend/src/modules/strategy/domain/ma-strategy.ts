@@ -95,12 +95,16 @@ function line(
 export class MAStrategy implements Strategy {
   readonly descriptor = MA_STRATEGY_DESCRIPTOR;
 
-  evaluate(context: AnalysisContext, parameters: StrategyParameters): StrategyResult {
-    const fastPeriod = period(parameters, "fastPeriod");
-    const slowPeriod = period(parameters, "slowPeriod");
-    if (fastPeriod >= slowPeriod) {
+  validateParameters(parameters: StrategyParameters): void {
+    if (period(parameters, "fastPeriod") >= period(parameters, "slowPeriod")) {
       throw new Error("STRATEGY_PARAMETER_RELATION: fastPeriod must be smaller than slowPeriod");
     }
+  }
+
+  evaluate(context: AnalysisContext, parameters: StrategyParameters): StrategyResult {
+    this.validateParameters(parameters);
+    const fastPeriod = period(parameters, "fastPeriod");
+    const slowPeriod = period(parameters, "slowPeriod");
 
     const source = priceSource(parameters);
     const priceBars = context.inputs.find((input) => input.kind === "price-bars");

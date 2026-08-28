@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { RsiStrategy } from "./rsi-strategy.js";
-import type { AnalysisContext, AnalysisInput } from "./strategy.js";
+import type { AnalysisContext } from "./strategy.js";
 
 function context(prices: number[]): AnalysisContext {
   return {

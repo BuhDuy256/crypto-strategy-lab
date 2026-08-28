@@ -35,9 +35,58 @@ Current version: **V3 - Automated Discovery**. The demo scenario source is
    docker compose exec api pnpm run market:backfill -- --symbol BTCUSDT --timeframe 1h --startTime 1704067200000 --endTime 1707663600000
    ```
 
+   V2's four historical charts read the latest 150 closed candles. Seed those
+   four windows too:
+
+   ```powershell
+   $demoNow = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+   $demoFrames = @(
+     @{ Name = '5m'; Ms = 300000 },
+     @{ Name = '15m'; Ms = 900000 },
+     @{ Name = '1h'; Ms = 3600000 },
+     @{ Name = '4h'; Ms = 14400000 }
+   )
+   foreach ($demoFrame in $demoFrames) {
+     $demoOpen = [math]::Floor($demoNow / $demoFrame.Ms) * $demoFrame.Ms
+     $demoEnd = $demoOpen - $demoFrame.Ms
+     $demoStart = $demoEnd - (149 * $demoFrame.Ms)
+     docker compose exec api pnpm run market:backfill -- --symbol BTCUSDT --timeframe $demoFrame.Name --startTime $demoStart --endTime $demoEnd
+   }
+   ```
+
 4. Open the SPA at <http://localhost:8080> and go to the Discovery page.
 
-## The walkthrough
+## V1 regression walkthrough
+
+1. Open the Backtest page. Select BTCUSDT, `1h`, the backfilled 2024 window,
+   and the moving-average strategy. Set a fast period smaller than the slow
+   period.
+2. Start the backtest. Observe `queued`, `running`, then `completed`; a failure
+   must show its server reason instead of leaving the page running forever.
+3. Confirm the result shows total return, win rate, maximum drawdown, number of
+   trades, the execution assumptions, chart annotations, and paged trades.
+4. Run the same configuration again and compare the trade list and frozen
+   specification hash.
+5. Start another run and stop only the API with `docker compose stop api`.
+   The separate runner must complete the run. Start the API again with
+   `docker compose start api` and read the completed result.
+
+## V2 regression walkthrough
+
+1. Open Realtime. Confirm four real BTCUSDT charts render at `5m`, `15m`, `1h`,
+   and `4h`. Change only chart 1; the other three must not reload or change.
+2. Open Strategy Engine. Select at least two catalog strategies, enter valid
+   schema-driven parameters and weights, choose a combination policy, and set a
+   backfilled data window.
+3. Save the composite. The combined signal must come from the backend response;
+   there is no simulated-signal control in the page.
+4. Return to Backtest, select the saved composite, and run it through the same
+   frozen-specification and runner path as a built-in strategy.
+5. Click one trade, then another. The chart must replace the entry/exit
+   highlight and move to that trade. Use Clear selection and confirm the
+   highlight is removed.
+
+## V3 walkthrough
 
 1. **Configure the run.** Set the dataset to BTCUSDT, `1h`, and the window you
    backfilled. Choose the `random-search` generator from the selector (the list

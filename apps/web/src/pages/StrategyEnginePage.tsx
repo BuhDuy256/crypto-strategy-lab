@@ -1,21 +1,48 @@
-import { useEffect, useState } from "react";
-import { getStrategies, createComposite, evaluatePolicy } from "../api/client.js";
-import type { ApiStrategyDescriptor } from "@crypto-strategy-lab/api-contracts";
+import { useEffect, useRef, useState } from "react";
+import { createComposite, evaluateComposite, getStrategies } from "../api/client.js";
+import {
+  API_TIMEFRAMES,
+  type ApiStrategyDescriptor,
+  type ApiTimeframe
+} from "@crypto-strategy-lab/api-contracts";
 import { GenericParameterForm } from "../components/GenericParameterForm.js";
 
 interface ComponentState {
   uiId: string;
   strategy: ApiStrategyDescriptor;
-  parameters: Record<string, any>;
-  mockSignal: "buy" | "sell" | "hold";
+  parameters: Record<string, string | number | boolean>;
   weight: number;
 }
 
+const TIMEFRAME_MILLISECONDS: Readonly<Record<ApiTimeframe, number>> = {
+  "1m": 60_000,
+  "5m": 300_000,
+  "15m": 900_000,
+  "30m": 1_800_000,
+  "1h": 3_600_000,
+  "2h": 7_200_000,
+  "4h": 14_400_000,
+  "1d": 86_400_000
+};
+
+function alignToCandleOpen(epochMs: number, timeframe: ApiTimeframe): number {
+  const duration = TIMEFRAME_MILLISECONDS[timeframe];
+  return Math.floor(epochMs / duration) * duration;
+}
+
+function toDateInputValue(epochMs: number): string {
+  return new Date(epochMs).toISOString().slice(0, 10);
+}
+
 export function StrategyEnginePage() {
+  const nextComponentId = useRef(0);
   const [strategies, setStrategies] = useState<ApiStrategyDescriptor[]>([]);
   const [components, setComponents] = useState<ComponentState[]>([]);
   const [policyId, setPolicyId] = useState<"majority-vote" | "weighted-score">("majority-vote");
   const [threshold, setThreshold] = useState<number>(0.5);
+  const [timeframe, setTimeframe] = useState<ApiTimeframe>("1h");
+  const [startTime, setStartTime] = useState(() => alignToCandleOpen(Date.now() - 30 * 86_400_000, "1h"));
+  const [endTime, setEndTime] = useState(() => alignToCandleOpen(Date.now(), "1h"));
   
   const [compositeName, setCompositeName] = useState("");
   const [compositeDesc, setCompositeDesc] = useState("");
@@ -33,10 +60,9 @@ export function StrategyEnginePage() {
     setComponents([
       ...components,
       {
-        uiId: `comp-${Date.now()}`,
+        uiId: `component-${nextComponentId.current++}`,
         strategy,
         parameters: {},
-        mockSignal: "hold",
         weight: 1
       }
     ]);
@@ -49,28 +75,6 @@ export function StrategyEnginePage() {
   const removeComponent = (uiId: string) => {
     setComponents(components.filter(c => c.uiId !== uiId));
   };
-
-  useEffect(() => {
-    if (components.length === 0) {
-      setCombinedSignal(null);
-      return;
-    }
-    const weights: Record<string, number> = {};
-    components.forEach((c, i) => {
-      weights[`comp-${i}`] = c.weight;
-    });
-
-    const configuration = policyId === "weighted-score" ? { threshold, weights } : {};
-    
-    evaluatePolicy({
-      policy: { id: policyId, version: "1.0.0", configuration },
-      signals: components.map(c => c.mockSignal)
-    }).then(res => {
-      setCombinedSignal(res.action);
-    }).catch(() => {
-      setCombinedSignal("Error");
-    });
-  }, [components, policyId, threshold]);
 
   const handleSave = async () => {
     if (!compositeName) return setError("Name is required");
@@ -98,8 +102,24 @@ export function StrategyEnginePage() {
         }
       });
       setSaveSuccess(`Saved successfully! ID: ${res.id}`);
-    } catch (err: any) {
-      setError(err.message);
+      try {
+        const evaluation = await evaluateComposite(res.id, {
+          provider: "binance",
+          symbol: "BTCUSDT",
+          timeframe,
+          startTime,
+          endTime
+        });
+        setCombinedSignal(evaluation.action);
+      } catch (evaluationError: unknown) {
+        setError(
+          `Composite saved, but evaluation failed: ${
+            evaluationError instanceof Error ? evaluationError.message : String(evaluationError)
+          }`
+        );
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setIsSaving(false);
     }
@@ -155,7 +175,7 @@ export function StrategyEnginePage() {
                 {saveSuccess && <span className="text-green-400 text-sm bg-green-950 px-3 py-1 rounded border border-green-900 font-medium">{saveSuccess}</span>}
                 <button 
                   onClick={handleSave}
-                  disabled={isSaving || components.length === 0}
+                  disabled={isSaving || components.length < 2}
                   className="bg-green-600 hover:bg-green-500 disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed text-white px-6 py-2.5 rounded font-bold text-sm tracking-wide transition-colors shadow-lg"
                 >
                   {isSaving ? "SAVING..." : "SAVE COMPOSITE"}
@@ -238,35 +258,19 @@ export function StrategyEnginePage() {
                             />
                           </div>
                           
-                          <div className="bg-gray-900 p-4 rounded-lg border border-gray-700">
-                            <h5 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Simulation Options</h5>
-                            <div className="grid grid-cols-2 gap-6">
-                              <div>
-                                <label className="text-xs font-bold text-gray-400 block mb-2">Simulated Output</label>
-                                <select 
-                                  value={c.mockSignal} 
-                                  onChange={e => updateComponent(c.uiId, { mockSignal: e.target.value as any })}
-                                  className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm font-semibold text-white outline-none"
-                                >
-                                  <option value="buy">BUY</option>
-                                  <option value="sell">SELL</option>
-                                  <option value="hold">HOLD</option>
-                                </select>
-                              </div>
-                              
-                              {policyId === "weighted-score" && (
-                                <div>
-                                  <label className="text-xs font-bold text-gray-400 block mb-2">Weight Score</label>
-                                  <input 
-                                    type="number" 
-                                    value={c.weight}
-                                    onChange={e => updateComponent(c.uiId, { weight: Number(e.target.value) })}
-                                    className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm text-white font-mono outline-none"
-                                  />
-                                </div>
-                              )}
+                          {policyId === "weighted-score" && (
+                            <div className="bg-gray-900 p-4 rounded-lg border border-gray-700">
+                              <label className="text-xs font-bold text-gray-400 block mb-2">
+                                Weight Score
+                                <input
+                                  type="number"
+                                  value={c.weight}
+                                  onChange={e => updateComponent(c.uiId, { weight: Number(e.target.value) })}
+                                  className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm text-white font-mono outline-none"
+                                />
+                              </label>
                             </div>
-                          </div>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -281,10 +285,57 @@ export function StrategyEnginePage() {
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div className="bg-gray-900 p-4 rounded-lg border border-gray-700">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest block mb-2">
+                      Evaluation timeframe
+                      <select
+                        value={timeframe}
+                        onChange={e => setTimeframe(e.target.value as ApiTimeframe)}
+                        className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm font-medium text-white outline-none"
+                      >
+                        {API_TIMEFRAMES.map(option => (
+                          <option key={option} value={option}>{option}</option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                  <div className="bg-gray-900 p-4 rounded-lg border border-gray-700">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest block mb-2">
+                      Evaluation start
+                      <input
+                        type="date"
+                        value={toDateInputValue(startTime)}
+                        onChange={e => {
+                          const parsed = Date.parse(`${e.target.value}T00:00:00.000Z`);
+                          if (Number.isFinite(parsed)) setStartTime(alignToCandleOpen(parsed, timeframe));
+                        }}
+                        className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm text-white outline-none"
+                      />
+                    </label>
+                  </div>
+                  <div className="bg-gray-900 p-4 rounded-lg border border-gray-700">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest block mb-2">
+                      Evaluation end
+                      <input
+                        type="date"
+                        value={toDateInputValue(endTime)}
+                        onChange={e => {
+                          const parsed = Date.parse(`${e.target.value}T23:59:59.999Z`);
+                          if (Number.isFinite(parsed)) setEndTime(alignToCandleOpen(parsed, timeframe));
+                        }}
+                        className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm text-white outline-none"
+                      />
+                    </label>
+                  </div>
+                  <div className="bg-gray-900 p-4 rounded-lg border border-gray-700">
                     <label className="text-xs font-bold text-gray-400 uppercase tracking-widest block mb-2">Policy</label>
                     <select 
                       value={policyId} 
-                      onChange={e => setPolicyId(e.target.value as any)}
+                      onChange={e => {
+                        const nextPolicy = e.target.value;
+                        if (nextPolicy === "majority-vote" || nextPolicy === "weighted-score") {
+                          setPolicyId(nextPolicy);
+                        }
+                      }}
                       className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm font-medium text-white outline-none"
                     >
                       <option value="majority-vote">Majority Vote</option>

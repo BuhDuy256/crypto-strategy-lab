@@ -25,6 +25,12 @@ export type {
   SearchExperimentDatasets,
   SearchExperimentSpecifications
 } from "./application/search-experiment-creation-service.js";
+export { SingleBacktestExperimentCreationService } from "./application/single-backtest-experiment-creation-service.js";
+export type {
+  CreateSingleBacktestExperimentInput,
+  SingleBacktestDatasets,
+  SingleBacktestSpecifications
+} from "./application/single-backtest-experiment-creation-service.js";
 export { Evaluator, MVP_METRIC_SET } from "./domain/evaluator.js";
 export type {
   EvaluationInput,

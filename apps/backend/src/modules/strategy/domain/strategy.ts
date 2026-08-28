@@ -71,5 +71,6 @@ export interface StrategyDescriptor {
 
 export interface Strategy {
   readonly descriptor: StrategyDescriptor;
+  validateParameters?(parameters: StrategyParameters): void;
   evaluate(context: AnalysisContext, parameters: StrategyParameters): StrategyResult;
 }

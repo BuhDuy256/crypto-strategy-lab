@@ -4,6 +4,7 @@ import { MAStrategy } from "../domain/ma-strategy.js";
 import { RsiStrategy } from "../domain/rsi-strategy.js";
 import { BollingerBandsStrategy } from "../domain/bollinger-strategy.js";
 import { SupportResistanceStrategy } from "../domain/support-resistance-strategy.js";
+import { MACDStrategy } from "../domain/macd-strategy.js";
 import { StrategyRegistry } from "./strategy-registry.js";
 
 export function createBuiltInStrategyRegistry(): StrategyRegistry {
@@ -11,6 +12,7 @@ export function createBuiltInStrategyRegistry(): StrategyRegistry {
     new MAStrategy(),
     new RsiStrategy(),
     new BollingerBandsStrategy(),
-    new SupportResistanceStrategy()
+    new SupportResistanceStrategy(),
+    new MACDStrategy()
   ]);
 }

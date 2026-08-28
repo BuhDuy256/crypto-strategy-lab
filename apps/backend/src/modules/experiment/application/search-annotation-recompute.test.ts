@@ -13,7 +13,12 @@ import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { resetTestDatabase } from "../../../platform/test-database.js";
-import { createBuiltInStrategyRegistry } from "../../strategy/index.js";
+import {
+  CompositeStrategyService,
+  type CompositeStrategyDefinition,
+  createBuiltInCombinationPolicyRegistry,
+  createBuiltInStrategyRegistry
+} from "../../strategy/index.js";
 import type { Candle, DatasetService } from "../../market/index.js";
 import type { FrozenExperimentSpecification } from "../domain/experiment-specification.js";
 import { computeBacktest } from "./backtest-computation.js";
@@ -105,7 +110,12 @@ const checklist = {
   attempt: { status: "recorded", value: { number: 1, runnerId: "runner-1" } }
 } as const satisfies ProvenanceChecklist;
 
-function recompute(pool: Pool, spec: FrozenExperimentSpecification, bars: Candle[]): SearchAnnotationRecompute {
+function recompute(
+  pool: Pool,
+  spec: FrozenExperimentSpecification,
+  bars: Candle[],
+  composites?: CompositeStrategyService
+): SearchAnnotationRecompute {
   const locator: BacktestRunSpecLocator = new PostgresRunSpecLocator(pool);
   const specifications: FrozenSpecificationReader = { get: () => Promise.resolve(spec) };
   const datasets = {
@@ -115,7 +125,7 @@ function recompute(pool: Pool, spec: FrozenExperimentSpecification, bars: Candle
         ReturnType<DatasetService["resolveDataset"]>
       >)
   } as DatasetService;
-  return new SearchAnnotationRecompute(locator, specifications, datasets, strategies);
+  return new SearchAnnotationRecompute(locator, specifications, datasets, strategies, composites);
 }
 
 describe("SearchAnnotationRecompute", () => {
@@ -192,5 +202,57 @@ describe("SearchAnnotationRecompute", () => {
   it("returns undefined for an unknown run", async () => {
     const result = await recompute(pool, specification(randomUUID()), candles(12)).recompute(randomUUID());
     expect(result).toBeUndefined();
+  });
+
+  it("recomputes annotations for a saved composite through its real definition", async () => {
+    const definitions = new Map<string, CompositeStrategyDefinition>();
+    const compositeService = new CompositeStrategyService(
+      {
+        save: (definition) => {
+          definitions.set(definition.id, definition);
+          return Promise.resolve();
+        },
+        load: (id) => Promise.resolve(definitions.get(id) ?? null),
+        list: () => Promise.resolve([...definitions.values()])
+      },
+      strategies,
+      createBuiltInCombinationPolicyRegistry()
+    );
+    const composite = await compositeService.save("Recompute composite", "Two real components", [
+      {
+        id: "moving-average",
+        version: "1.0.0",
+        parameters: { fastPeriod: 3, slowPeriod: 5, priceSource: "close" }
+      },
+      {
+        id: "rsi",
+        version: "1.0.0",
+        parameters: { period: 2, buyThreshold: 30, sellThreshold: 70, priceSource: "close" }
+      }
+    ], { id: "majority-vote", version: "1.0.0", configuration: {} });
+    const specId = randomUUID();
+    const runId = randomUUID();
+    const spec: FrozenExperimentSpecification = {
+      ...specification(specId),
+      content: {
+        ...specification(specId).content,
+        strategy: { id: composite.id, version: composite.version, parameters: {} }
+      }
+    };
+    await pool.query(
+      "INSERT INTO experiment.specifications (spec_id,status,content,content_hash,frozen_at) VALUES ($1,'frozen','{}',$2,now())",
+      [specId, HEX]
+    );
+    await pool.query(
+      `INSERT INTO experiment.backtest_runs
+         (run_id,spec_id,candidate_id,idempotency_key,status,correlation_id)
+       VALUES ($1,$2,'candidate',$3,'completed','request-composite')`,
+      [runId, specId, "c".repeat(64)]
+    );
+
+    const annotations = await recompute(pool, spec, candles(12), compositeService).recompute(runId);
+
+    expect(annotations?.some((annotation) => annotation.componentId === "moving-average")).toBe(true);
+    expect(annotations?.some((annotation) => annotation.componentId === "rsi")).toBe(true);
   });
 });

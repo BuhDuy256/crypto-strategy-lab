@@ -1,4 +1,4 @@
-import type { Annotation, AnnotationPoint, LineAnnotation, BandAnnotation, MarkerAnnotation } from "../../strategy/index.js";
+import type { Annotation, AnnotationPoint, LineAnnotation, BandAnnotation } from "../../strategy/index.js";
 
 const MAX_POINTS_PER_SERIES = 1000;
 const MAX_MARKERS = 1000;

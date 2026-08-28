@@ -353,29 +353,35 @@ export function isApiAnnotation(value: unknown): value is ApiAnnotation {
   }
 }
 
+// A strategy parameter value the interface collects and passes through to the
+// backend without interpreting it. The parameter schema from the strategy
+// catalog says which keys exist and what each one means.
+export type ApiStrategyParameterValue = string | number | boolean;
+export type ApiStrategyParameters = Readonly<Record<string, ApiStrategyParameterValue>>;
+
+/**
+ * Request body for `POST /specifications`. Configures and freezes the
+ * specification of one single-strategy backtest: the dataset window and the
+ * strategy with its parameters. The backend resolves the dataset window into a
+ * real content-addressed manifest, supplies the fixed V1 parts (execution
+ * profile and metric set), and stamps the runtime provenance the backtest
+ * runner requires. The browser knows none of those and sends none of them.
+ * Must stay in sync with `apps/backend/src/modules/api/specification.controller.ts`.
+ */
 export interface CreateSpecificationRequest {
   readonly schemaVersion: "v1";
-  readonly datasetRef: { readonly datasetId: string; readonly version: number; readonly manifestVersion: "v1"; readonly provider: string; readonly symbols: readonly string[]; readonly timeframe: "1m" | "5m" | "15m" | "30m" | "1h" | "2h" | "4h" | "1d"; readonly range: { readonly startTime: number; readonly endTime: number; }; readonly revisionWatermark: number; readonly integrityHash: string; };
+  readonly dataset: {
+    readonly provider: "binance";
+    readonly symbol: "BTCUSDT";
+    readonly timeframe: ApiTimeframe;
+    readonly startTime: number;
+    readonly endTime: number;
+  };
   readonly strategy: {
     readonly id: string;
     readonly version: string;
-    readonly parameters: Record<string, unknown>;
+    readonly parameters: ApiStrategyParameters;
   };
-  readonly execution: {
-    readonly initialCapital: number;
-    readonly feeRate: number;
-    readonly slippageRate: number;
-    readonly signalTiming: "close-of-bar";
-    readonly leverage: 1;
-    readonly positionSizing: "available-equity";
-    readonly allowedDirections: readonly ("long" | "short")[];
-    readonly stopLoss: { readonly enabled: boolean; readonly percentage?: number };
-    readonly takeProfit: { readonly enabled: boolean; readonly percentage?: number };
-    readonly sameBarExitPriority: "stop-loss-first";
-    readonly finalPositionPolicy: "liquidate-at-final-close";
-    readonly decimalPlaces: 8;
-  };
-  readonly metricSet: { readonly id: string; readonly version: string };
 }
 
 export interface CreateSpecificationResponse {
@@ -462,6 +468,10 @@ export interface ApiCompositeStrategyDefinition {
   readonly policy: ApiCombinationPolicyReference;
 }
 
+export interface ApiCompositeCatalogEntry extends ApiCompositeStrategyDefinition {
+  readonly descriptor: ApiStrategyDescriptor;
+}
+
 export interface CreateCompositeRequest {
   readonly name: string;
   readonly description: string;
@@ -481,6 +491,19 @@ export interface EvaluatePolicyRequest {
 
 export interface EvaluatePolicyResponse {
   readonly action: "buy" | "sell" | "hold";
+}
+
+export interface EvaluateCompositeRequest {
+  readonly provider: string;
+  readonly symbol: string;
+  readonly timeframe: ApiTimeframe;
+  readonly startTime: number;
+  readonly endTime: number;
+}
+
+export interface EvaluateCompositeResponse {
+  readonly action: "buy" | "sell" | "hold";
+  readonly effectiveTime: number;
 }
 
 // One versioned reference the interface passes through to the backend without

@@ -82,9 +82,11 @@ export class StrategyRegistry {
       descriptor: strategy.descriptor,
       validateParameters: (parameters) => {
         validateParameters(strategy.descriptor.parameterSchema, parameters);
+        strategy.validateParameters?.(parameters);
       },
       run: (context, parameters) => {
         validateParameters(strategy.descriptor.parameterSchema, parameters);
+        strategy.validateParameters?.(parameters);
         const required = new Set(strategy.descriptor.requiredInputs);
         const inputs = context.inputs.filter((input) => required.has(input.kind));
         for (const kind of required) {

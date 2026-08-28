@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { GeneratorController } from "./generator.controller.js";
 import { StrategyGeneratorRegistry } from "../strategy/index.js";
 import type { CandidateStrategy } from "../strategy/index.js";
-import type { GenerateRequest, StrategyGenerator } from "../strategy/index.js";
+import type { StrategyGenerator } from "../strategy/index.js";
 
 // A throwaway generator registered purely through the port: it must appear in
 // the catalog with no change to the controller (rehearsal for PROOF-REPLACE-001).
@@ -16,7 +16,7 @@ class FakeGenerator implements StrategyGenerator {
     configurationSchema: { properties: {}, required: [] }
   };
 
-  *generate(_request: GenerateRequest): Generator<CandidateStrategy> {
+  *generate(): Generator<CandidateStrategy> {
     // No candidates needed for a catalog test.
   }
 }

@@ -1,9 +1,9 @@
 import { Test, type TestingModule } from "@nestjs/testing";
 import { describe, expect, it, vi } from "vitest";
 import { StrategyController } from "./strategy.controller.js";
-import { StrategyRegistry, CompositeStrategyService, CombinationPolicyRegistry } from "../strategy/index.js";
-import type { Strategy, StrategyResult, AnalysisContext } from "../strategy/index.js";
-import type { StrategyParameters } from "../strategy/index.js";
+import { StrategyRegistry, CompositeStrategyService } from "../strategy/index.js";
+import { MARKET_DATA_QUERY } from "../market/index.js";
+import type { Strategy, StrategyResult } from "../strategy/index.js";
 
 class FakeStrategy implements Strategy {
   descriptor = {
@@ -18,7 +18,7 @@ class FakeStrategy implements Strategy {
     implementation: { kind: "built-in" as const, key: "fake-strategy" }
   };
 
-  evaluate(context: AnalysisContext, parameters: StrategyParameters): StrategyResult {
+  evaluate(): StrategyResult {
     return { signal: { action: "hold", effectiveTime: 0 }, annotations: [] };
   }
 }
@@ -33,7 +33,7 @@ describe("StrategyController", () => {
       providers: [
         { provide: StrategyRegistry, useValue: registry },
         { provide: CompositeStrategyService, useValue: { save: vi.fn(), findById: vi.fn(), findAll: vi.fn() } },
-        { provide: CombinationPolicyRegistry, useValue: { getPolicy: vi.fn() } }
+        { provide: MARKET_DATA_QUERY, useValue: { getCandles: vi.fn() } }
       ]
     }).compile();
 
@@ -44,5 +44,54 @@ describe("StrategyController", () => {
     expect(response.strategies).toHaveLength(1);
     expect(response.strategies[0]!.id).toBe("fake-strategy");
     expect(response.strategies[0]!.name).toBe("Fake Strategy");
+  });
+
+  it("returns the Strategy-owned descriptor for a saved composite", async () => {
+    const definition = {
+      id: "composite-real",
+      version: "1.0.0",
+      name: "Real composite",
+      description: "Saved definition",
+      components: [],
+      policy: { id: "majority-vote", version: "1.0.0", configuration: {} }
+    };
+    const descriptor = {
+      id: definition.id,
+      version: definition.version,
+      name: definition.name,
+      description: definition.description,
+      category: "composite" as const,
+      capabilities: ["long", "short", "annotations"] as const,
+      parameterSchema: { properties: {}, required: [] },
+      requiredInputs: ["price-bars"] as const,
+      implementation: { kind: "built-in" as const, key: "composite" }
+    };
+    const module = await Test.createTestingModule({
+      controllers: [StrategyController],
+      providers: [
+        { provide: StrategyRegistry, useValue: new StrategyRegistry([new FakeStrategy()]) },
+        {
+          provide: CompositeStrategyService,
+          useValue: {
+            list: vi.fn(async () => [definition]),
+            resolve: vi.fn(async () => ({ descriptor }))
+          }
+        },
+        { provide: MARKET_DATA_QUERY, useValue: { getCandles: vi.fn() } }
+      ]
+    }).compile();
+
+    const response = await module.get(StrategyController).listComposites();
+
+    expect(response[0]?.descriptor).toEqual({
+      id: descriptor.id,
+      version: descriptor.version,
+      name: descriptor.name,
+      description: descriptor.description,
+      category: descriptor.category,
+      capabilities: descriptor.capabilities,
+      parameterSchema: descriptor.parameterSchema,
+      requiredInputs: descriptor.requiredInputs
+    });
   });
 });
