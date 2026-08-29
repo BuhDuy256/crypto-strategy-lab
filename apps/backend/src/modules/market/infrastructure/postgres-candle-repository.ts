@@ -33,7 +33,8 @@ interface CandleRow {
   readonly ingest_sequence: string;
 }
 
-interface StoredCandleRevision {
+/** One stored revision plus the storage-only sequence dataset watermarks use. */
+export interface StoredCandleRevision {
   readonly candle: Candle;
   readonly ingestSequence: number;
 }
@@ -92,8 +93,30 @@ export class PostgresCandleRepository implements MarketDataQuery, MarketSnapshot
     return stored;
   }
 
+  /**
+   * Commits one closed live candle and reports the sequence it was stored at.
+   *
+   * Live ingest needs the sequence to publish a notification a client can order
+   * against its durable snapshot. A repeated identical candle inserts no new
+   * revision and reports the sequence the existing revision already carries, so
+   * a restarted ingest process cannot create a duplicate.
+   */
+  async appendClosed(candle: Candle): Promise<StoredCandleRevision> {
+    const [stored] = await this.insertRevisions([candle]);
+    if (stored === undefined) {
+      throw new Error("MARKET_CANDLE_APPEND: append unexpectedly returned no candle");
+    }
+    return stored;
+  }
+
   /** Set-based transactional insert path used by historical backfill. */
   async appendMany(candles: readonly Candle[]): Promise<readonly Candle[]> {
+    return (await this.insertRevisions(candles)).map((stored) => stored.candle);
+  }
+
+  private async insertRevisions(
+    candles: readonly Candle[]
+  ): Promise<readonly StoredCandleRevision[]> {
     assertHistoricalCandleSeries(candles);
     if (candles.length === 0) {
       return [];
@@ -189,7 +212,7 @@ export class PostgresCandleRepository implements MarketDataQuery, MarketSnapshot
         [JSON.stringify(candles)]
       );
       await client.query("COMMIT");
-      return result.rows.map((row) => mapRow(row).candle);
+      return result.rows.map(mapRow);
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;

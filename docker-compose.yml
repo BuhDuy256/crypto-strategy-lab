@@ -5,8 +5,8 @@
 #
 #   docker compose up --build
 #
-# The topology is V4's current WS-03 state: V1-V3 plus ephemeral Redis Pub/Sub.
-# The market ingest role arrives in MKT-06 and is deliberately not started yet.
+# The topology is V4's current MKT-06 state: V1-V3, ephemeral Redis Pub/Sub, and
+# the separate market ingest process that holds the Binance kline connection.
 #
 # Host development is a separate, still-supported path that runs the API and
 # SPA as pnpm commands against a PostgreSQL container; see README.md. This file
@@ -134,6 +134,32 @@ services:
       WORKER_COMMIT: ${WORKER_COMMIT}
       DETERMINISTIC_CONFIG_VERSION: ${DETERMINISTIC_CONFIG_VERSION:-1.0.0}
     command: ["pnpm", "run", "start:backtest-runner"]
+    restart: unless-stopped
+
+  # The separate market ingest process role. It holds the long-lived Binance
+  # kline WebSocket connection, commits closed candles to PostgreSQL, and
+  # publishes best-effort live notifications to Redis. It is its own process on
+  # purpose: a provider connection must never compete with interactive API and
+  # client WebSocket traffic (ADR-008).
+  market-ingest:
+    build:
+      context: .
+      target: backend
+    image: crypto-strategy-lab-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    environment:
+      <<: *backend-postgres-env
+      REDIS_URL: redis://redis:6379
+      MARKET_INGEST_SYMBOL: ${MARKET_INGEST_SYMBOL:-BTCUSDT}
+      MARKET_INGEST_TIMEFRAMES: ${MARKET_INGEST_TIMEFRAMES:-1m,5m,15m,30m,1h,2h,4h,1d}
+      BINANCE_STREAM_URL: ${BINANCE_STREAM_URL:-wss://data-stream.binance.vision}
+    command: ["pnpm", "run", "start:market-ingest"]
     restart: unless-stopped
 
   # The React SPA, built and served by Nginx, which proxies /api to the api
