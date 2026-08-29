@@ -1558,3 +1558,213 @@ service, and PostgreSQL store. UI-04 AC9 remains a historical deviation: the sli
 required no backend changes, but its pre-existing endpoint could not produce a
 runner-acceptable specification. The recovery added only the missing backend
 application path and did not change frozen architecture boundaries.
+
+### 2026-08-29 — R1-R8 — V1/V2 recovery certified
+
+**Decisions**
+
+- Restored functional behavior cluster by cluster, then ran one consolidated
+  certification pass. No later-version feature work, tag, or version advance was
+  performed. While the certification session was paused, repository HEAD advanced
+  externally from `2b98139` to `9d47d43` and that recovery commit appeared on origin;
+  the certification agent did not run a commit or push command.
+- Kept UI-04 AC9 as a historical deviation. The V1 page required a bounded backend
+  application service because the original API could not create a runner-acceptable
+  specification; the old criterion was not rewritten as a pass.
+- Made saved composite definitions append-only in PostgreSQL. The runner resolves the
+  immutable definition by `id@version`, so allowing update or delete would have changed
+  the meaning of an already frozen specification.
+- Added MACD only through the existing Strategy contract and built-in registry for
+  `PROOF-EXT-001`; Backtester, Evaluator, RankingPolicy, provider adapters, and
+  persistence ownership did not change.
+- A final Compose smoke exposed one legacy-data compatibility defect: one old saved
+  composite referenced removed `ma@1.0.0`, causing the whole composite catalog to
+  return 500. The catalog now omits only definitions whose strategy or policy version
+  is unavailable; repository and infrastructure errors still propagate. A focused
+  regression test covers this behavior.
+
+**Validation**
+
+- Final `pnpm test`: **76 files, 415 tests passed**. This includes the real
+  specification integration, runner lifecycle, Worker Thread isolation, result and
+  provenance persistence, composite immutability, architecture boundaries, all
+  touched UI paths, and the MACD extensibility proof.
+- Final `pnpm typecheck`: pass across API contracts, backend, and web. Final
+  `pnpm lint`: pass with zero errors and warnings.
+- `PROOF-EXT-001`: pass; detailed evidence is in
+  [`PROOF-EXT-001.md`](../docs/validation/evidence/PROOF-EXT-001.md).
+- Canonical `docker compose up --build -d`: `postgres` healthy, one-shot `migrate`
+  exited 0, `api` healthy, and `runner`/`web` up; no later-version service was present.
+- V1 runtime: specification `2c939d20-abbf-488e-ba03-982a4c8098fa`, run
+  `420aa1ec-95cb-402e-864f-d9603c253743`, result
+  `95326b03-9582-48cb-96f2-193e7b70c908`; completed with the four MVP metrics, four
+  trades, a content-addressed dataset, and recorded runtime/build provenance.
+- V2 runtime: saved composite
+  `composite-9ad4e513-9c80-4245-91b1-1f53cdd599f1` was returned with its
+  server-owned descriptor, evaluated on the real window, froze, and completed as run
+  `fa37c98f-881f-4a11-84f9-0ba6523d8ff8`; four trades and four stored/recomputed
+  annotations carried `moving-average` and `rsi` component IDs. The web proxy returned
+  150 real candles independently for 5m, 15m, 1h, and 4h.
+- V3 regression: search `dd0f0edd-24a0-440c-8d4a-7161bb65aa8e` stopped by
+  `max-candidates` after 5 generated/submitted/completed candidates, no failures, and
+  produced five ranked entries. Its top result completed with 23 trades and recorded
+  dataset plus runtime/build provenance.
+- Repository governance now passes every tracked check. The validator still reports
+  only the pre-existing untracked archived-files directory and two obsolete
+  references inside it; those user files were not deleted or moved.
+
+**Deferred non-blockers**
+
+- Composite search remains explicitly unsupported in the V3 coordinator; V3's
+  authorized single-strategy search regression passes.
+- Policy catalog/schema, duplicated V1 execution/timeframe constants, broader test
+  refactoring, and strategy-versioning review remain P2 work.
+
+**Ending state**
+
+- `9d47d43` contains the intended R1-R6 recovery, immutable-composite migration,
+  MACD extensibility proof, test repairs, and first certification records. The only
+  later delta is the catalog compatibility fix and final certification documentation;
+  no recovery file was lost, duplicated, or partially committed.
+- V1 and V2 are functionally certified and V3 regression passes in the
+  baseline-freeze commit containing this entry. No tag or product-version field was
+  advanced. The owner controls later-version authorization.
+
+## V1-V3 freeze repairs (2026-08-29)
+
+A runtime audit of the certified baseline found two functional defects the test
+suite could not see. Both are fixed here; no other scope was opened.
+
+**Chart marker crash (V1/V3 UI)**
+
+`CandlestickChart` called `candleSeries.setMarkers(...)`. That method was removed
+from `ISeriesApi` in `lightweight-charts` v5; the installed version is 5.2.1, where
+markers are a separate plugin created with `createSeriesMarkers(series, markers)`.
+Every render carrying trades or marker annotations therefore threw
+`TypeError: c.setMarkers is not a function` and unmounted the React root, which is
+what killed the page after a completed backtest and when opening a Discovery result.
+
+Two things had hidden it. The component carried an `@ts-expect-error` over the call,
+so the compiler's correct complaint was suppressed rather than read. The chart test
+mock exposed `setMarkers` on the fake series, so the tests asserted against an API
+the library no longer has.
+
+The fix adapts the component to the v5 plugin API rather than pinning the library
+back. The mock now models the real module surface, and a new test asserts markers
+are attached through `createSeriesMarkers`, so a v4-era call cannot return unnoticed.
+
+**Leaderboard empty for a repeated search (V3)**
+
+A backtest run is identified by the content of its frozen specification, so two
+searches over the same dataset window that generate the same candidate share one
+run. The second search adopts a run that is already `completed`. No new result is
+ever accepted for it, and result acceptance is what drives the projection, so the
+second experiment's leaderboard stayed empty until someone ran `leaderboard:rebuild`.
+Progress still reported the candidates as completed, which is why the failure looked
+like a projection bug rather than a missing trigger.
+
+A second, latent defect sat underneath it: `findCandidateMembership` resolved a run
+to a single candidate row with `rows[0]`, so when a run belonged to two experiments
+it projected into an arbitrary one of them.
+
+Two narrow changes, both at the projection seam:
+
+- membership resolution is now plural (`findCandidateMemberships`), and `apply`
+  projects into every leaderboard the run belongs to, returning one outcome per
+  leaderboard. Each board keeps its own applied-version guard, so a repeated
+  delivery is still a no-op per board and no duplicate row appears.
+- `LeaderboardProjector.applyCompletedRun(runId)` reads the result an adopted run
+  already produced, and the search coordinator calls it when it records a candidate
+  whose run was already complete. Acceptance still drives the normal path unchanged.
+
+The acceptance-driven design from `SEARCH-04` AC8 is untouched: the projector's
+input is still a result, never a transaction handle, so V6 can drive it from an
+event consumer without change.
+
+**Validation**
+
+- Full gate, run once after both repairs: `pnpm run typecheck`, `pnpm run lint`,
+  `pnpm run test` (421 tests in 76 files, all passing), the architecture boundary
+  test (7), and `git diff --check` clean.
+- Compose topology rebuilt from the current source: `postgres`, one-shot `migrate`,
+  `api`, `runner`, `web`, and no later-version service.
+- V1: a real `moving-average` backtest over 1,000 backfilled candles completed with
+  four metrics, 58 trades, and a readable trade page.
+- V2: 5m, 15m, 1h, and 4h each returned their own 150-candle window through the
+  nginx/API path.
+- V3: two searches with the same seed and window. The second adopted all three of
+  the first's runs (confirmed in `search_candidates`) and both leaderboards hold the
+  same two ranked entries, with no `leaderboard:rebuild`. Before the fix the second
+  board would have been empty.
+- Chart repair is proven at the component seam and in the deployed artifact: the
+  bundle served at `localhost:8080` calls the v5 plugin factory and contains no
+  application-level `setMarkers` call. There is still no browser automation harness
+  in this repository, so no click-through run was recorded.
+
+## Demo data prerequisite and the Discovery default window (2026-08-29)
+
+The freeze repairs above were verified through the API and the built bundle, and
+that was not enough. Opening the running application showed empty charts on every
+page, which the earlier evidence had not caught.
+
+**What was actually wrong**
+
+Nothing in the domain. Every page derives its default window from the current
+time: Realtime asks for the last 150 closed candles per timeframe, Backtest and
+the Strategy Engine open on a recent range. The runbook, however, told the
+operator to backfill a fixed 2024 window, plus a second hand-written loop of
+epoch arithmetic for the four chart widgets. Follow it and the database holds
+candles nobody asks for, so each page correctly reports that it has none.
+
+The Discovery page had a second, worse version of the same problem: its default
+search window was the hard-coded constant pair `2025-01-01` to `2025-01-02`. That
+is both outside any seeded range and only twenty-four hours long, so a search
+would generate, submit, and complete its candidates, then rank none of them
+because no candidate produced a trade. Progress said `completed`, the leaderboard
+said `No ranked candidates yet`, and nothing on screen connected the two.
+
+**What changed**
+
+- `scripts/seed-demo-data.mjs`, run as `pnpm run demo:seed`, loads thirty days of
+  BTCUSDT at 5m, 15m, 1h, and 4h. It computes the windows and calls the existing
+  Market backfill CLI once per timeframe; it is not a second ingest path.
+- `README.md` and `docs/demo-script.md` now name that one command instead of a
+  fixed 2024 range and a PowerShell epoch loop. The explicit-range CLI is still
+  documented for anyone who wants a specific window.
+- `DiscoveryPage` derives its default window from the current time, the way the
+  other pages already did, instead of the two fixed constants.
+- `eslint.config.js` declares Node globals for `scripts/**/*.mjs`; TypeScript
+  files get them from `@types/node`, plain JavaScript tooling does not.
+
+The Discovery default is presentation state, not business logic: no strategy,
+backtest, evaluation, or ranking rule moved to the frontend.
+
+**Validation**
+
+Full gate re-run because production code changed: typecheck, lint, and 421 tests
+in 76 files, all passing.
+
+One note on running the suite: the earlier run of this session reported three,
+then five, failures in the search coordinator and the runner lifecycle E2E. That
+was contention, not regression. The Compose `runner` container was polling the
+same database the tests truncate. With `api` and `runner` stopped and `postgres`
+left up, the suite passes 421/421. This is the same condition the 2026-08-28
+audit recorded, and it is worth knowing before reading a failure here as a defect.
+
+**User-visible verification**
+
+Driven through a real browser against the Compose stack, from `docker compose
+down -v` and a clean volume, then `docker compose up --build` and one
+`demo:seed`. No page error and no console error in any flow.
+
+- V1 Backtest: real candles on load, run completed, four metrics, eleven trades,
+  entry/exit markers and moving-average annotation lines drawn, selecting a trade
+  zoomed to it and drew entry/exit price lines, clearing restored the view.
+- V2 Realtime: all four widgets showed real candles at their own 5m, 15m, 1h, and
+  4h timeframes.
+- V2 Strategy Engine: two catalog components combined, saved, and evaluated on the
+  server; the saved composite then appeared on the Backtest page and completed
+  with twelve trades and both components' annotations.
+- V3 Discovery: the search filled a four-row leaderboard with no
+  `leaderboard:rebuild`, and opening the top entry showed its chart, markers,
+  trades, and the full provenance checklist without unmounting.

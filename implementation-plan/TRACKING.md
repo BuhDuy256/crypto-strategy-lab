@@ -17,15 +17,15 @@ true; keep conversation out of them.
 
 | Field | Value |
 |---|---|
-| Implementation status | `IN PROGRESS - V1/V2 RECOVERY CERTIFICATION` |
-| Current target version | **V3 - Automated Discovery** |
-| Previous version | V1 and V2 functional blockers found by the 2026-08-28 audit are repaired. Consolidated certification is still in progress, so neither version is declared complete here. |
-| Last verified commit | `2b98139` plus the current uncommitted recovery worktree |
-| Next allowed action | Complete R7/R8 certification only. V4 remains unauthorized. |
-| Last verified on | 2026-08-29 (recovery certification in progress) |
+| Implementation status | `IN PROGRESS - V1-V3 BASELINE CERTIFIED` |
+| Current target version | **V2 - Extensible Strategy Engine** |
+| Previous version | **V1 - Manual Backtest Workbench: certified in the V1-V3 baseline-freeze state on 2026-08-29.** |
+| Last verified commit | `9d47d43` plus the validated baseline-freeze delta in the commit containing this row; use Git for its exact SHA. |
+| Next allowed action | Owner review and explicit product-version authorization. The `v4-realtime-market-data` branch is a handoff boundary only; no V4 implementation is authorized. |
+| Last verified on | 2026-08-29 (V1/V2 functional certification, V3 regression, baseline freeze, and the two freeze repairs below) |
 | Last tag | `v3.0-demo`, on `2b98139`. The tag exists in Git; the earlier claim in this file that no tag existed was wrong. It sits on a baseline whose V1 and V2 regressions do not pass. `v1.0-demo` and `v2.0-demo` do not exist. |
-| V3 slices | 8 (`DONE` 8, `READY` 0, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 0) — V3's own scope holds; its V1+V2 regression condition does not |
-| History | [`JOURNAL.md`](JOURNAL.md), sections "V1", "V3", and "V1/V2 recovery". A "V2" section was never written and is still missing. |
+| V3 slices | 8 (`DONE` 8, `READY` 0, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 0) — V3's own scope and its V1+V2 regression condition pass in the baseline-freeze state. |
+| History | [`JOURNAL.md`](JOURNAL.md), sections "V1", "V3", "V1/V2 recovery", "V1-V3 freeze repairs", and "Demo data prerequisite". The recovery entry records the durable V2 decisions that were missing from the original history. |
 
 ## V1/V2 recovery (opened 2026-08-28)
 
@@ -63,7 +63,60 @@ R7  PROOF-EXT-001, V1/V2 demo script, repository lint
 R8  fresh V1-V3 certification through the documented Compose path
 ```
 
-V4 is not authorized and must not be started until R8 returns a pass.
+**Recovery completion, 2026-08-29:** R1 through R8 passed. The findings above are
+retained as the reason for the recovery, not as current defects. V1 and V2 are
+functionally certified and V3's regression gate passes in the baseline-freeze state.
+No agent advanced the product version or moved a tag. V4 implementation remains
+owner-authorized work even after the handoff branch is created.
+
+## V1-V3 freeze repairs (2026-08-29)
+
+A runtime audit of the certified baseline found two functional defects that a green
+test suite could not see. Both are fixed; see the "V1-V3 freeze repairs" entry in
+[`JOURNAL.md`](JOURNAL.md) for the reasoning.
+
+| # | Defect | Repair |
+|---|---|---|
+| 1 | `CandlestickChart` called `candleSeries.setMarkers`, removed from `ISeriesApi` in the installed `lightweight-charts` 5.2.1, so any render carrying trades or marker annotations threw and unmounted the React root. An `@ts-expect-error` and a mock exposing the obsolete method hid it. | Component adapted to the v5 `createSeriesMarkers` plugin; the suppression is gone; the mock now models the real module surface and a new test asserts markers go through the plugin. |
+| 2 | A search that generated a candidate an earlier experiment had already run adopted that completed run. No new result is accepted for an adopted run, and acceptance is what drives the projection, so the second experiment's leaderboard stayed empty until `leaderboard:rebuild`. Membership also resolved a run to one arbitrary candidate row. | Membership resolution is plural and `apply` projects into every leaderboard the run belongs to, each with its own applied-version guard; `applyCompletedRun` projects an adopted run's existing result, called by the coordinator when it records a candidate whose run was already complete. |
+
+Validation, run once after both repairs: `pnpm run typecheck`, `pnpm run lint`,
+`pnpm run test` (421 tests in 76 files), the architecture boundary test, and
+`git diff --check` clean. The Compose topology was rebuilt and V1, V2, and V3 were
+walked on it: a real backtest with four metrics and 58 trades, four independent
+150-candle chart windows, and two same-seed searches where the second adopted all of
+the first's runs and still filled its own leaderboard without a rebuild.
+
+## Demo data prerequisite (2026-08-29)
+
+The freeze repairs were verified through the API and the built bundle; opening the
+running application showed empty charts on every page. The cause was not domain
+logic. Every page derives its default window from the current time, while the
+runbook told the operator to backfill a fixed 2024 range, so each page correctly
+reported it had no candles for the window it asked for. Discovery additionally
+defaulted to a hard-coded 24-hour `2025-01-01` window, so its searches completed
+and then ranked nothing.
+
+Fixed in the demo/startup workflow: `pnpm run demo:seed` (`scripts/seed-demo-data.mjs`)
+loads thirty days of BTCUSDT at 5m, 15m, 1h, and 4h through the existing Market
+backfill CLI; `README.md` and `docs/demo-script.md` name that one command instead of
+a fixed range plus hand-written epoch arithmetic; `DiscoveryPage` derives its default
+window from the current time like the other pages.
+
+Full gate re-run because production code changed: typecheck, lint, 421 tests in 76
+files. Run the suite with the Compose `api` and `runner` containers stopped: they
+poll the same database the tests truncate, and leaving them up produces unstable
+failures in the search coordinator and runner lifecycle E2E.
+
+User-visible verification, driven through a real browser from `docker compose down -v`,
+then `up --build` and one `demo:seed`, with no page or console error in any flow:
+
+| Flow | Seen on screen |
+|---|---|
+| V1 Backtest | Real candles, completed run, four metrics, eleven trades, entry/exit markers and moving-average lines; selecting a trade zoomed and drew entry/exit price lines; clearing restored the view. |
+| V2 Realtime | All four widgets showing real candles at their own 5m, 15m, 1h, and 4h timeframes. |
+| V2 Strategy Engine | Two catalog components combined, saved, server-evaluated; the saved composite then ran from the Backtest page with twelve trades and both components' annotations. |
+| V3 Discovery | Four-row leaderboard filled with no `leaderboard:rebuild`; the top entry opened its chart, markers, trades, and full provenance checklist without unmounting. |
 
 ## V2 -> V3 transition (2026-08-25)
 
@@ -226,8 +279,8 @@ more than one session.
 | EXP-10 | CRIT | S | Single backtest result query surface | **DONE** | EXP-06 | | Accepted run-keyed summary and paged-trades endpoints implemented through an Experiment query port, thin controller, PostgreSQL projection, deep shared runtime contracts, and SPA client. Pending/failed/missing/completed, multipage, out-of-range, zero-trade, unsafe paging, and corrupt nested data are covered; full suite passes 184 tests and two-axis review has no blocker. | [03](03-experiment-backtest-evaluation.md) |
 | EXP-11 | REQ | S | Visualization annotation capture | **DONE** | EXP-10, STRAT-01 | | Implemented annotation downsampler and integrated into PostgresResultAcceptanceStore. Fixed API process timeout in E2E tests (`integration/backtest-runner-lifecycle.e2e.test.ts`). Tests pass. | [03](03-experiment-backtest-evaluation.md) |
 | UI-04 | CRIT | M | Backtest page with metrics and trades | **DONE** | EXP-10, MKT-05 | | Original claim, kept as written: "Interaction defaults accepted (2s poll, 20 trades/page, static panel). Implemented metrics dashboard, trade list, pagination, and sorting; test suite and visual inspection confirmed." **Reopened 2026-08-28** (audit, R1): pressing Start returned 500, used an invented DatasetRef and an unregistered strategy id, assembled Experiment business configuration in the browser, and hid the error. **Functionally restored 2026-08-28:** the page now sends a versioned dataset-window and catalog-strategy request; the backend resolves the real content-addressed dataset, supplies the V1 execution and metric profiles, and freezes real runtime provenance. Focused backend/frontend tests pass; the specification E2E uses the real DatasetService and StrategyRegistry; a rebuilt Compose run completed over 1,000 real Binance candles with 58 trades, four metrics, and recorded provenance. **Historical deviation:** AC9 remains failed because the pre-existing backend endpoint was unusable and required a bounded backend enabler. The original implementer should have stopped and reported that missing capability. | [06](06-ui-and-demo-integration.md) |
-| UI-05 | REQ | M | Signal and trade visualization | **REOPENED** | UI-04, EXP-11 | | Original claim, kept as written: "Passed on local, 2026-08-24". **Reopened 2026-08-28** (audit, R1): not disproved on its own — `CandlestickChart` does map annotations and trade markers — but unverifiable, because no backtest can reach `completed` through the page (see `UI-04`), so the overlay path has no result to draw. Evidence is one undated prose line with no command, test, or artefact. Must be re-walked once `UI-04` runs end to end. | [06](06-ui-and-demo-integration.md) |
-| DEMO-01 | CRIT | M | Run documentation, Compose topology, and version demo script | **REOPENED** | UI-04, UI-05 | | **Reopened 2026-08-28** (audit, R7): the Compose topology itself is real and was re-verified — `docker compose up --build` brings up `postgres`, one-shot `migrate`, `api`, `runner`, `web`, no later-version service, `/health` ok, and a real Binance backfill plus a full V3 search run complete on it. What is missing is the rest of this slice's recurring obligation: `docs/demo-script.md` contains a **V3-only** walkthrough. There is no V1 walkthrough (MA strategy, four metrics, trade list, markers, re-run determinism, kill-the-API) and no V2 walkthrough (composite build, four charts). README section 4 points straight at that file, so V1's Definition-of-Demoable condition "a clean checkout reaches step 10 by following the root `README.md` alone" cannot be satisfied. The Compose gate evidence likewise only walks V3 and never touches the Backtest, Strategy Engine, or Realtime pages. Original claim, kept as written: "Docs + demo script passed on local, 2026-08-24. Compose topology built and the Compose integration gate walked for V3 on 2026-08-26 (this slice recurs per version): full V1 topology (`postgres`, one-shot `migrate`, `api`, `runner`, `web`) comes up from a clean checkout via `docker compose up --build`, no later-version service present, and the V3 demo scenario ran end to end on it. New: `Dockerfile`, `.dockerignore`, `apps/web/nginx.conf`, expanded `docker-compose.yml`, `docs/demo-script.md`, README + `.env.example` both-paths wiring. Two topology-only defects found and fixed (Node 22 base for the tsx worker-thread loader; dynamic Docker-DNS upstream in nginx so the proxy survives an api restart) — no `.ts` source changed. [Evidence](../docs/validation/evidence/V3-COMPOSE-INTEGRATION-GATE.md). Committed (this claim was stale: every V3 slice is committed; see Git). | [06](06-ui-and-demo-integration.md) |
+| UI-05 | REQ | M | Signal and trade visualization | **DONE** | UI-04, EXP-11 | | **Certified 2026-08-29:** the restored V1 Compose flow completed with four real trades, including final liquidation, and returned stored strategy annotations through the same result surface used by the page. Focused `CandlestickChart` and `BacktestPage` tests cover annotation rendering, trade markers, selection, deselection, and visible-range movement; the final full suite passes. Original reopening retained for history: the 2026-08-28 audit could not verify this slice while UI-04 was broken. | [06](06-ui-and-demo-integration.md) |
+| DEMO-01 | CRIT | M | Run documentation, Compose topology, and version demo script | **DONE** | UI-04, UI-05 | | **Certified 2026-08-29:** `docs/demo-script.md` now includes V1 and V2 regression walkthroughs. A fresh `docker compose up --build -d` brought up only `postgres`, one-shot `migrate`, `api`, `runner`, and `web`; health passed. Runtime proof completed a real MA backtest with four metrics/trades/provenance, a saved MA+RSI composite with server evaluation and component annotations, four independent chart API windows with 150 real candles each through the web proxy, and a five-candidate V3 regression with five ranked entries. | [06](06-ui-and-demo-integration.md) |
 
 ## V1 proof
 
@@ -245,12 +298,11 @@ None. The decisions for `EXP-02`, `EXP-04`, and `EXP-05` are accepted and record
 
 Demo contract: [`VERSIONS.md` V2](VERSIONS.md#v2---extensible-strategy-engine)
 
-**V2 is not complete.** The earlier text here said all 7 slices were `DONE` with only
-minor deferred items. The 2026-08-28 audit disproved that: 4 of the 7 are `REOPENED`,
-and the one that matters most — running a composite strategy through a backtest — was
-never implemented anywhere in production code. See "V1/V2 recovery" near the top of
-this file. `PROOF-EXT-001` remains `TODO` and only becomes meaningful once the
-composite execution seam exists.
+**V2 is functionally certified in the V1-V3 baseline-freeze state.** The
+2026-08-28 audit correctly disproved the earlier completion claim; the reopened
+functional paths were repaired and the consolidated 2026-08-29 test and Compose gates
+passed. See "V1/V2 recovery" near the top of this file. The owner still controls any
+tag or product-version transition.
 
 This table had no Evidence column until 2026-08-28. That absence is part of why V2's
 claims went unchecked for so long: seven slices were marked `DONE` with nowhere to
@@ -266,9 +318,9 @@ record what proved it. The column below was added during the V1/V2 recovery.
 | UI-02 | REQ | M | Strategy Engine page | **DONE** | STRAT-05, STRAT-08 | **Functionally restored 2026-08-28** (R4): simulated signals are removed. Catalog components are saved as a validated composite, the backend evaluates them over the chosen real market window, and saved immutable `id@version` composites appear on the Backtest page with empty runtime parameters. Focused Strategy Engine/Backtest/chart tests pass, web typecheck passes, and rebuilt Compose completed a saved MA+RSI composite with 9 trades, four metrics, and both components' annotations. Deferred P2: policy ids and version remain frontend constants until a policy catalog/schema exists. | [06](06-ui-and-demo-integration.md) |
 | UI-06 | REQ | S | Trade detail and chart highlight | **DONE** | UI-05 | **Functionally restored 2026-08-28** (R6): trade rows select, replace, deselect, and clear the active trade; the chart draws entry/exit lines and uses `setVisibleRange`, which correctly accepts final-liquidation exit timestamps at candle close. Focused Backtest/chart tests pass 23/23. The rebuilt Compose composite result supplied 9 real trades, including a final-liquidation close timestamp, through the same result seam. No browser automation harness exists, so the click behavior is proven at the public component seam pending consolidated manual certification. | [06](06-ui-and-demo-integration.md) |
 
-| ID | Proof | Status | Prerequisites |
-|---|---|---|---|
-| PROOF-EXT-001 | Strategy extensibility | TODO | STRAT-03, STRAT-05, UI-02, EXP-06 |
+| ID | Proof | Status | Prerequisites | Evidence |
+|---|---|---|---|---|
+| PROOF-EXT-001 | Strategy extensibility | **DONE** | STRAT-03, STRAT-05, UI-02, EXP-06 | [PASS evidence](../docs/validation/evidence/PROOF-EXT-001.md): MACD added through the existing Strategy contract and registry; representative backtest/result acceptance plus full regression pass. |
 
 ---
 
