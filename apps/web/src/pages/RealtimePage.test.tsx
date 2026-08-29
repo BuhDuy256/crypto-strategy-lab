@@ -4,11 +4,11 @@
 import type { ApiCandle, ApiTimeframe } from "@crypto-strategy-lab/api-contracts";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getCandleHistory } from "../api/client.js";
 import { RealtimePage } from "./RealtimePage.js";
 
-vi.mock("../api/client.js", () => ({
-  getCandleHistory: vi.fn()
+const { subscribe } = vi.hoisted(() => ({ subscribe: vi.fn() }));
+vi.mock("../api/market-realtime-client.js", () => ({
+  getMarketRealtimeClient: () => ({ subscribe })
 }));
 
 vi.mock("../components/CandlestickChart.js", () => ({
@@ -37,9 +37,14 @@ function candle(timeframe: ApiTimeframe): ApiCandle {
 }
 
 beforeEach(() => {
-  vi.mocked(getCandleHistory).mockImplementation(async (request) => ({
-    candles: [candle(request.timeframe)]
-  }));
+  subscribe.mockImplementation((request, handlers) => {
+    handlers.onSnapshot({
+      schemaVersion: "v1", type: "market:snapshot", subscriptionId: request.subscriptionId,
+      symbol: request.symbol, timeframe: request.timeframe, revisionWatermark: 1,
+      candles: [candle(request.timeframe)]
+    });
+    return () => undefined;
+  });
 });
 
 afterEach(() => {
@@ -48,11 +53,11 @@ afterEach(() => {
 });
 
 describe("RealtimePage charts", () => {
-  it("loads four distinct chart identities and timeframes through the candle API", async () => {
+  it("loads four distinct chart identities and timeframes through WebSocket snapshots", async () => {
     render(<RealtimePage />);
 
-    await waitFor(() => expect(getCandleHistory).toHaveBeenCalledTimes(4));
-    expect(vi.mocked(getCandleHistory).mock.calls.map(([request]) => request.timeframe)).toEqual([
+    await waitFor(() => expect(subscribe).toHaveBeenCalledTimes(4));
+    expect(subscribe.mock.calls.map(([request]) => request.timeframe)).toEqual([
       "5m",
       "15m",
       "1h",
@@ -71,14 +76,14 @@ describe("RealtimePage charts", () => {
 
   it("reloads only the chart whose timeframe changes", async () => {
     render(<RealtimePage />);
-    await waitFor(() => expect(getCandleHistory).toHaveBeenCalledTimes(4));
+    await waitFor(() => expect(subscribe).toHaveBeenCalledTimes(4));
 
     fireEvent.change(screen.getByRole("combobox", { name: "Timeframe for chart-1" }), {
       target: { value: "1h" }
     });
 
-    await waitFor(() => expect(getCandleHistory).toHaveBeenCalledTimes(5));
-    expect(vi.mocked(getCandleHistory).mock.calls[4]?.[0].timeframe).toBe("1h");
+    await waitFor(() => expect(subscribe).toHaveBeenCalledTimes(5));
+    expect(subscribe.mock.calls[4]?.[0].timeframe).toBe("1h");
     expect(
       (screen.getByRole("combobox", { name: "Timeframe for chart-2" }) as HTMLSelectElement)
         .value

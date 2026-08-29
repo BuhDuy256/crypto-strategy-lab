@@ -4,8 +4,55 @@ import {
   isBacktestTradesResponse,
   isCreateSearchExperimentResponse,
   isHealthResponse,
+  isMarketRealtimeMessage,
   type HealthResponse
 } from "./index.js";
+
+describe("market realtime contracts", () => {
+  it("accepts a subscription with a versioned market key", () => {
+    expect(isMarketRealtimeMessage({
+      schemaVersion: "v1", type: "market:subscribe", subscriptionId: "chart-1",
+      symbol: "BTCUSDT", timeframe: "5m"
+    })).toBe(true);
+  });
+
+  it("accepts a durable snapshot with its revision watermark", () => {
+    expect(isMarketRealtimeMessage({
+      schemaVersion: "v1", type: "market:snapshot", subscriptionId: "chart-1",
+      symbol: "BTCUSDT", timeframe: "5m", revisionWatermark: 12, candles: []
+    })).toBe(true);
+  });
+
+  it("accepts an ephemeral forming-candle live notification", () => {
+    expect(isMarketRealtimeMessage({
+      schemaVersion: "v1", type: "market:live", symbol: "BTCUSDT", timeframe: "5m",
+      revisionWatermark: 13, sequence: 7,
+      candle: {
+        provider: "binance", symbol: "BTCUSDT", timeframe: "5m",
+        openTime: 1, closeTime: 2, open: 1, high: 2, low: 1, close: 2,
+        volume: 3, closed: false, revision: 1
+      }
+    })).toBe(true);
+  });
+
+  it("accepts a refresh request for one subscription", () => {
+    expect(isMarketRealtimeMessage({
+      schemaVersion: "v1", type: "market:refresh-required", subscriptionId: "chart-1",
+      reason: "slow-client"
+    })).toBe(true);
+  });
+
+  it("rejects malformed subscription keys and unsafe watermarks", () => {
+    expect(isMarketRealtimeMessage({
+      schemaVersion: "v1", type: "market:subscribe", subscriptionId: "",
+      symbol: "BTCUSDT", timeframe: "5m"
+    })).toBe(false);
+    expect(isMarketRealtimeMessage({
+      schemaVersion: "v1", type: "market:snapshot", subscriptionId: "chart-1",
+      symbol: "BTCUSDT", timeframe: "5m", revisionWatermark: -1, candles: []
+    })).toBe(false);
+  });
+});
 
 describe("CreateSearchExperimentResponse", () => {
   it("accepts a response that carries a string specId", () => {

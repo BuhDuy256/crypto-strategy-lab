@@ -5,12 +5,8 @@
 #
 #   docker compose up --build
 #
-# The topology here is V1's, unchanged through V2 and V3 (see
-# implementation-plan/VERSIONS.md, "Compose integration gate"): PostgreSQL, a
-# one-shot migration step, the API process, the backtest runner process, and
-# the SPA. No later-version service (Redis, market ingest, news worker, BullMQ
-# workers) belongs here yet; the version tables in VERSIONS.md are the only
-# source for which roles a version requires.
+# The topology is V4's current WS-03 state: V1-V3 plus ephemeral Redis Pub/Sub.
+# The market ingest role arrives in MKT-06 and is deliberately not started yet.
 #
 # Host development is a separate, still-supported path that runs the API and
 # SPA as pnpm commands against a PostgreSQL container; see README.md. This file
@@ -49,6 +45,21 @@ services:
       retries: 5
       start_period: 10s
 
+  # V4 best-effort live notification fan-out only. Persistence and BullMQ are
+  # deliberately absent until SETUP-08/WS-02 in V6.
+  redis:
+    image: redis:7.4-alpine
+    container_name: crypto-strategy-lab-redis
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   # One-shot: apply every pending migration, then exit. api and runner wait for
   # it to complete so they never start against an unmigrated database. Safe to
   # run repeatedly; already-applied migrations are a no-op (SETUP-04).
@@ -76,9 +87,13 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      redis:
+        condition: service_healthy
     environment:
       <<: *backend-postgres-env
       PORT: "3000"
+      REDIS_URL: redis://redis:6379
+      WS_OUTBOUND_BUFFER_MAX: ${WS_OUTBOUND_BUFFER_MAX:-32}
       LEADERBOARD_TOP_K: ${LEADERBOARD_TOP_K:-10}
       # Runtime build identity. The API freezes each search spec with these,
       # so the runner (below) must carry the same values or acceptance fails.

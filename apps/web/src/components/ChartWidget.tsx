@@ -1,12 +1,8 @@
 // One historical market chart with isolated timeframe and loading state.
 
-import type {
-  ApiCandle,
-  ApiTimeframe,
-  CandleHistoryRequest
-} from "@crypto-strategy-lab/api-contracts";
+import type { ApiCandle, ApiTimeframe } from "@crypto-strategy-lab/api-contracts";
 import { useEffect, useState } from "react";
-import { getCandleHistory } from "../api/client.js";
+import { getMarketRealtimeClient } from "../api/market-realtime-client.js";
 import { CandlestickChart } from "./CandlestickChart.js";
 
 interface ChartWidgetProps {
@@ -15,63 +11,45 @@ interface ChartWidgetProps {
 }
 
 const CANDLE_COUNT = 150;
-const TIMEFRAME_MILLISECONDS: Readonly<Record<ApiTimeframe, number>> = {
-  "1m": 60_000,
-  "5m": 5 * 60_000,
-  "15m": 15 * 60_000,
-  "30m": 30 * 60_000,
-  "1h": 60 * 60_000,
-  "2h": 2 * 60 * 60_000,
-  "4h": 4 * 60 * 60_000,
-  "1d": 24 * 60 * 60_000
-};
-
-function recentCandleRequest(timeframe: ApiTimeframe, now: number): CandleHistoryRequest {
-  const duration = TIMEFRAME_MILLISECONDS[timeframe];
-  const currentOpenTime = Math.floor(now / duration) * duration;
-  const endTime = currentOpenTime - duration;
-  return {
-    provider: "binance",
-    symbol: "BTCUSDT",
-    timeframe,
-    startTime: endTime - (CANDLE_COUNT - 1) * duration,
-    endTime
-  };
-}
-
 export function ChartWidget({ id, initialTimeframe }: ChartWidgetProps) {
   const [timeframe, setTimeframe] = useState<ApiTimeframe>(initialTimeframe);
   const [data, setData] = useState<readonly ApiCandle[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [snapshotCount, setSnapshotCount] = useState(0);
+  const [liveUpdateCount, setLiveUpdateCount] = useState(0);
+  const [snapshotWatermark, setSnapshotWatermark] = useState<number | null>(null);
 
   useEffect(() => {
-    let active = true;
     setIsLoading(true);
     setErrorMessage(null);
-
-    void getCandleHistory(recentCandleRequest(timeframe, Date.now()))
-      .then((response) => {
-        if (active) {
-          setData(response.candles);
-        }
-      })
-      .catch((error: unknown) => {
-        if (active) {
-          setData([]);
-          setErrorMessage(error instanceof Error ? error.message : "Failed to load market data");
-        }
-      })
-      .finally(() => {
-        if (active) {
-          setIsLoading(false);
-        }
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [timeframe]);
+    return getMarketRealtimeClient().subscribe(
+      { subscriptionId: id, symbol: "BTCUSDT", timeframe }, {
+      onSnapshot: (message) => {
+        setData(message.candles);
+        setSnapshotWatermark(message.revisionWatermark);
+        setSnapshotCount((count) => count + 1);
+        setErrorMessage(null);
+        setIsLoading(false);
+      },
+      onLive: (message) => {
+        setLiveUpdateCount((count) => count + 1);
+        setData((current) => {
+          const withoutSameCandle = current.filter(
+            (item) => item.openTime !== message.candle.openTime
+          );
+          return [...withoutSameCandle, message.candle]
+            .sort((left, right) => left.openTime - right.openTime)
+            .slice(-CANDLE_COUNT);
+        });
+      },
+      onError: (message) => {
+        setData([]);
+        setErrorMessage(message);
+        setIsLoading(false);
+      }
+    });
+  }, [id, timeframe]);
 
   const selectId = `${id}-timeframe`;
 
@@ -79,6 +57,9 @@ export function ChartWidget({ id, initialTimeframe }: ChartWidgetProps) {
     <div
       className="flex flex-col border border-gray-700/50 rounded-xl bg-gray-900 shadow-xl overflow-hidden h-[500px]"
       data-chart-id={id}
+      data-live-update-count={liveUpdateCount}
+      data-snapshot-count={snapshotCount}
+      data-snapshot-watermark={snapshotWatermark ?? ""}
     >
       <div className="flex justify-between items-center px-6 py-4 border-b border-gray-700/50 bg-[#1e222d]/80">
         <div className="flex items-center gap-4">
@@ -88,6 +69,9 @@ export function ChartWidget({ id, initialTimeframe }: ChartWidgetProps) {
           </div>
           <span className="text-xs text-blue-400 font-mono bg-blue-900/20 border border-blue-800/30 px-2 py-1 rounded-md">
             {id}
+          </span>
+          <span className="text-xs text-green-400" aria-label={`Live updates for ${id}`}>
+            Live updates: {liveUpdateCount}
           </span>
         </div>
         <div className="flex items-center gap-3">

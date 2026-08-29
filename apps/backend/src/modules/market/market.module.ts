@@ -12,7 +12,8 @@ import { createDatabasePool } from "../../platform/database.js";
 import {
   DATASET_SERVICE,
   MARKET_DATA_PROVIDER,
-  MARKET_DATA_QUERY
+  MARKET_DATA_QUERY,
+  MARKET_SNAPSHOT_QUERY
 } from "./application/tokens.js";
 import { MarketDatasetService } from "./application/market-dataset-service.js";
 import { MarketBackfillService } from "./application/market-backfill-service.js";
@@ -47,6 +48,10 @@ class MarketDatabaseLifecycle implements OnApplicationShutdown {
       useExisting: PostgresCandleRepository
     },
     {
+      provide: MARKET_SNAPSHOT_QUERY,
+      useExisting: PostgresCandleRepository
+    },
+    {
       provide: MARKET_DATA_PROVIDER,
       useFactory: (): MarketDataProvider => new BinanceMarketDataProvider()
     },
@@ -74,6 +79,6 @@ class MarketDatabaseLifecycle implements OnApplicationShutdown {
     },
     MarketDatabaseLifecycle
   ],
-  exports: [MARKET_DATA_QUERY, DATASET_SERVICE, MarketBackfillService]
+  exports: [MARKET_DATA_QUERY, MARKET_SNAPSHOT_QUERY, DATASET_SERVICE, MarketBackfillService]
 })
 export class MarketModule {}

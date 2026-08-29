@@ -16,6 +16,10 @@ export default defineConfig({
         target: BACKEND_DEV_URL,
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, "")
+      },
+      "/ws": {
+        target: BACKEND_DEV_URL,
+        ws: true
       }
     }
   }
