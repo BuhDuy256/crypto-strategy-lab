@@ -15,6 +15,9 @@ export interface RealtimeSocket {
   emit(event: string, body: unknown): void;
 }
 
+/** State of the one shared socket, not of any single subscription. */
+export type RealtimeConnectionState = "connected" | "disconnected";
+
 export interface MarketSubscriptionRequest {
   readonly subscriptionId: string;
   readonly symbol: string;
@@ -38,13 +41,18 @@ interface ActiveSubscription {
 
 export class MarketRealtimeClient {
   private readonly subscriptions = new Map<string, ActiveSubscription>();
+  private readonly connectionListeners = new Set<(state: RealtimeConnectionState) => void>();
 
   constructor(private readonly socket: RealtimeSocket) {
-    socket.on("connect", () => this.resubscribeAll());
+    socket.on("connect", () => {
+      this.resubscribeAll();
+      this.announceConnection("connected");
+    });
     socket.on("disconnect", () => {
       for (const subscription of this.subscriptions.values()) {
         subscription.awaitingSnapshot = true;
       }
+      this.announceConnection("disconnected");
     });
     socket.on("market:message", (body) => this.receive(body));
     socket.on("market:error", (body) => {
@@ -53,6 +61,18 @@ export class MarketRealtimeClient {
       if (typeof error.subscriptionId !== "string" || typeof error.message !== "string") return;
       this.subscriptions.get(error.subscriptionId)?.handlers.onError(error.message);
     });
+  }
+
+  get connectionState(): RealtimeConnectionState {
+    return this.socket.connected ? "connected" : "disconnected";
+  }
+
+  /** Notifies while the listener is registered. Returns the release function. */
+  onConnectionChange(listener: (state: RealtimeConnectionState) => void): () => void {
+    this.connectionListeners.add(listener);
+    return () => {
+      this.connectionListeners.delete(listener);
+    };
   }
 
   subscribe(
@@ -77,6 +97,10 @@ export class MarketRealtimeClient {
         subscriptionId: request.subscriptionId
       });
     };
+  }
+
+  private announceConnection(state: RealtimeConnectionState): void {
+    for (const listener of this.connectionListeners) listener(state);
   }
 
   private resubscribeAll(): void {

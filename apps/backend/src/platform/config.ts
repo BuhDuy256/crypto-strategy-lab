@@ -23,7 +23,10 @@ export interface AppConfig {
   // per-experiment field, so a rebuild always uses the same K.
   readonly leaderboard: { readonly topK: number };
   readonly redis: { readonly url: string };
-  readonly websocket: { readonly maxOutboundMessages: number };
+  readonly websocket: {
+    readonly maxOutboundMessages: number;
+    readonly maxSubscriptionsPerClient: number;
+  };
   // Which live streams the market ingest process holds open. One symbol and a
   // timeframe list, because a Binance connection carries many streams at once.
   readonly marketIngest: {
@@ -93,6 +96,12 @@ export function loadConfig(env: EnvSource = process.env): AppConfig {
   if (!Number.isSafeInteger(maxOutboundMessages) || maxOutboundMessages < 1) {
     throw new Error("Environment variable \"WS_OUTBOUND_BUFFER_MAX\" must be a positive integer.");
   }
+  // A resource bound on one client, not a count of charts. The page decides how
+  // many charts it opens; the API only refuses to hold an unbounded number.
+  const maxSubscriptionsPerClient = Number(env.WS_SUBSCRIPTION_MAX ?? "32");
+  if (!Number.isSafeInteger(maxSubscriptionsPerClient) || maxSubscriptionsPerClient < 1) {
+    throw new Error("Environment variable \"WS_SUBSCRIPTION_MAX\" must be a positive integer.");
+  }
   const ingestSymbol = (env.MARKET_INGEST_SYMBOL ?? "BTCUSDT").trim();
   if (ingestSymbol === "") {
     throw new Error("Environment variable \"MARKET_INGEST_SYMBOL\" must not be empty.");
@@ -123,7 +132,7 @@ export function loadConfig(env: EnvSource = process.env): AppConfig {
     backtestRunner: { concurrency },
     leaderboard: { topK: leaderboardTopK },
     redis: { url: redisUrl },
-    websocket: { maxOutboundMessages },
+    websocket: { maxOutboundMessages, maxSubscriptionsPerClient },
     marketIngest: { symbol: ingestSymbol, timeframes: ingestTimeframes, streamBaseUrl }
   };
 }

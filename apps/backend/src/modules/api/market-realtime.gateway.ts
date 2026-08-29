@@ -74,15 +74,25 @@ export class MarketRealtimeGateway implements OnGatewayConnection, OnGatewayDisc
   constructor(
     @Inject(MARKET_SNAPSHOT_QUERY) snapshots: MarketSnapshotQuery,
     @Inject(RedisLiveNotificationSubscriber) subscriber: RedisLiveNotificationSubscriber,
-    @Inject("WS_OUTBOUND_BUFFER_MAX") maxOutboundMessages: number
+    @Inject("WS_OUTBOUND_BUFFER_MAX") maxOutboundMessages: number,
+    @Inject("WS_SUBSCRIPTION_MAX") maxSubscriptionsPerClient: number
   ) {
     this.registry = new MarketSubscriptionRegistry(
-      new DurableMarketSnapshotReader(snapshots), maxOutboundMessages
+      new DurableMarketSnapshotReader(snapshots), maxOutboundMessages, maxSubscriptionsPerClient
     );
     void subscriber.start(
       (message) => this.registry.publish(message),
       () => this.registry.refreshAll()
     );
+  }
+
+  /**
+   * How many client subscriptions the API is holding right now. It is a count
+   * of what exists, never an expected number: the page decides how many charts
+   * it opens.
+   */
+  get activeSubscriptionCount(): number {
+    return this.registry.subscriptionCount;
   }
 
   handleConnection(client: Socket): void {

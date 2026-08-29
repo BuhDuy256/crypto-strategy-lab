@@ -1,98 +1,45 @@
-// One live market chart: a durable candle series plus one separate forming bar.
+// One live market chart. The widget owns presentation only: the subscription
+// lifecycle lives in the shared chart hook, and the renderer below it still
+// receives nothing but candles.
 
-import type {
-  ApiCandle,
-  ApiFormingCandle,
-  ApiTimeframe
-} from "@crypto-strategy-lab/api-contracts";
-import { useEffect, useMemo, useState } from "react";
-import { getMarketRealtimeClient } from "../api/market-realtime-client.js";
+import type { ApiTimeframe } from "@crypto-strategy-lab/api-contracts";
+import { useState } from "react";
+import {
+  useChartSubscription,
+  useRealtimeConnection
+} from "../hooks/use-chart-subscription.js";
 import { CandlestickChart } from "./CandlestickChart.js";
 
 interface ChartWidgetProps {
+  /** The chart's stable identity. It is also its subscription identifier. */
   readonly id: string;
   readonly initialTimeframe: ApiTimeframe;
+  readonly symbol?: string;
 }
 
-const CANDLE_COUNT = 150;
-
-/**
- * Puts a committed candle into the durable series by identity. Replacing the
- * bar with the same open time is what makes a snapshot/live overlap apply once
- * instead of twice.
- */
-function withClosedCandle(
-  current: readonly ApiCandle[],
-  candle: ApiCandle
-): readonly ApiCandle[] {
-  const others = current.filter((item) => item.openTime !== candle.openTime);
-  return [...others, candle]
-    .sort((left, right) => left.openTime - right.openTime)
-    .slice(-CANDLE_COUNT);
-}
-
-function lastOpenTime(candles: readonly ApiCandle[]): number | undefined {
-  return candles[candles.length - 1]?.openTime;
-}
-
-export function ChartWidget({ id, initialTimeframe }: ChartWidgetProps) {
+export function ChartWidget({ id, initialTimeframe, symbol = "BTCUSDT" }: ChartWidgetProps) {
   const [timeframe, setTimeframe] = useState<ApiTimeframe>(initialTimeframe);
-  const [data, setData] = useState<readonly ApiCandle[]>([]);
-  const [formingCandle, setFormingCandle] = useState<ApiFormingCandle | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [snapshotCount, setSnapshotCount] = useState(0);
-  const [tickCount, setTickCount] = useState(0);
-  const [closedCount, setClosedCount] = useState(0);
-  const [snapshotWatermark, setSnapshotWatermark] = useState<number | null>(null);
+  const connection = useRealtimeConnection();
+  const {
+    durableCandles,
+    displayedCandles,
+    formingCandle,
+    isLoading,
+    errorMessage,
+    snapshotCount,
+    tickCount,
+    closedCount,
+    snapshotWatermark
+  } = useChartSubscription(id, symbol, timeframe);
 
-  useEffect(() => {
-    setIsLoading(true);
-    setErrorMessage(null);
-    return getMarketRealtimeClient().subscribe(
-      { subscriptionId: id, symbol: "BTCUSDT", timeframe }, {
-      onSnapshot: (message) => {
-        setData(message.candles);
-        // A fresh snapshot is the new truth, so any bar that was forming
-        // against the previous one is dropped rather than carried over.
-        setFormingCandle(null);
-        setSnapshotWatermark(message.revisionWatermark);
-        setSnapshotCount((count) => count + 1);
-        setErrorMessage(null);
-        setIsLoading(false);
-      },
-      // A tick only moves the forming bar. It never enters the durable series.
-      onTick: (message) => {
-        setTickCount((count) => count + 1);
-        setFormingCandle(message.candle);
-      },
-      onClosed: (message) => {
-        setClosedCount((count) => count + 1);
-        setData((current) => withClosedCandle(current, message.candle));
-        setFormingCandle((current) =>
-          current !== null && current.openTime <= message.candle.openTime ? null : current
-        );
-      },
-      onError: (message) => {
-        setData([]);
-        setFormingCandle(null);
-        setErrorMessage(message);
-        setIsLoading(false);
-      }
-    });
-  }, [id, timeframe]);
-
-  // The forming bar is shown next to the durable series, never merged into it.
-  const durableLastOpenTime = lastOpenTime(data);
-  const displayedCandles = useMemo<readonly ApiCandle[]>(() => {
-    const last = lastOpenTime(data);
-    if (formingCandle === null || (last !== undefined && formingCandle.openTime <= last)) {
-      return data;
-    }
-    return [...data, formingCandle];
-  }, [data, formingCandle]);
-
+  const durableLastOpenTime = durableCandles[durableCandles.length - 1]?.openTime;
   const liveUpdateCount = tickCount + closedCount;
+  const isLive = connection === "connected" && !isLoading && errorMessage === null;
+  const subscriptionState = errorMessage !== null
+    ? "error"
+    : connection === "disconnected"
+      ? "disconnected"
+      : isLoading ? "subscribing" : "live";
 
   const selectId = `${id}-timeframe`;
 
@@ -101,22 +48,37 @@ export function ChartWidget({ id, initialTimeframe }: ChartWidgetProps) {
       className="flex flex-col border border-gray-700/50 rounded-xl bg-gray-900 shadow-xl overflow-hidden h-[500px]"
       data-chart-id={id}
       data-closed-count={closedCount}
-      data-durable-count={data.length}
+      data-connection={connection}
+      data-durable-count={durableCandles.length}
       data-durable-last-open-time={durableLastOpenTime ?? ""}
       data-forming-open-time={formingCandle?.openTime ?? ""}
       data-live-update-count={liveUpdateCount}
       data-snapshot-count={snapshotCount}
       data-snapshot-watermark={snapshotWatermark ?? ""}
+      data-subscription-state={subscriptionState}
+      data-symbol={symbol}
       data-tick-count={tickCount}
+      data-timeframe={timeframe}
     >
       <div className="flex justify-between items-center px-6 py-4 border-b border-gray-700/50 bg-[#1e222d]/80">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+            <div
+              className={`w-2 h-2 rounded-full ${
+                isLive ? "bg-green-500 animate-pulse"
+                  : subscriptionState === "error" ? "bg-red-500" : "bg-yellow-500 animate-pulse"
+              }`}
+            />
             <span className="text-gray-100 font-bold text-base tracking-wide">BTC/USDT</span>
           </div>
           <span className="text-xs text-blue-400 font-mono bg-blue-900/20 border border-blue-800/30 px-2 py-1 rounded-md">
             {id}
+          </span>
+          <span
+            className="text-xs text-gray-400"
+            aria-label={`Subscription state for ${id}`}
+          >
+            {subscriptionState}
           </span>
           <span className="text-xs text-green-400" aria-label={`Live updates for ${id}`}>
             Live updates: {liveUpdateCount}

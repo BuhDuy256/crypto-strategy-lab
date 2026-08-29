@@ -47,7 +47,8 @@ export class MarketSubscriptionRegistry {
   constructor(
     private readonly snapshots: MarketSnapshotReader,
     private readonly maxOutboundMessages: number,
-    private readonly maxSubscriptionsPerClient = 4
+    // A configured resource bound. The API never assumes a number of charts.
+    private readonly maxSubscriptionsPerClient: number
   ) {
     if (!Number.isSafeInteger(maxOutboundMessages) || maxOutboundMessages < 1) {
       throw new Error("WS_OUTBOUND_BUFFER_MAX must be a positive integer");

@@ -5,17 +5,37 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChartWidget } from "./ChartWidget.js";
 
-const { subscribe } = vi.hoisted(() => ({ subscribe: vi.fn() }));
+const { subscribe, connection } = vi.hoisted(() => ({
+  subscribe: vi.fn(),
+  connection: {
+    state: "connected" as "connected" | "disconnected",
+    listeners: new Set<(state: "connected" | "disconnected") => void>()
+  }
+}));
 vi.mock("../api/market-realtime-client.js", () => ({
-  getMarketRealtimeClient: () => ({ subscribe })
+  getMarketRealtimeClient: () => ({
+    subscribe,
+    get connectionState() {
+      return connection.state;
+    },
+    onConnectionChange: (listener: (state: "connected" | "disconnected") => void) => {
+      connection.listeners.add(listener);
+      return () => connection.listeners.delete(listener);
+    }
+  })
 }));
 
+const chartProps: Record<string, unknown>[] = [];
 vi.mock("./CandlestickChart.js", () => ({
-  CandlestickChart: () => <div>Rendered chart</div>
+  CandlestickChart: (props: Record<string, unknown>) => {
+    chartProps.push(props);
+    return <div>Rendered chart</div>;
+  }
 }));
 
 afterEach(() => {
   cleanup();
+  chartProps.length = 0;
   vi.clearAllMocks();
 });
 
@@ -193,5 +213,33 @@ describe("ChartWidget live candle application", () => {
     view.unmount();
 
     expect(release).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("ChartWidget renderer boundary", () => {
+  it("hands the renderer candles and nothing about the subscription", () => {
+    const { handlers } = renderWithHandlers();
+
+    act(() => {
+      handlers.onSnapshot({
+        schemaVersion: "v1", type: "market:snapshot", subscriptionId: "chart-1",
+        symbol: "BTCUSDT", timeframe: "5m", revisionWatermark: 4,
+        candles: [candle(0, true)]
+      });
+      handlers.onTick({
+        schemaVersion: "v1", type: "candle.tick", subscriptionId: "chart-1",
+        symbol: "BTCUSDT", timeframe: "5m", revisionWatermark: 4, sequence: 9,
+        candle: { ...candle(60_000, false), closed: false }
+      });
+    });
+
+    const last = chartProps[chartProps.length - 1];
+    if (last === undefined) throw new Error("the renderer was never called");
+    // The MKT-05 renderer still takes candles and a display state. No
+    // subscription identifier, timeframe, socket, or protocol reaches it, and
+    // the forming bar arrives as one more candle rather than as live plumbing.
+    expect(Object.keys(last).sort()).toEqual(["candles", "state"]);
+    expect((last.candles as readonly { readonly openTime: number }[]).map((item) => item.openTime))
+      .toEqual([0, 60_000]);
   });
 });

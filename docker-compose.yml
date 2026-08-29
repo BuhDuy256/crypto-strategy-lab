@@ -94,6 +94,7 @@ services:
       PORT: "3000"
       REDIS_URL: redis://redis:6379
       WS_OUTBOUND_BUFFER_MAX: ${WS_OUTBOUND_BUFFER_MAX:-32}
+      WS_SUBSCRIPTION_MAX: ${WS_SUBSCRIPTION_MAX:-32}
       LEADERBOARD_TOP_K: ${LEADERBOARD_TOP_K:-10}
       # Runtime build identity. The API freezes each search spec with these,
       # so the runner (below) must carry the same values or acceptance fails.

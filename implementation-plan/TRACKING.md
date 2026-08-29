@@ -21,11 +21,11 @@ true; keep conversation out of them.
 | Current target version | **V4 - Realtime Market Data** |
 | Previous version | **V3 - Automated Discovery: frozen at `v3.1-demo` on 2026-08-29.** |
 | Last verified commit | The commit tagged `v3.1-demo` on `feat/v3-automated-discovery`. |
-| Next allowed action | Start either `MKT-09` or `MKT-11`; both are `READY`. `MKT-07` is complete, reviewed, and committed on the current branch. |
+| Next allowed action | Start `MKT-09`, the last `READY` V4 slice. `MKT-11` is complete and committed on the current branch. |
 | Last verified on | 2026-08-29 (V1/V2 functional certification, V3 regression, baseline freeze, and the two freeze repairs below) |
 | Last tag | `v3.1-demo`, the certified V1-V3 baseline, on `feat/v3-automated-discovery`. `v3.0-demo` still points at `2b98139` and was deliberately left there: it marks what was *claimed* demoable, on a baseline whose V1 and V2 regressions do not pass. Both tags are on origin. `v1.0-demo` and `v2.0-demo` do not exist. |
 | V3 slices | 8 (`DONE` 8, `READY` 0, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 0) — V3's own scope and its V1+V2 regression condition pass in the baseline-freeze state. |
-| V4 slices | 5 (`DONE` 3, `READY` 2, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 0) — `WS-03`, `MKT-06`, and `MKT-07` are done; `MKT-09` and `MKT-11` are ready. |
+| V4 slices | 5 (`DONE` 4, `READY` 1, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 0) — `WS-03`, `MKT-06`, `MKT-07`, and `MKT-11` are done; `MKT-09` is ready. |
 | History | [`JOURNAL.md`](JOURNAL.md), sections "V1", "V3", "V1/V2 recovery", "V1-V3 freeze repairs", "Demo data prerequisite", and "V4". The recovery entry records the durable V2 decisions that were missing from the original history. |
 
 ## V1/V2 recovery (opened 2026-08-28)
@@ -397,8 +397,33 @@ revision 1 with one row per identity. After Redis restarted, ingest committed op
 `1788006660000` normally. Final relevant suite: 13 files and 88 tests pass; backend typecheck,
 scoped lint, Compose config, and `git diff --check` pass. MKT-06 is committed on the current branch.
 | MKT-07 | REQ | M | Chart subscription protocol | **DONE** | MKT-06, MKT-05 | [01](01-market-and-realtime.md) |
-| MKT-11 | REQ | M | Four live chart subscriptions | **READY** | MKT-07, MKT-08 | [01](01-market-and-realtime.md) |
+| MKT-11 | REQ | M | Four live chart subscriptions | **DONE** | MKT-07, MKT-08 | [01](01-market-and-realtime.md) |
 | MKT-09 | REQ | L | Gap detection, recovery, provider health | **READY** | MKT-06, MKT-02 | [01](01-market-and-realtime.md) |
+MKT-11 evidence: the four `MKT-08` identifiers `chart-1`..`chart-4` are now the subscription identifiers,
+and the per-chart subscribe/retarget/cleanup lifecycle lives in one shared hook,
+`apps/web/src/hooks/use-chart-subscription.ts`, reusing the `MKT-07` protocol unchanged. All six criteria
+are proven. Criteria 1-5 were proven in a real browser by `pnpm run smoke:mkt11` against Compose `api`/`web`
+images rebuilt from this code: four charts with four distinct identifiers holding `5m`, `15m`, `1h`, and
+`4h` at once, each with a watermarked snapshot and real candles; `GET /api/realtime/subscriptions`
+reporting 4; one tick per timeframe reaching only its own chart; `chart-1` retargeted to `1h` taking a new
+snapshot with real candles and no stale forming bar while `chart-2`-`chart-4` kept their snapshot count,
+durable count, and forming bar and went on receiving ticks; a value planted in the document before the
+change still present after it, so there was no page reload; the count still 4 after the change; and 0 once
+the page closed. Criterion 6 is a guard test: `ChartWidget.test.tsx` asserts the `MKT-05` renderer receives
+exactly `candles` and `state`, and `CandlestickChart.tsx` is unchanged by this slice.
+
+One architecture defect was found and fixed inside the slice: the API held the notion of "four". The
+registry's per-client subscription cap was a hard-coded default of 4, which `MKT-11` forbids. It is now the
+configured resource bound `WS_SUBSCRIPTION_MAX` (default 32) threaded through `config.ts`, the `ApiModule`
+provider, and the gateway; the registry parameter has no default at all. `GET /realtime/subscriptions` was
+added so the API can report how many subscriptions it actually holds, which is what makes criterion 4
+checkable outside a unit test. Relevant suites: 12 files and 90 tests pass across the SPA, the subscription
+registry, the new status controller, and platform config. Root typecheck, scoped lint, and `git diff --check`
+pass. The smoke requires `market-ingest` stopped, for the sequence reason recorded for `MKT-07`; it stops and
+restarts it itself. The two-axis review was skipped on the owner's explicit
+instruction, not overlooked, so this diff carries no review record. Anyone auditing V4 later should read
+`MKT-11` as validated by tests and browser smoke only, the same way `WS-03` is.
+
 
 MKT-07 evidence: live updates are now two wire message types, `candle.tick` and `candle.closed`,
 split into a `MarketLiveNotification` that ingest publishes without any client identity and a

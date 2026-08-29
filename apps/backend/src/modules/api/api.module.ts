@@ -24,6 +24,7 @@ import { SearchController } from "./search.controller.js";
 import { SearchExperimentController } from "./search-experiment.controller.js";
 import { LeaderboardController } from "./leaderboard.controller.js";
 import { MarketRealtimeGateway } from "./market-realtime.gateway.js";
+import { RealtimeStatusController } from "./realtime-status.controller.js";
 import { RedisLiveNotificationSubscriber } from "../../platform/realtime/redis-live-notifications.js";
 import { loadConfig } from "../../platform/config.js";
 
@@ -64,7 +65,8 @@ class RealtimeLifecycle implements OnApplicationShutdown {
     GeneratorController,
     SearchController,
     SearchExperimentController,
-    LeaderboardController
+    LeaderboardController,
+    RealtimeStatusController
   ],
   providers: [
     {
@@ -76,6 +78,10 @@ class RealtimeLifecycle implements OnApplicationShutdown {
     {
       provide: "WS_OUTBOUND_BUFFER_MAX",
       useFactory: () => loadConfig().websocket.maxOutboundMessages
+    },
+    {
+      provide: "WS_SUBSCRIPTION_MAX",
+      useFactory: () => loadConfig().websocket.maxSubscriptionsPerClient
     },
     MarketRealtimeGateway,
     RealtimeLifecycle,
