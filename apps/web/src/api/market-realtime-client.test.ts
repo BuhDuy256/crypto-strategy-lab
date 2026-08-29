@@ -3,9 +3,16 @@
 import type { MarketRealtimeMessage } from "@crypto-strategy-lab/api-contracts";
 import { describe, expect, it, vi } from "vitest";
 import {
+  getMarketRealtimeClient,
   MarketRealtimeClient,
+  type RealtimeConnectionState,
   type RealtimeSocket
 } from "./market-realtime-client.js";
+
+const { io } = vi.hoisted(() => ({ io: vi.fn(() => ({
+  connected: false, on: vi.fn(), emit: vi.fn()
+})) }));
+vi.mock("socket.io-client", () => ({ io }));
 
 class FakeSocket implements RealtimeSocket {
   connected = true;
@@ -143,3 +150,48 @@ function tick(
     }
   };
 }
+
+describe("MarketRealtimeClient shared connection", () => {
+  it("carries every subscription on one socket and resubscribes them all on reconnect", () => {
+    const socket = new FakeSocket();
+    const client = new MarketRealtimeClient(socket);
+    const charts = ["chart-1", "chart-2", "chart-3", "chart-4"] as const;
+    const timeframes = ["5m", "15m", "1h", "4h"] as const;
+    charts.forEach((subscriptionId, index) => {
+      client.subscribe(
+        { subscriptionId, symbol: "BTCUSDT", timeframe: timeframes[index] ?? "5m" },
+        { onSnapshot: vi.fn(), onTick: vi.fn(), onClosed: vi.fn(), onError: vi.fn() }
+      );
+    });
+    expect(socket.emitted).toHaveLength(4);
+
+    socket.trigger("connect");
+
+    // One reconnect on one socket restores four subscriptions. Four sockets
+    // would have produced four independent lifecycles instead.
+    expect(socket.emitted.slice(4).map((entry) => entry.event))
+      .toEqual(["market:subscribe", "market:subscribe", "market:subscribe", "market:subscribe"]);
+    expect(socket.emitted.slice(4).map((entry) =>
+      (entry.body as { readonly subscriptionId: string }).subscriptionId)).toEqual([...charts]);
+  });
+
+  it("reports the socket lifecycle and stops reporting once the listener is released", () => {
+    const socket = new FakeSocket();
+    const client = new MarketRealtimeClient(socket);
+    const seen: RealtimeConnectionState[] = [];
+    const release = client.onConnectionChange((state) => seen.push(state));
+
+    expect(client.connectionState).toBe("connected");
+    socket.trigger("disconnect");
+    socket.trigger("connect");
+    release();
+    socket.trigger("disconnect");
+
+    expect(seen).toEqual(["disconnected", "connected"]);
+  });
+
+  it("hands every caller the same client, so the page opens one socket", () => {
+    expect(getMarketRealtimeClient()).toBe(getMarketRealtimeClient());
+    expect(io).toHaveBeenCalledTimes(1);
+  });
+});

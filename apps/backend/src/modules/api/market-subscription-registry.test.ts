@@ -13,6 +13,10 @@ import {
   type MarketSnapshotReader
 } from "./market-subscription-registry.js";
 
+// Wide enough that no test below trips it by accident. The per-client bound is
+// configured, so these tests never depend on a particular number of charts.
+const SUBSCRIPTION_MAX = 32;
+
 const subscribe = (subscriptionId: string, timeframe: "5m" | "1h"): MarketSubscribeMessage => ({
   schemaVersion: "v1", type: "market:subscribe", subscriptionId,
   symbol: "BTCUSDT", timeframe
@@ -65,7 +69,7 @@ describe("MarketSubscriptionRegistry", () => {
       read: () => new Promise((resolve) => { resolveSnapshot = resolve; })
     };
     const client = sink();
-    const registry = new MarketSubscriptionRegistry(reader, 4);
+    const registry = new MarketSubscriptionRegistry(reader, 4, SUBSCRIPTION_MAX);
     const pending = registry.subscribe("client-1", subscribe("chart-1", "5m"), client);
 
     registry.publish(live("5m", 11));
@@ -87,7 +91,7 @@ describe("MarketSubscriptionRegistry", () => {
     }) };
     const first = sink();
     const second = sink();
-    const registry = new MarketSubscriptionRegistry(reader, 4);
+    const registry = new MarketSubscriptionRegistry(reader, 4, SUBSCRIPTION_MAX);
     await registry.subscribe("client-1", subscribe("chart-1", "5m"), first);
     await registry.subscribe("client-2", subscribe("chart-2", "1h"), second);
 
@@ -107,7 +111,7 @@ describe("MarketSubscriptionRegistry", () => {
     }) };
     const first = sink();
     const second = sink();
-    const registry = new MarketSubscriptionRegistry(reader, 4);
+    const registry = new MarketSubscriptionRegistry(reader, 4, SUBSCRIPTION_MAX);
     await registry.subscribe("client-1", subscribe("chart-1", "5m"), first);
     await registry.subscribe("client-1", subscribe("chart-2", "5m"), second);
 
@@ -131,7 +135,7 @@ describe("MarketSubscriptionRegistry", () => {
       symbol: request.symbol, timeframe: request.timeframe, revisionWatermark: 5, candles: []
     }) };
     const client = sink();
-    const registry = new MarketSubscriptionRegistry(reader, 4);
+    const registry = new MarketSubscriptionRegistry(reader, 4, SUBSCRIPTION_MAX);
     await registry.subscribe("client-1", subscribe("chart-1", "5m"), client);
 
     registry.publish(tick("5m", 1));
@@ -152,7 +156,7 @@ describe("MarketSubscriptionRegistry", () => {
       revisionWatermark: watermark, candles: []
     }) };
     const client = sink();
-    const registry = new MarketSubscriptionRegistry(reader, 4);
+    const registry = new MarketSubscriptionRegistry(reader, 4, SUBSCRIPTION_MAX);
     await registry.subscribe("client-1", subscribe("chart-1", "5m"), client);
     registry.publish(live("5m", 2));
     watermark = 4;
@@ -170,7 +174,7 @@ describe("MarketSubscriptionRegistry", () => {
       symbol: request.symbol, timeframe: request.timeframe, revisionWatermark: 1, candles: []
     }) };
     const client = sink(false);
-    const registry = new MarketSubscriptionRegistry(reader, 2);
+    const registry = new MarketSubscriptionRegistry(reader, 2, SUBSCRIPTION_MAX);
     await registry.subscribe("client-1", subscribe("chart-1", "5m"), client);
     registry.publish(live("5m", 2));
     registry.publish(live("5m", 3));
@@ -185,7 +189,7 @@ describe("MarketSubscriptionRegistry", () => {
       symbol: request.symbol, timeframe: request.timeframe, revisionWatermark: 1, candles: []
     }) };
     const client = sink(false);
-    const registry = new MarketSubscriptionRegistry(reader, 2);
+    const registry = new MarketSubscriptionRegistry(reader, 2, SUBSCRIPTION_MAX);
     await registry.subscribe("client-1", subscribe("chart-1", "5m"), client);
 
     // Ticks are the high-rate channel, so they are what actually reaches the
@@ -203,7 +207,7 @@ describe("MarketSubscriptionRegistry", () => {
       symbol: request.symbol, timeframe: request.timeframe, revisionWatermark: 1, candles: []
     }) };
     const client = sink();
-    const registry = new MarketSubscriptionRegistry(reader, 8);
+    const registry = new MarketSubscriptionRegistry(reader, 8, SUBSCRIPTION_MAX);
     await registry.subscribe("client-1", subscribe("chart-1", "5m"), client);
 
     // A tick carrying a high watermark must not make the committed candle that
@@ -216,32 +220,104 @@ describe("MarketSubscriptionRegistry", () => {
     ]);
   });
 
+  it("holds one entry per subscription and addresses live data to only the matching one", async () => {
+    const reader: MarketSnapshotReader = { read: async (request) => ({
+      schemaVersion: "v1", type: "market:snapshot", subscriptionId: request.subscriptionId,
+      symbol: request.symbol, timeframe: request.timeframe, revisionWatermark: 1, candles: []
+    }) };
+    const registry = new MarketSubscriptionRegistry(reader, 8, SUBSCRIPTION_MAX);
+    // The page opens four charts here. The registry is given four subscriptions
+    // and counts four; it is never told that four is the expected number.
+    const charts = [
+      { id: "chart-1", timeframe: "5m" as const, sink: sink() },
+      { id: "chart-2", timeframe: "1h" as const, sink: sink() },
+      { id: "chart-3", timeframe: "5m" as const, sink: sink() },
+      { id: "chart-4", timeframe: "1h" as const, sink: sink() }
+    ];
+    for (const chart of charts) {
+      await registry.subscribe("client-1", subscribe(chart.id, chart.timeframe), chart.sink);
+    }
+
+    expect(registry.subscriptionCount).toBe(4);
+    // Each chart got its own snapshot, stamped with its own identifier.
+    expect(charts.map((chart) => chart.sink.messages.map((message) => message.type))).toEqual([
+      ["market:snapshot"], ["market:snapshot"], ["market:snapshot"], ["market:snapshot"]
+    ]);
+
+    registry.publish(live("1h", 2));
+
+    const delivered = charts.map((chart) => chart.sink.messages
+      .filter((message) => message.type === "candle.closed")
+      .map((message) => (message as { readonly subscriptionId: string }).subscriptionId));
+    // Only the two subscriptions on the 1h key saw it, each addressed to itself.
+    expect(delivered).toEqual([[], ["chart-2"], [], ["chart-4"]]);
+    expect(registry.subscriptionCount).toBe(4);
+  });
+
+  it("keeps the entry total unchanged when one identifier is retargeted", async () => {
+    const reader: MarketSnapshotReader = { read: async (request) => ({
+      schemaVersion: "v1", type: "market:snapshot", subscriptionId: request.subscriptionId,
+      symbol: request.symbol, timeframe: request.timeframe, revisionWatermark: 1, candles: []
+    }) };
+    const registry = new MarketSubscriptionRegistry(reader, 8, SUBSCRIPTION_MAX);
+    const untouched = sink();
+    await registry.subscribe("client-1", subscribe("chart-1", "5m"), sink());
+    await registry.subscribe("client-1", subscribe("chart-2", "1h"), untouched);
+    await registry.subscribe("client-1", subscribe("chart-3", "1h"), sink());
+    await registry.subscribe("client-1", subscribe("chart-4", "5m"), sink());
+    expect(registry.subscriptionCount).toBe(4);
+
+    // A timeframe change is unsubscribe plus subscribe for one identifier only.
+    registry.unsubscribe("client-1", "chart-1");
+    expect(registry.subscriptionCount).toBe(3);
+    const retargeted = sink();
+    await registry.subscribe("client-1", subscribe("chart-1", "1h"), retargeted);
+
+    expect(registry.subscriptionCount).toBe(4);
+    const before = untouched.messages.length;
+    registry.publish(live("1h", 2));
+    // The retargeted subscription now receives its new key, and a subscription
+    // that was never touched keeps receiving without a new snapshot.
+    expect(retargeted.messages.map((message) => message.type))
+      .toEqual(["market:snapshot", "candle.closed"]);
+    expect(untouched.messages.length).toBe(before + 1);
+    expect(untouched.messages.filter((message) => message.type === "market:snapshot")).toHaveLength(1);
+  });
+
   it("releases subscription state on unsubscribe and disconnect", async () => {
     const reader: MarketSnapshotReader = { read: async (request) => ({
       schemaVersion: "v1", type: "market:snapshot", subscriptionId: request.subscriptionId,
       symbol: request.symbol, timeframe: request.timeframe, revisionWatermark: 1, candles: []
     }) };
-    const registry = new MarketSubscriptionRegistry(reader, 4);
+    const registry = new MarketSubscriptionRegistry(reader, 4, SUBSCRIPTION_MAX);
     await registry.subscribe("client-1", subscribe("chart-1", "5m"), sink());
     await registry.subscribe("client-1", subscribe("chart-2", "1h"), sink());
+    await registry.subscribe("client-2", subscribe("chart-1", "5m"), sink());
     registry.unsubscribe("client-1", "chart-1");
-    expect(registry.subscriptionCount).toBe(1);
+    expect(registry.subscriptionCount).toBe(2);
+
     registry.disconnect("client-1");
+
+    // Closing one page releases that page's entries and nobody else's.
+    expect(registry.subscriptionCount).toBe(1);
+    registry.disconnect("client-2");
     expect(registry.subscriptionCount).toBe(0);
   });
 
-  it("bounds total client buffering by limiting one client to four subscriptions", async () => {
+  it("bounds total client buffering at the configured subscription limit", async () => {
     const reader: MarketSnapshotReader = { read: async (request) => ({
       schemaVersion: "v1", type: "market:snapshot", subscriptionId: request.subscriptionId,
       symbol: request.symbol, timeframe: request.timeframe, revisionWatermark: 1, candles: []
     }) };
-    const registry = new MarketSubscriptionRegistry(reader, 4);
-    for (let index = 1; index <= 4; index += 1) {
+    // Three, not four: the bound is whatever it is configured to be, and the
+    // registry holds no idea of how many charts a page shows.
+    const registry = new MarketSubscriptionRegistry(reader, 4, 3);
+    for (let index = 1; index <= 3; index += 1) {
       await registry.subscribe("client-1", subscribe(`chart-${index}`, "5m"), sink());
     }
 
-    await expect(registry.subscribe("client-1", subscribe("chart-5", "5m"), sink()))
+    await expect(registry.subscribe("client-1", subscribe("chart-4", "5m"), sink()))
       .rejects.toThrow("WS_SUBSCRIPTION_LIMIT");
-    expect(registry.subscriptionCount).toBe(4);
+    expect(registry.subscriptionCount).toBe(3);
   });
 });

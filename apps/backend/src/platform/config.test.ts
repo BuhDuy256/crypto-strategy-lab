@@ -24,7 +24,7 @@ describe("loadConfig", () => {
       backtestRunner: { concurrency: 1 },
       leaderboard: { topK: 10 },
       redis: { url: "redis://localhost:6379" },
-      websocket: { maxOutboundMessages: 32 },
+      websocket: { maxOutboundMessages: 32, maxSubscriptionsPerClient: 32 },
       marketIngest: {
         symbol: "BTCUSDT",
         timeframes: ["1m", "5m", "15m", "30m", "1h", "2h", "4h", "1d"],
@@ -101,5 +101,7 @@ describe("loadConfig", () => {
     expect(() => loadConfig({ ...VALID_ENV, REDIS_URL: "http://redis" })).toThrow(/REDIS_URL/);
     expect(() => loadConfig({ ...VALID_ENV, WS_OUTBOUND_BUFFER_MAX: "0" }))
       .toThrow(/WS_OUTBOUND_BUFFER_MAX/);
+    expect(() => loadConfig({ ...VALID_ENV, WS_SUBSCRIPTION_MAX: "0" }))
+      .toThrow(/WS_SUBSCRIPTION_MAX/);
   });
 });

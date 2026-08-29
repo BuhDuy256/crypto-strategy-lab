@@ -1980,3 +1980,83 @@ The registry drops a live message whose sequence is not greater than the last on
 and ingest seeds its sequence from the wall clock, so a running ingest makes scripted
 publications unobservable. `MKT-09` and `PROOF-RT-001` will need a way to assert protocol
 behaviour with real ingest traffic present.
+
+### MKT-11 - Four live chart subscriptions
+
+**Why this slice was small in the SPA and not small in the API**
+
+`MKT-08` had already built four charts with stable identifiers, and `MKT-07` had already
+built the subscription protocol on those same charts. So the SPA work was mostly moving
+the lifecycle `MKT-07` had left inline in `ChartWidget` into one shared hook,
+`use-chart-subscription.ts`, and giving the page a real connection indicator instead of a
+hard-coded green dot. The protocol, the wire types, and snapshot-before-live were reused
+unchanged.
+
+The API was a different story, and it is the durable part of this entry.
+
+**The API held the notion of "four", and it should not have**
+
+`MarketSubscriptionRegistry` was constructed with `maxSubscriptionsPerClient = 4` as a
+parameter default, and the gateway never overrode it. `WS-03` introduced it honestly, as
+backpressure protection sized to the four charts V4 shows. But `MKT-11`'s architecture
+constraint is explicit: the backend holds however many subscriptions exist, never a count
+of charts. A default of four is a layout decision living in the API.
+
+The bound itself is still wanted. What changed is where the number comes from:
+
+```text
+before   registry default = 4        -> the API assumed the page
+after    WS_SUBSCRIPTION_MAX = 32    -> config decides, the page decides its own charts
+```
+
+`WS_SUBSCRIPTION_MAX` follows `WS_OUTBOUND_BUFFER_MAX` exactly: validated in
+`platform/config.ts`, provided by `ApiModule`, injected into the gateway, listed in
+`.env.example` and `docker-compose.yml`. The registry parameter now has no default, so no
+future caller can inherit a chart count by forgetting an argument. The registry limit test
+configures three rather than four, which is the point: the bound is whatever it is set to.
+
+**A read-only route was added that the slice did not ask for**
+
+`MKT-11`'s expected change surface names SPA work only. Acceptance criterion 4 says the
+server-side subscription state must *show* exactly four entries before and after a
+timeframe change, and nothing exposed that state outside a unit test.
+`GET /realtime/subscriptions` now returns `{ activeSubscriptions }`. It is read-only, it
+reports the count that exists rather than an expected one, and it sits in `ARC-API`, which
+already owns client subscription and session state, so it crosses no boundary. Without it
+the fourth criterion could only ever be argued from a unit test, and a unit test does not
+prove what the assembled system does.
+
+**Validation**
+
+Criteria 1 through 5 were proven in a real browser by `pnpm run smoke:mkt11`, against
+Compose `api` and `web` images rebuilt from the final code. Four charts held `5m`, `15m`,
+`1h`, and `4h` at once, each with its own watermarked snapshot; the API reported four
+active subscriptions; a tick published on each timeframe reached only its own chart;
+retargeting `chart-1` to `1h` gave it a fresh snapshot with real candles and no stale
+forming bar while the other three kept their snapshot counts, durable counts, and forming
+bars and went on receiving ticks; a value planted in the document survived the change, so
+there was no reload; the count was still four afterwards and zero once the page closed.
+Criterion 6 became a guard test rather than an inspection: `ChartWidget.test.tsx` asserts
+the `MKT-05` renderer receives exactly `candles` and `state`, so a future slice cannot
+quietly hand the chart a socket. Relevant suites: 12 files, 90 tests. Typecheck, scoped
+lint, and `git diff --check` pass.
+
+**Two operational facts, both already known and both still true**
+
+`smoke:mkt11` stops `market-ingest` before publishing, for the same reason `smoke:mkt07`
+did: the API accepts a live message only when its sequence follows the last one for that
+subscription, and ingest seeds its per-stream sequence from the wall clock. That filtering
+is the design. The smoke restarts ingest when it finishes.
+
+`market-ingest` is currently in a restart loop: it opens the Binance stream, subscribes to
+all eight streams, and stops about 300 ms later having committed nothing. That is
+`MKT-06`'s documented boundary, where a closed provider connection ends the streams and the
+process stops rather than pretending to be healthy. Reconnect, backoff, and gap recovery
+are `MKT-09`, which is the remaining V4 slice. It was classified and left alone here.
+
+**No review record on this diff**
+
+The two-axis review was skipped on the owner's explicit instruction, to conserve budget,
+not overlooked. `WS-03` carries the same gap for the same reason. Read `MKT-11` as
+validated by its tests and its browser smoke, and by nothing else.
+

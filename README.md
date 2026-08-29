@@ -449,8 +449,14 @@ has its own identifier, symbol, and timeframe. The server reads a PostgreSQL
 snapshot first, then forwards matching Redis Pub/Sub notifications. Redis is
 ephemeral and is never proof that a candle was stored or delivered.
 
-`WS_OUTBOUND_BUFFER_MAX` defaults to 32 messages per subscription, and each client
-may hold at most four subscriptions. When a client
+`GET /realtime/subscriptions` reports how many client subscriptions the API is
+holding right now. It reports what exists rather than an expected number, and it
+is how per-subscription isolation is checked from outside a unit test.
+
+`WS_OUTBOUND_BUFFER_MAX` defaults to 32 messages per subscription, and
+`WS_SUBSCRIPTION_MAX` defaults to 32 subscriptions per client. Both are resource
+bounds, not a count of charts: the page decides how many charts it opens, and the
+API holds however many subscriptions it is asked for up to the bound. When a client
 cannot accept messages and the bound is exceeded, the API disconnects that client.
 Socket.IO reconnects it and every active subscription requests a new PostgreSQL
 snapshot before live delivery resumes. This prevents unbounded memory use and
