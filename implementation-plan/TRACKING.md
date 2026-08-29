@@ -21,11 +21,11 @@ true; keep conversation out of them.
 | Current target version | **V4 - Realtime Market Data** |
 | Previous version | **V3 - Automated Discovery: frozen at `v3.1-demo` on 2026-08-29.** |
 | Last verified commit | The commit tagged `v3.1-demo` on `feat/v3-automated-discovery`. |
-| Next allowed action | Review and commit the `MKT-07` diff, then start `MKT-09` or `MKT-11`; both are now `READY`. |
+| Next allowed action | Start either `MKT-09` or `MKT-11`; both are `READY`. `MKT-07` is complete, reviewed, and committed on the current branch. |
 | Last verified on | 2026-08-29 (V1/V2 functional certification, V3 regression, baseline freeze, and the two freeze repairs below) |
 | Last tag | `v3.1-demo`, the certified V1-V3 baseline, on `feat/v3-automated-discovery`. `v3.0-demo` still points at `2b98139` and was deliberately left there: it marks what was *claimed* demoable, on a baseline whose V1 and V2 regressions do not pass. Both tags are on origin. `v1.0-demo` and `v2.0-demo` do not exist. |
 | V3 slices | 8 (`DONE` 8, `READY` 0, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 0) — V3's own scope and its V1+V2 regression condition pass in the baseline-freeze state. |
-| V4 slices | 5 (`DONE` 3, `READY` 2, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 0) — `WS-03`, `MKT-06`, and `MKT-07` are done; `MKT-09` and `MKT-11` are ready. `MKT-07` is not committed yet. |
+| V4 slices | 5 (`DONE` 3, `READY` 2, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 0) — `WS-03`, `MKT-06`, and `MKT-07` are done; `MKT-09` and `MKT-11` are ready. |
 | History | [`JOURNAL.md`](JOURNAL.md), sections "V1", "V3", "V1/V2 recovery", "V1-V3 freeze repairs", "Demo data prerequisite", and "V4". The recovery entry records the durable V2 decisions that were missing from the original history. |
 
 ## V1/V2 recovery (opened 2026-08-28)
@@ -418,7 +418,7 @@ across the API gateway, market realtime, SPA, and contracts. Root typecheck, sco
 `git diff --check` pass. The smoke requires `market-ingest` stopped; see the `JOURNAL.md` entry
 for why.
 
-The two-axis review ran on the MKT-07 diff and produced four accepted changes: live delivery
+The MKT-07 diff is committed at `fce0741`. The two-axis review ran on it before the commit and produced four accepted changes: live delivery
 message shapes became interfaces per `CODING_STANDARDS.md`; the candle guard regained a type
 predicate and lost its flag parameter; a tick can no longer advance the durable revision watermark;
 and two test gaps closed, the ingest wire-type seam and the outbound bound under tick traffic.
