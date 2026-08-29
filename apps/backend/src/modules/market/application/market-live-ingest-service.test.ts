@@ -181,7 +181,7 @@ describe("MarketLiveIngestService", () => {
     expect(store.committed).toStrictEqual([]);
     expect(transport.events).toStrictEqual(["publish:tick", "publish:tick"]);
     expect(transport.published.map((message) => message.candle.closed)).toStrictEqual([false, false]);
-    expect(service.publishedTicks).toBe(2);
+    expect(service.attemptedTickPublications).toBe(2);
     expect(service.committedCandles).toBe(0);
   });
 
@@ -290,7 +290,7 @@ describe("MarketLiveIngestService", () => {
     expect(store.committed).toHaveLength(2);
     expect(service.committedCandles).toBe(2);
     // Only the first tick was ever attempted; the rest were superseded.
-    expect(service.publishedTicks).toBe(1);
+    expect(service.attemptedTickPublications).toBe(1);
     expect(service.droppedTicks).toBe(3);
     // One non-settling tick plus only the closed publication being handled now.
     expect(maxPublicationsInFlight).toBe(2);

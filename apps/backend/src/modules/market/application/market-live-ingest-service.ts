@@ -62,7 +62,7 @@ export class MarketLiveIngestService {
   private readonly ticksInFlight = new Map<string, Promise<void>>();
   private readonly sequenceSeed: number;
   private committedCount = 0;
-  private tickCount = 0;
+  private attemptedTickCount = 0;
   private droppedTickCount = 0;
 
   constructor(
@@ -79,8 +79,8 @@ export class MarketLiveIngestService {
     return this.committedCount;
   }
 
-  get publishedTicks(): number {
-    return this.tickCount;
+  get attemptedTickPublications(): number {
+    return this.attemptedTickCount;
   }
 
   /** Ticks skipped because an older publish for the same stream was still running. */
@@ -169,7 +169,7 @@ export class MarketLiveIngestService {
         this.ticksInFlight.delete(key);
       });
     this.ticksInFlight.set(key, running);
-    this.tickCount += 1;
+    this.attemptedTickCount += 1;
   }
 
   /**

@@ -144,7 +144,9 @@ describe("BinanceKlineStreamClient", () => {
   it("requests every stream on one connection and emits normalized candles", async () => {
     const received: Candle[] = [];
     client = new BinanceKlineStreamClient({ baseUrl: server.url });
-    client.onCandle((candle) => received.push(candle));
+    client.onCandle((candle) => {
+      received.push(candle);
+    });
     await client.open([klineStreamName("BTCUSDT", "1m"), klineStreamName("BTCUSDT", "5m")]);
 
     expect(server.connections).toHaveLength(1);
@@ -181,7 +183,9 @@ describe("BinanceKlineStreamClient", () => {
   it("ignores control replies and malformed frames instead of failing the stream", async () => {
     const received: Candle[] = [];
     client = new BinanceKlineStreamClient({ baseUrl: server.url });
-    client.onCandle((candle) => received.push(candle));
+    client.onCandle((candle) => {
+      received.push(candle);
+    });
     await client.open([klineStreamName("BTCUSDT", "1m")]);
     const socket = await server.waitForConnection();
 

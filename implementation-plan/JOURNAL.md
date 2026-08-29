@@ -1925,7 +1925,15 @@ The deterministic regression uses an endpoint that accepts TCP but never complet
 Redis handshake. Two publication attempts each settle at the one-second bound. The
 service regression holds one tick publication unresolved while later notifications
 fail, commits two consecutive closed candles, and observes no more than two publications
-in flight. The final backend Market/realtime suite passes at 12 files and 85 tests.
-Backend typecheck, scoped lint, Compose config, and `git diff --check` pass. A two-axis
-review could not run because its required committed three-dot diff is empty and this
-session was explicitly not authorized to commit.
+in flight.
+
+The committed two-axis review then found three durability holes before push. A full
+closed-candle subscriber buffer could discard its oldest closed candle; initial stream
+open failure reached only the first waiting subscriber; and Compose required healthy
+Redis before starting market ingest. The registry now applies bounded backpressure when
+all 256 slots hold closed candles, fails every queue waiting on the same initial open,
+and lets Compose start ingest from PostgreSQL and migrations alone. A Redis-stopped
+Compose run proved the rebuilt ingest process starts and opens the Binance stream.
+
+The final backend Market/realtime suite passes at 13 files and 87 tests. Backend
+typecheck, scoped lint, Compose config, and `git diff --check` pass.

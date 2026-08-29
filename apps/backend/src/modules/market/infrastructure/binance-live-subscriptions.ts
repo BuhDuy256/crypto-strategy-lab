@@ -20,6 +20,7 @@ const MAX_BUFFERED_CANDLES = 256;
 
 class LiveCandleQueue implements AsyncIterable<Candle> {
   private readonly buffer: Candle[] = [];
+  private blockedClosed: { readonly candle: Candle; readonly resume: () => void } | undefined;
   private pending: ((result: IteratorResult<Candle>) => void) | undefined;
   private rejectPending: ((error: unknown) => void) | undefined;
   private failure: unknown;
@@ -27,19 +28,27 @@ class LiveCandleQueue implements AsyncIterable<Candle> {
 
   constructor(private readonly onReturn: () => void) {}
 
-  push(candle: Candle): void {
-    if (this.ended) return;
+  push(candle: Candle): Promise<void> {
+    if (this.ended) return Promise.resolve();
     const waiting = this.pending;
     if (waiting !== undefined) {
       this.pending = undefined;
       this.rejectPending = undefined;
       waiting({ value: candle, done: false });
-      return;
+      return Promise.resolve();
     }
     this.buffer.push(candle);
-    if (this.buffer.length <= MAX_BUFFERED_CANDLES) return;
+    if (this.buffer.length <= MAX_BUFFERED_CANDLES) return Promise.resolve();
     const oldestTick = this.buffer.findIndex((entry) => !entry.closed);
-    this.buffer.splice(oldestTick === -1 ? 0 : oldestTick, 1);
+    if (oldestTick !== -1) {
+      this.buffer.splice(oldestTick, 1);
+      return Promise.resolve();
+    }
+    const blocked = this.buffer.pop();
+    if (blocked === undefined) return Promise.resolve();
+    return new Promise((resume) => {
+      this.blockedClosed = { candle: blocked, resume };
+    });
   }
 
   fail(error: unknown): void {
@@ -55,6 +64,8 @@ class LiveCandleQueue implements AsyncIterable<Candle> {
 
   private finish(): void {
     this.ended = true;
+    this.blockedClosed?.resume();
+    this.blockedClosed = undefined;
     const reject = this.rejectPending;
     const resolve = this.pending;
     this.pending = undefined;
@@ -70,7 +81,10 @@ class LiveCandleQueue implements AsyncIterable<Candle> {
     return {
       next: async (): Promise<IteratorResult<Candle>> => {
         const buffered = this.buffer.shift();
-        if (buffered !== undefined) return { value: buffered, done: false };
+        if (buffered !== undefined) {
+          this.releaseBlockedClosed();
+          return { value: buffered, done: false };
+        }
         if (this.failure !== undefined) throw this.failure;
         if (this.ended) return { value: undefined, done: true };
         return new Promise<IteratorResult<Candle>>((resolve, reject) => {
@@ -84,6 +98,14 @@ class LiveCandleQueue implements AsyncIterable<Candle> {
         return { value: undefined, done: true };
       }
     };
+  }
+
+  private releaseBlockedClosed(): void {
+    const blocked = this.blockedClosed;
+    if (blocked === undefined) return;
+    this.blockedClosed = undefined;
+    this.buffer.push(blocked.candle);
+    blocked.resume();
   }
 }
 
@@ -108,7 +130,7 @@ export class BinanceLiveSubscriptionRegistry {
       existing.add(queue);
     } else {
       this.queues.set(stream, new Set([queue]));
-      this.attach(stream, queue);
+      this.attach(stream);
     }
     return queue;
   }
@@ -120,7 +142,7 @@ export class BinanceLiveSubscriptionRegistry {
     this.endAll();
   }
 
-  private attach(stream: string, queue: LiveCandleQueue): void {
+  private attach(stream: string): void {
     if (this.client !== undefined) {
       this.client.subscribe([stream]);
       return;
@@ -133,7 +155,7 @@ export class BinanceLiveSubscriptionRegistry {
       return;
     }
     const client = this.createClient();
-    client.onCandle((candle) => this.dispatch(candle));
+    client.onCandle(async (candle) => this.dispatch(candle));
     client.onClose(() => this.handleClose());
     this.connecting = client
       .open([stream])
@@ -142,15 +164,15 @@ export class BinanceLiveSubscriptionRegistry {
       })
       .catch((error: unknown) => {
         this.connecting = undefined;
-        queue.fail(error);
+        this.failAll(error);
       });
   }
 
-  private dispatch(candle: Candle): void {
+  private async dispatch(candle: Candle): Promise<void> {
     const stream = klineStreamName(candle.symbol, candle.timeframe);
     const queues = this.queues.get(stream);
     if (queues === undefined) return;
-    for (const queue of queues) queue.push(candle);
+    await Promise.all([...queues].map(async (queue) => queue.push(candle)));
   }
 
   private handleClose(): void {
@@ -162,6 +184,13 @@ export class BinanceLiveSubscriptionRegistry {
   private endAll(): void {
     for (const queues of this.queues.values()) {
       for (const queue of queues) queue.end();
+    }
+    this.queues.clear();
+  }
+
+  private failAll(error: unknown): void {
+    for (const queues of this.queues.values()) {
+      for (const queue of queues) queue.fail(error);
     }
     this.queues.clear();
   }
