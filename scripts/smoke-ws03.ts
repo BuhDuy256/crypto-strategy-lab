@@ -79,8 +79,9 @@ try {
     });
     return { candle, revisionWatermark: await repository.getCurrentRevisionWatermark() };
   }, ({ candle, revisionWatermark }) => ({
-    schemaVersion: "v1", type: "market:live", symbol: candle.symbol,
-    timeframe: candle.timeframe, revisionWatermark, sequence: 1, candle
+    schemaVersion: "v1", type: "candle.closed", symbol: candle.symbol,
+    timeframe: candle.timeframe, revisionWatermark, sequence: 1,
+    candle: { ...candle, closed: true }
   }));
   if (!result.published) throw new Error("WS03_SMOKE_PUBLISH: Redis publication failed");
 

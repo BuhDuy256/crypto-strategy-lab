@@ -1,7 +1,7 @@
 // Public registry tests for snapshot ordering, isolation, refresh, and bounded delivery.
 
 import type {
-  MarketLiveMessage,
+  MarketLiveNotification,
   MarketRealtimeMessage,
   MarketSnapshotMessage,
   MarketSubscribeMessage
@@ -18,13 +18,25 @@ const subscribe = (subscriptionId: string, timeframe: "5m" | "1h"): MarketSubscr
   symbol: "BTCUSDT", timeframe
 });
 
-const live = (timeframe: "5m" | "1h", revisionWatermark: number): MarketLiveMessage => ({
-  schemaVersion: "v1", type: "market:live", symbol: "BTCUSDT", timeframe,
-  revisionWatermark, sequence: revisionWatermark,
+const live = (
+  timeframe: "5m" | "1h", revisionWatermark: number, sequence = revisionWatermark
+): MarketLiveNotification => ({
+  schemaVersion: "v1", type: "candle.closed", symbol: "BTCUSDT", timeframe,
+  revisionWatermark, sequence,
   candle: {
     provider: "binance", symbol: "BTCUSDT", timeframe, openTime: revisionWatermark,
     closeTime: revisionWatermark + 1, open: 1, high: 2, low: 1, close: 2,
     volume: 3, closed: true, revision: 1
+  }
+});
+
+const tick = (timeframe: "5m" | "1h", sequence: number): MarketLiveNotification => ({
+  schemaVersion: "v1", type: "candle.tick", symbol: "BTCUSDT", timeframe,
+  revisionWatermark: 0, sequence,
+  candle: {
+    provider: "binance", symbol: "BTCUSDT", timeframe, openTime: sequence * 100,
+    closeTime: sequence * 100 + 1, open: 1, high: 2, low: 1, close: 2,
+    volume: 3, closed: false, revision: 0
   }
 });
 
@@ -64,7 +76,7 @@ describe("MarketSubscriptionRegistry", () => {
     await pending;
 
     expect(client.messages.map((message) => message.type)).toEqual([
-      "market:snapshot", "market:live"
+      "market:snapshot", "candle.closed"
     ]);
   });
 
@@ -81,8 +93,55 @@ describe("MarketSubscriptionRegistry", () => {
 
     registry.publish(live("5m", 2));
 
-    expect(first.messages.map((message) => message.type)).toEqual(["market:snapshot", "market:live"]);
+    expect(first.messages.map((message) => message.type)).toEqual([
+      "market:snapshot", "candle.closed"
+    ]);
     expect(second.messages.map((message) => message.type)).toEqual(["market:snapshot"]);
+    expect(first.messages.at(-1)).toMatchObject({ subscriptionId: "chart-1" });
+  });
+
+  it("keeps two subscriptions on the same key independent and addresses each one", async () => {
+    const reader: MarketSnapshotReader = { read: async (request) => ({
+      schemaVersion: "v1", type: "market:snapshot", subscriptionId: request.subscriptionId,
+      symbol: request.symbol, timeframe: request.timeframe, revisionWatermark: 1, candles: []
+    }) };
+    const first = sink();
+    const second = sink();
+    const registry = new MarketSubscriptionRegistry(reader, 4);
+    await registry.subscribe("client-1", subscribe("chart-1", "5m"), first);
+    await registry.subscribe("client-1", subscribe("chart-2", "5m"), second);
+
+    registry.publish(live("5m", 2));
+    registry.unsubscribe("client-1", "chart-1");
+    registry.publish(live("5m", 3));
+
+    expect(first.messages.at(-1)).toMatchObject({
+      type: "candle.closed", subscriptionId: "chart-1", revisionWatermark: 2
+    });
+    expect(second.messages.at(-1)).toMatchObject({
+      type: "candle.closed", subscriptionId: "chart-2", revisionWatermark: 3
+    });
+    // Unsubscribe released the entry, so only the surviving subscription is left.
+    expect(registry.subscriptionCount).toBe(1);
+  });
+
+  it("delivers a forming tick as its own message type without moving the watermark", async () => {
+    const reader: MarketSnapshotReader = { read: async (request) => ({
+      schemaVersion: "v1", type: "market:snapshot", subscriptionId: request.subscriptionId,
+      symbol: request.symbol, timeframe: request.timeframe, revisionWatermark: 5, candles: []
+    }) };
+    const client = sink();
+    const registry = new MarketSubscriptionRegistry(reader, 4);
+    await registry.subscribe("client-1", subscribe("chart-1", "5m"), client);
+
+    registry.publish(tick("5m", 1));
+    // A closed candle the snapshot already covers is dropped, so the overlap
+    // reaches the chart once. The tick before it is display-only and still runs.
+    registry.publish(live("5m", 5, 2));
+
+    expect(client.messages.map((message) => message.type)).toEqual([
+      "market:snapshot", "candle.tick"
+    ]);
   });
 
   it("refreshes from a new durable snapshot after a notification sequence gap", async () => {
@@ -118,6 +177,43 @@ describe("MarketSubscriptionRegistry", () => {
 
     expect(client.disconnect).toHaveBeenCalledWith("slow-client");
     expect(registry.subscriptionCount).toBe(0);
+  });
+
+  it("hits the same bound when the traffic that fills it is ticks", async () => {
+    const reader: MarketSnapshotReader = { read: async (request) => ({
+      schemaVersion: "v1", type: "market:snapshot", subscriptionId: request.subscriptionId,
+      symbol: request.symbol, timeframe: request.timeframe, revisionWatermark: 1, candles: []
+    }) };
+    const client = sink(false);
+    const registry = new MarketSubscriptionRegistry(reader, 2);
+    await registry.subscribe("client-1", subscribe("chart-1", "5m"), client);
+
+    // Ticks are the high-rate channel, so they are what actually reaches the
+    // bound first on a wedged socket.
+    registry.publish(tick("5m", 2));
+    registry.publish(tick("5m", 3));
+
+    expect(client.disconnect).toHaveBeenCalledWith("slow-client");
+    expect(registry.subscriptionCount).toBe(0);
+  });
+
+  it("never lets a tick move the watermark that guards the snapshot overlap", async () => {
+    const reader: MarketSnapshotReader = { read: async (request) => ({
+      schemaVersion: "v1", type: "market:snapshot", subscriptionId: request.subscriptionId,
+      symbol: request.symbol, timeframe: request.timeframe, revisionWatermark: 1, candles: []
+    }) };
+    const client = sink();
+    const registry = new MarketSubscriptionRegistry(reader, 8);
+    await registry.subscribe("client-1", subscribe("chart-1", "5m"), client);
+
+    // A tick carrying a high watermark must not make the committed candle that
+    // follows it look like something the snapshot already had.
+    registry.publish({ ...tick("5m", 2), revisionWatermark: 99 });
+    registry.publish(live("5m", 5, 3));
+
+    expect(client.messages.map((message) => message.type)).toEqual([
+      "market:snapshot", "candle.tick", "candle.closed"
+    ]);
   });
 
   it("releases subscription state on unsubscribe and disconnect", async () => {

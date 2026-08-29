@@ -1,6 +1,6 @@
 // Real Redis integration test for cross-client ephemeral Pub/Sub fan-out.
 
-import type { MarketLiveMessage } from "@crypto-strategy-lab/api-contracts";
+import type { MarketLiveNotification } from "@crypto-strategy-lab/api-contracts";
 import type { AddressInfo, Socket } from "node:net";
 import { createServer } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
@@ -13,8 +13,8 @@ import {
 const redisUrl = process.env.REDIS_URL ?? "redis://localhost:6379";
 const resources: { close(): Promise<void> }[] = [];
 
-const message: MarketLiveMessage = {
-  schemaVersion: "v1", type: "market:live", symbol: "BTCUSDT", timeframe: "5m",
+const message: MarketLiveNotification = {
+  schemaVersion: "v1", type: "candle.closed", symbol: "BTCUSDT", timeframe: "5m",
   revisionWatermark: 7, sequence: 1,
   candle: {
     provider: "binance", symbol: "BTCUSDT", timeframe: "5m", openTime: 1,
@@ -56,8 +56,8 @@ describe("Redis live notification adapters", () => {
       redisUrl, new StructuredLogger("redis-test")
     );
     resources.push(subscriber, publisher);
-    let resolveMessage: ((message: MarketLiveMessage) => void) | undefined;
-    const received = new Promise<MarketLiveMessage>((resolve) => { resolveMessage = resolve; });
+    let resolveMessage: ((message: MarketLiveNotification) => void) | undefined;
+    const received = new Promise<MarketLiveNotification>((resolve) => { resolveMessage = resolve; });
     await subscriber.start((message) => resolveMessage?.(message), () => undefined);
     await publisher.publish(message);
 

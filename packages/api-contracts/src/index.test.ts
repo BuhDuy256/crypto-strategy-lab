@@ -4,6 +4,7 @@ import {
   isBacktestTradesResponse,
   isCreateSearchExperimentResponse,
   isHealthResponse,
+  isMarketLiveNotification,
   isMarketRealtimeMessage,
   type HealthResponse
 } from "./index.js";
@@ -23,9 +24,10 @@ describe("market realtime contracts", () => {
     })).toBe(true);
   });
 
-  it("accepts an ephemeral forming-candle live notification", () => {
+  it("accepts an ephemeral forming-candle tick addressed to a subscription", () => {
     expect(isMarketRealtimeMessage({
-      schemaVersion: "v1", type: "market:live", symbol: "BTCUSDT", timeframe: "5m",
+      schemaVersion: "v1", type: "candle.tick", subscriptionId: "chart-1",
+      symbol: "BTCUSDT", timeframe: "5m",
       revisionWatermark: 13, sequence: 7,
       candle: {
         provider: "binance", symbol: "BTCUSDT", timeframe: "5m",
@@ -33,6 +35,40 @@ describe("market realtime contracts", () => {
         volume: 3, closed: false, revision: 1
       }
     })).toBe(true);
+  });
+
+  it("keeps the two live channels apart by their closed flag", () => {
+    const forming = {
+      provider: "binance", symbol: "BTCUSDT", timeframe: "5m",
+      openTime: 1, closeTime: 2, open: 1, high: 2, low: 1, close: 2,
+      volume: 3, closed: false, revision: 1
+    };
+    const base = {
+      schemaVersion: "v1", symbol: "BTCUSDT", timeframe: "5m",
+      revisionWatermark: 13, sequence: 7
+    };
+    expect(isMarketLiveNotification({ ...base, type: "candle.tick", candle: forming }))
+      .toBe(true);
+    expect(isMarketLiveNotification({ ...base, type: "candle.closed", candle: forming }))
+      .toBe(false);
+    expect(isMarketLiveNotification({
+      ...base, type: "candle.closed", candle: { ...forming, closed: true }
+    })).toBe(true);
+  });
+
+  it("rejects a live notification that carries a subscription identifier as a delivery", () => {
+    const notification = {
+      schemaVersion: "v1", type: "candle.tick", symbol: "BTCUSDT", timeframe: "5m",
+      revisionWatermark: 13, sequence: 7,
+      candle: {
+        provider: "binance", symbol: "BTCUSDT", timeframe: "5m",
+        openTime: 1, closeTime: 2, open: 1, high: 2, low: 1, close: 2,
+        volume: 3, closed: false, revision: 1
+      }
+    };
+    // Ingest publishes this shape; only the gateway may address it to a client.
+    expect(isMarketLiveNotification(notification)).toBe(true);
+    expect(isMarketRealtimeMessage(notification)).toBe(false);
   });
 
   it("accepts a refresh request for one subscription", () => {

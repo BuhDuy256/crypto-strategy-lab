@@ -1,7 +1,11 @@
-// One historical market chart with isolated timeframe and loading state.
+// One live market chart: a durable candle series plus one separate forming bar.
 
-import type { ApiCandle, ApiTimeframe } from "@crypto-strategy-lab/api-contracts";
-import { useEffect, useState } from "react";
+import type {
+  ApiCandle,
+  ApiFormingCandle,
+  ApiTimeframe
+} from "@crypto-strategy-lab/api-contracts";
+import { useEffect, useMemo, useState } from "react";
 import { getMarketRealtimeClient } from "../api/market-realtime-client.js";
 import { CandlestickChart } from "./CandlestickChart.js";
 
@@ -11,13 +15,35 @@ interface ChartWidgetProps {
 }
 
 const CANDLE_COUNT = 150;
+
+/**
+ * Puts a committed candle into the durable series by identity. Replacing the
+ * bar with the same open time is what makes a snapshot/live overlap apply once
+ * instead of twice.
+ */
+function withClosedCandle(
+  current: readonly ApiCandle[],
+  candle: ApiCandle
+): readonly ApiCandle[] {
+  const others = current.filter((item) => item.openTime !== candle.openTime);
+  return [...others, candle]
+    .sort((left, right) => left.openTime - right.openTime)
+    .slice(-CANDLE_COUNT);
+}
+
+function lastOpenTime(candles: readonly ApiCandle[]): number | undefined {
+  return candles[candles.length - 1]?.openTime;
+}
+
 export function ChartWidget({ id, initialTimeframe }: ChartWidgetProps) {
   const [timeframe, setTimeframe] = useState<ApiTimeframe>(initialTimeframe);
   const [data, setData] = useState<readonly ApiCandle[]>([]);
+  const [formingCandle, setFormingCandle] = useState<ApiFormingCandle | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [snapshotCount, setSnapshotCount] = useState(0);
-  const [liveUpdateCount, setLiveUpdateCount] = useState(0);
+  const [tickCount, setTickCount] = useState(0);
+  const [closedCount, setClosedCount] = useState(0);
   const [snapshotWatermark, setSnapshotWatermark] = useState<number | null>(null);
 
   useEffect(() => {
@@ -27,29 +53,46 @@ export function ChartWidget({ id, initialTimeframe }: ChartWidgetProps) {
       { subscriptionId: id, symbol: "BTCUSDT", timeframe }, {
       onSnapshot: (message) => {
         setData(message.candles);
+        // A fresh snapshot is the new truth, so any bar that was forming
+        // against the previous one is dropped rather than carried over.
+        setFormingCandle(null);
         setSnapshotWatermark(message.revisionWatermark);
         setSnapshotCount((count) => count + 1);
         setErrorMessage(null);
         setIsLoading(false);
       },
-      onLive: (message) => {
-        setLiveUpdateCount((count) => count + 1);
-        setData((current) => {
-          const withoutSameCandle = current.filter(
-            (item) => item.openTime !== message.candle.openTime
-          );
-          return [...withoutSameCandle, message.candle]
-            .sort((left, right) => left.openTime - right.openTime)
-            .slice(-CANDLE_COUNT);
-        });
+      // A tick only moves the forming bar. It never enters the durable series.
+      onTick: (message) => {
+        setTickCount((count) => count + 1);
+        setFormingCandle(message.candle);
+      },
+      onClosed: (message) => {
+        setClosedCount((count) => count + 1);
+        setData((current) => withClosedCandle(current, message.candle));
+        setFormingCandle((current) =>
+          current !== null && current.openTime <= message.candle.openTime ? null : current
+        );
       },
       onError: (message) => {
         setData([]);
+        setFormingCandle(null);
         setErrorMessage(message);
         setIsLoading(false);
       }
     });
   }, [id, timeframe]);
+
+  // The forming bar is shown next to the durable series, never merged into it.
+  const durableLastOpenTime = lastOpenTime(data);
+  const displayedCandles = useMemo<readonly ApiCandle[]>(() => {
+    const last = lastOpenTime(data);
+    if (formingCandle === null || (last !== undefined && formingCandle.openTime <= last)) {
+      return data;
+    }
+    return [...data, formingCandle];
+  }, [data, formingCandle]);
+
+  const liveUpdateCount = tickCount + closedCount;
 
   const selectId = `${id}-timeframe`;
 
@@ -57,9 +100,14 @@ export function ChartWidget({ id, initialTimeframe }: ChartWidgetProps) {
     <div
       className="flex flex-col border border-gray-700/50 rounded-xl bg-gray-900 shadow-xl overflow-hidden h-[500px]"
       data-chart-id={id}
+      data-closed-count={closedCount}
+      data-durable-count={data.length}
+      data-durable-last-open-time={durableLastOpenTime ?? ""}
+      data-forming-open-time={formingCandle?.openTime ?? ""}
       data-live-update-count={liveUpdateCount}
       data-snapshot-count={snapshotCount}
       data-snapshot-watermark={snapshotWatermark ?? ""}
+      data-tick-count={tickCount}
     >
       <div className="flex justify-between items-center px-6 py-4 border-b border-gray-700/50 bg-[#1e222d]/80">
         <div className="flex items-center gap-4">
@@ -119,14 +167,14 @@ export function ChartWidget({ id, initialTimeframe }: ChartWidgetProps) {
           </div>
         )}
 
-        {!isLoading && errorMessage === null && data.length === 0 && (
+        {!isLoading && errorMessage === null && displayedCandles.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center text-gray-400">
             No candle data is available for this timeframe.
           </div>
         )}
 
-        {!isLoading && errorMessage === null && data.length > 0 && (
-          <CandlestickChart state="ready" candles={data} />
+        {!isLoading && errorMessage === null && displayedCandles.length > 0 && (
+          <CandlestickChart state="ready" candles={displayedCandles} />
         )}
       </div>
     </div>

@@ -35,7 +35,7 @@ describe("MarketRealtimeClient", () => {
     const client = new MarketRealtimeClient(socket);
     client.subscribe(
       { subscriptionId: "chart-1", symbol: "BTCUSDT", timeframe: "5m" },
-      { onSnapshot: snapshots, onLive: lives, onError: vi.fn() }
+      { onSnapshot: snapshots, onTick: vi.fn(), onClosed: lives, onError: vi.fn() }
     );
     socket.trigger("market:message", {
       schemaVersion: "v1", type: "market:snapshot", subscriptionId: "chart-1",
@@ -64,15 +64,17 @@ describe("MarketRealtimeClient", () => {
     const client = new MarketRealtimeClient(socket);
     const unsubscribe = client.subscribe(
       { subscriptionId: "chart-1", symbol: "BTCUSDT", timeframe: "5m" },
-      { onSnapshot: vi.fn(), onLive: first, onError: vi.fn() }
+      { onSnapshot: vi.fn(), onTick: vi.fn(), onClosed: first, onError: vi.fn() }
     );
     client.subscribe(
       { subscriptionId: "chart-2", symbol: "BTCUSDT", timeframe: "1h" },
-      { onSnapshot: vi.fn(), onLive: second, onError: vi.fn() }
+      { onSnapshot: vi.fn(), onTick: vi.fn(), onClosed: second, onError: vi.fn() }
     );
     socket.trigger("market:message", snapshot("chart-1", "5m"));
     socket.trigger("market:message", snapshot("chart-2", "1h"));
     socket.trigger("market:message", live(2));
+    // Addressed to chart-1, and its key does not match chart-2 either.
+    socket.trigger("market:message", live(3, "chart-2"));
 
     expect(first).toHaveBeenCalledTimes(1);
     expect(second).not.toHaveBeenCalled();
@@ -81,6 +83,25 @@ describe("MarketRealtimeClient", () => {
       event: "market:unsubscribe",
       body: { schemaVersion: "v1", type: "market:unsubscribe", subscriptionId: "chart-1" }
     });
+  });
+
+  it("routes a tick and a closed candle to separate handlers", () => {
+    const socket = new FakeSocket();
+    const ticks = vi.fn();
+    const closes = vi.fn();
+    const client = new MarketRealtimeClient(socket);
+    client.subscribe(
+      { subscriptionId: "chart-1", symbol: "BTCUSDT", timeframe: "5m" },
+      { onSnapshot: vi.fn(), onTick: ticks, onClosed: closes, onError: vi.fn() }
+    );
+    socket.trigger("market:message", snapshot("chart-1", "5m"));
+    socket.trigger("market:message", tick(60));
+    socket.trigger("market:message", live(2));
+
+    expect(ticks).toHaveBeenCalledTimes(1);
+    expect(closes).toHaveBeenCalledTimes(1);
+    expect(ticks.mock.calls[0]?.[0]).toMatchObject({ type: "candle.tick" });
+    expect(closes.mock.calls[0]?.[0]).toMatchObject({ type: "candle.closed" });
   });
 });
 
@@ -91,14 +112,34 @@ function snapshot(subscriptionId: string, timeframe: "5m" | "1h"): MarketRealtim
   };
 }
 
-function live(revisionWatermark: number): MarketRealtimeMessage {
+function live(
+  revisionWatermark: number,
+  subscriptionId = "chart-1"
+): MarketRealtimeMessage {
   return {
-    schemaVersion: "v1", type: "market:live", symbol: "BTCUSDT", timeframe: "5m",
+    schemaVersion: "v1", type: "candle.closed", subscriptionId,
+    symbol: "BTCUSDT", timeframe: "5m",
     revisionWatermark, sequence: revisionWatermark,
     candle: {
       provider: "binance", symbol: "BTCUSDT", timeframe: "5m", openTime: revisionWatermark,
       closeTime: revisionWatermark + 1, open: 1, high: 2, low: 1, close: 2,
       volume: 3, closed: true, revision: 1
+    }
+  };
+}
+
+function tick(
+  openTime: number,
+  subscriptionId = "chart-1"
+): MarketRealtimeMessage {
+  return {
+    schemaVersion: "v1", type: "candle.tick", subscriptionId,
+    symbol: "BTCUSDT", timeframe: "5m",
+    revisionWatermark: 0, sequence: openTime,
+    candle: {
+      provider: "binance", symbol: "BTCUSDT", timeframe: "5m", openTime,
+      closeTime: openTime + 1, open: 1, high: 2, low: 1, close: 2,
+      volume: 3, closed: false, revision: 0
     }
   };
 }
