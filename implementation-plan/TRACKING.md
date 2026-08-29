@@ -394,7 +394,7 @@ ticks, commits a closed candle before its best-effort notification, and deduplic
 closed klines. With Redis stopped, the final manual run committed two consecutive 1m candles:
 the database count moved from 1 to 3, open times `1788006480000` and `1788006540000`, both
 revision 1 with one row per identity. After Redis restarted, ingest committed open time
-`1788006660000` normally. Final relevant suite: 13 files and 87 tests pass; backend typecheck,
+`1788006660000` normally. Final relevant suite: 13 files and 88 tests pass; backend typecheck,
 scoped lint, Compose config, and `git diff --check` pass. MKT-06 is committed on the current branch.
 | MKT-07 | REQ | M | Chart subscription protocol | **READY** | MKT-06, MKT-05 | [01](01-market-and-realtime.md) |
 | MKT-11 | REQ | M | Four live chart subscriptions | TODO | MKT-07, MKT-08 | [01](01-market-and-realtime.md) |

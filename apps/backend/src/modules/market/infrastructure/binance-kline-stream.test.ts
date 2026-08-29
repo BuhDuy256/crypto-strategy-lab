@@ -1,8 +1,8 @@
 // Stream-client tests run against a local fake Binance stream server.
 // No test in this file reaches the real Binance service.
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { WebSocketServer, type WebSocket as ServerSocket } from "ws";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import WebSocket, { WebSocketServer, type WebSocket as ServerSocket } from "ws";
 import type { AddressInfo } from "node:net";
 import {
   BinanceKlineStreamClient,
@@ -139,6 +139,7 @@ describe("BinanceKlineStreamClient", () => {
     client?.close();
     client = undefined;
     await server.close();
+    vi.restoreAllMocks();
   });
 
   it("requests every stream on one connection and emits normalized candles", async () => {
@@ -209,5 +210,25 @@ describe("BinanceKlineStreamClient", () => {
     socket.close();
 
     await waitFor(() => closed, "the close callback");
+  });
+
+  it("pauses socket reads until asynchronous candle delivery settles", async () => {
+    const pause = vi.spyOn(WebSocket.prototype, "pause");
+    const resume = vi.spyOn(WebSocket.prototype, "resume");
+    let release: (() => void) | undefined;
+    client = new BinanceKlineStreamClient({ baseUrl: server.url });
+    client.onCandle(() => new Promise((resolve) => {
+      release = resolve;
+    }));
+    await client.open([klineStreamName("BTCUSDT", "1m")]);
+    const socket = await server.waitForConnection();
+
+    socket.send(JSON.stringify({ stream: "btcusdt@kline_1m", data: klineEvent() }));
+    await waitFor(() => release !== undefined, "the blocked candle delivery");
+
+    expect(pause).toHaveBeenCalledTimes(1);
+    expect(resume).not.toHaveBeenCalled();
+    release?.();
+    await waitFor(() => resume.mock.calls.length === 1, "socket delivery to resume");
   });
 });

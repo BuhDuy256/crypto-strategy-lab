@@ -1934,6 +1934,9 @@ Redis before starting market ingest. The registry now applies bounded backpressu
 all 256 slots hold closed candles, fails every queue waiting on the same initial open,
 and lets Compose start ingest from PostgreSQL and migrations alone. A Redis-stopped
 Compose run proved the rebuilt ingest process starts and opens the Binance stream.
+The stream client pauses socket reads while asynchronous delivery is backpressured and
+resumes only after all already-decoded frames settle, so the bound is not moved into an
+unbounded promise chain upstream.
 
-The final backend Market/realtime suite passes at 13 files and 87 tests. Backend
+The final backend Market/realtime suite passes at 13 files and 88 tests. Backend
 typecheck, scoped lint, Compose config, and `git diff --check` pass.
