@@ -178,7 +178,7 @@ describe("market live ingest against a fake Binance stream", () => {
 
     binance.send(klineFrame(FIRST_OPEN, false, 101));
     binance.send(klineFrame(FIRST_OPEN, false, 102));
-    await waitFor(() => ingest.service.publishedTicks >= 1, "at least one tick");
+    await waitFor(() => ingest.service.attemptedTickPublications >= 1, "at least one tick");
     await ingest.service.settleTicks();
     // Two ticks arrived and the database is still empty.
     expect(await storedRows()).toStrictEqual([]);

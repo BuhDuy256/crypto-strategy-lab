@@ -21,7 +21,7 @@ true; keep conversation out of them.
 | Current target version | **V4 - Realtime Market Data** |
 | Previous version | **V3 - Automated Discovery: frozen at `v3.1-demo` on 2026-08-29.** |
 | Last verified commit | The commit tagged `v3.1-demo` on `feat/v3-automated-discovery`. |
-| Next allowed action | Start either `MKT-07` or `MKT-09`; both are `READY`. `MKT-06` is complete but remains uncommitted. |
+| Next allowed action | Start either `MKT-07` or `MKT-09`; both are `READY`. `MKT-06` is complete and committed on the current branch. |
 | Last verified on | 2026-08-29 (V1/V2 functional certification, V3 regression, baseline freeze, and the two freeze repairs below) |
 | Last tag | `v3.1-demo`, the certified V1-V3 baseline, on `feat/v3-automated-discovery`. `v3.0-demo` still points at `2b98139` and was deliberately left there: it marks what was *claimed* demoable, on a baseline whose V1 and V2 regressions do not pass. Both tags are on origin. `v1.0-demo` and `v2.0-demo` do not exist. |
 | V3 slices | 8 (`DONE` 8, `READY` 0, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 0) — V3's own scope and its V1+V2 regression condition pass in the baseline-freeze state. |
@@ -394,8 +394,8 @@ ticks, commits a closed candle before its best-effort notification, and deduplic
 closed klines. With Redis stopped, the final manual run committed two consecutive 1m candles:
 the database count moved from 1 to 3, open times `1788006480000` and `1788006540000`, both
 revision 1 with one row per identity. After Redis restarted, ingest committed open time
-`1788006660000` normally. Final relevant suite: 12 files and 85 tests pass; backend typecheck,
-scoped lint, Compose config, and `git diff --check` pass. The MKT-06 working tree is uncommitted.
+`1788006660000` normally. Final relevant suite: 13 files and 87 tests pass; backend typecheck,
+scoped lint, Compose config, and `git diff --check` pass. MKT-06 is committed on the current branch.
 | MKT-07 | REQ | M | Chart subscription protocol | **READY** | MKT-06, MKT-05 | [01](01-market-and-realtime.md) |
 | MKT-11 | REQ | M | Four live chart subscriptions | TODO | MKT-07, MKT-08 | [01](01-market-and-realtime.md) |
 | MKT-09 | REQ | L | Gap detection, recovery, provider health | **READY** | MKT-06, MKT-02 | [01](01-market-and-realtime.md) |

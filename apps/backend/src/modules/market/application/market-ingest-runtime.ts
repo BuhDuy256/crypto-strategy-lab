@@ -21,7 +21,7 @@ export class MarketIngestRuntime {
     } finally {
       this.logger.log(
         `Market ingest stopped after ${this.ingest.committedCandles} committed candles ` +
-          `and ${this.ingest.publishedTicks} ticks`,
+          `and ${this.ingest.attemptedTickPublications} tick publication attempts`,
         "MarketIngest"
       );
     }

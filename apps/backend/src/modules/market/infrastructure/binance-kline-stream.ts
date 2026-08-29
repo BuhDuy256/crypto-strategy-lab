@@ -130,8 +130,9 @@ export class BinanceKlineStreamClient {
   private readonly baseUrl: string;
   private readonly provider: string;
   private readonly logger: BinanceStreamLogger | undefined;
-  private candleListener: ((candle: Candle) => void) | undefined;
+  private candleListener: ((candle: Candle) => void | Promise<void>) | undefined;
   private closeListener: (() => void) | undefined;
+  private messageChain: Promise<void> = Promise.resolve();
   private pingCount = 0;
   private controlId = 0;
 
@@ -146,7 +147,7 @@ export class BinanceKlineStreamClient {
     return this.pingCount;
   }
 
-  onCandle(listener: (candle: Candle) => void): void {
+  onCandle(listener: (candle: Candle) => void | Promise<void>): void {
     this.candleListener = listener;
   }
 
@@ -172,7 +173,13 @@ export class BinanceKlineStreamClient {
       this.logger?.log(`Answered Binance server ping ${this.pingCount}`, "MarketIngest");
     });
     socket.on("message", (raw: WebSocket.RawData) => {
-      this.handleMessage(raw.toString());
+      this.messageChain = this.messageChain
+        .then(async () => this.handleMessage(raw.toString()))
+        .catch((error: unknown) => {
+          const reason = error instanceof Error ? error.message : "unknown delivery failure";
+          this.logger?.warn(`Binance candle delivery failed: ${reason}`, "MarketIngest");
+          socket.close();
+        });
     });
     socket.on("error", (error: Error) => {
       this.logger?.warn(`Binance stream error: ${error.message}`, "MarketIngest");
@@ -209,7 +216,7 @@ export class BinanceKlineStreamClient {
     this.socket = undefined;
   }
 
-  private handleMessage(raw: string): void {
+  private async handleMessage(raw: string): Promise<void> {
     let parsed: unknown;
     try {
       parsed = JSON.parse(raw);
@@ -230,6 +237,6 @@ export class BinanceKlineStreamClient {
       this.logger?.warn(`Ignored invalid Binance kline: ${reason}`, "MarketIngest");
       return;
     }
-    this.candleListener?.(candle);
+    await this.candleListener?.(candle);
   }
 }
