@@ -2,7 +2,8 @@
 
 import {
   isMarketRealtimeMessage,
-  type MarketLiveMessage,
+  type MarketCandleClosedMessage,
+  type MarketCandleTickMessage,
   type MarketSnapshotMessage,
   type MarketSubscribeMessage
 } from "@crypto-strategy-lab/api-contracts";
@@ -22,7 +23,10 @@ export interface MarketSubscriptionRequest {
 
 export interface MarketSubscriptionHandlers {
   onSnapshot(message: MarketSnapshotMessage): void;
-  onLive(message: MarketLiveMessage): void;
+  /** The forming bar moved. Display only. */
+  onTick(message: MarketCandleTickMessage): void;
+  /** A candle was committed and replaces the bar with the same open time. */
+  onClosed(message: MarketCandleClosedMessage): void;
   onError(message: string): void;
 }
 
@@ -98,12 +102,14 @@ export class MarketRealtimeClient {
       this.socket.emit("market:subscribe", subscription.request);
       return;
     }
-    if (body.type !== "market:live") return;
-    for (const subscription of this.subscriptions.values()) {
-      if (!subscription.awaitingSnapshot && this.matches(subscription, body)) {
-        subscription.handlers.onLive(body);
-      }
-    }
+    if (body.type !== "candle.tick" && body.type !== "candle.closed") return;
+    const subscription = this.subscriptions.get(body.subscriptionId);
+    // The gateway already filtered by key and addressed the message. The key
+    // check stays as a guard against a stale delivery for a retargeted id.
+    if (subscription === undefined || subscription.awaitingSnapshot) return;
+    if (!this.matches(subscription, body)) return;
+    if (body.type === "candle.tick") subscription.handlers.onTick(body);
+    else subscription.handlers.onClosed(body);
   }
 
   private matches(

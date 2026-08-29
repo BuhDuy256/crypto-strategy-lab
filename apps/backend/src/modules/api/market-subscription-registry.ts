@@ -2,6 +2,7 @@
 
 import type {
   MarketLiveMessage,
+  MarketLiveNotification,
   MarketRealtimeMessage,
   MarketSnapshotMessage,
   MarketSubscribeMessage
@@ -20,15 +21,24 @@ interface SubscriptionState {
   readonly clientId: string;
   readonly request: MarketSubscribeMessage;
   readonly sink: MarketClientSink;
-  readonly liveDuringSnapshot: MarketLiveMessage[];
+  readonly liveDuringSnapshot: MarketLiveNotification[];
   readonly outbound: MarketRealtimeMessage[];
   phase: "snapshot" | "live";
   watermark: number;
   liveSequence: number | undefined;
 }
 
-function matches(state: SubscriptionState, message: MarketLiveMessage): boolean {
+function matches(state: SubscriptionState, message: MarketLiveNotification): boolean {
   return state.request.symbol === message.symbol && state.request.timeframe === message.timeframe;
+}
+
+/**
+ * Market Data publishes a notification with no client identity. Stamping the
+ * subscription here is what makes the message belong to one chart, and it is
+ * done in the API because the API is the only owner of subscription state.
+ */
+function addressTo(state: SubscriptionState, message: MarketLiveNotification): MarketLiveMessage {
+  return { ...message, subscriptionId: state.request.subscriptionId };
 }
 
 export class MarketSubscriptionRegistry {
@@ -78,7 +88,7 @@ export class MarketSubscriptionRegistry {
     }
   }
 
-  publish(message: MarketLiveMessage): void {
+  publish(message: MarketLiveNotification): void {
     for (const [id, state] of this.subscriptions) {
       if (!matches(state, message)) continue;
       if (state.phase === "snapshot") {
@@ -124,7 +134,11 @@ export class MarketSubscriptionRegistry {
     }
   }
 
-  private processLive(id: string, state: SubscriptionState, message: MarketLiveMessage): void {
+  private processLive(
+    id: string,
+    state: SubscriptionState,
+    message: MarketLiveNotification
+  ): void {
     if (state.liveSequence !== undefined && message.sequence <= state.liveSequence) return;
     if (state.liveSequence !== undefined && message.sequence > state.liveSequence + 1) {
       state.phase = "snapshot";
@@ -134,9 +148,16 @@ export class MarketSubscriptionRegistry {
       return;
     }
     state.liveSequence = message.sequence;
-    if (message.candle.closed && message.revisionWatermark <= state.watermark) return;
-    state.watermark = Math.max(state.watermark, message.revisionWatermark);
-    this.deliver(id, state, message);
+    if (message.type === "candle.closed") {
+      // A closed candle the snapshot already contains is dropped here, so the
+      // snapshot/live overlap reaches the chart exactly once.
+      if (message.revisionWatermark <= state.watermark) return;
+      // Only a committed candle may move the watermark. A tick is not durable,
+      // so letting one advance it would silently drop the closed candle that
+      // follows it.
+      state.watermark = message.revisionWatermark;
+    }
+    this.deliver(id, state, addressTo(state, message));
   }
 
   private deliver(id: string, state: SubscriptionState, message: MarketRealtimeMessage): void {

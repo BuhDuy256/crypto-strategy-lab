@@ -9,7 +9,7 @@
 // Everything downstream of Market Data - datasets, backtests, revisions - only
 // ever sees what the closed channel committed.
 
-import type { MarketLiveMessage } from "@crypto-strategy-lab/api-contracts";
+import type { MarketLiveNotification } from "@crypto-strategy-lab/api-contracts";
 import type { Candle } from "../domain/candle.js";
 import type { LiveCandlesRequest, MarketDataProvider } from "./market-data-provider.js";
 
@@ -32,7 +32,7 @@ export interface ClosedCandleStore {
 export interface LiveNotificationPublisher {
   commitAndPublish<T>(
     commit: () => Promise<T>,
-    notification: (value: T) => MarketLiveMessage
+    notification: (value: T) => MarketLiveNotification
   ): Promise<{ readonly value: T; readonly published: boolean }>;
 }
 
@@ -208,16 +208,23 @@ export class MarketLiveIngestService {
     );
   }
 
-  private message(candle: Candle, revisionWatermark: number): MarketLiveMessage {
-    return {
+  /**
+   * The channel decided in `liveCandleChannel` is the wire message type, so the
+   * distinction survives all the way to the chart instead of being re-derived
+   * from a boolean flag on the candle.
+   */
+  private message(candle: Candle, revisionWatermark: number): MarketLiveNotification {
+    const common = {
       schemaVersion: "v1",
-      type: "market:live",
       symbol: candle.symbol,
       timeframe: candle.timeframe,
       revisionWatermark,
-      sequence: this.nextSequence(this.keyOf(candle)),
-      candle
-    };
+      sequence: this.nextSequence(this.keyOf(candle))
+    } as const;
+    if (candle.closed) {
+      return { ...common, type: "candle.closed", candle: { ...candle, closed: true } };
+    }
+    return { ...common, type: "candle.tick", candle: { ...candle, closed: false } };
   }
 
   private nextSequence(key: string): number {

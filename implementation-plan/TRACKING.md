@@ -21,11 +21,11 @@ true; keep conversation out of them.
 | Current target version | **V4 - Realtime Market Data** |
 | Previous version | **V3 - Automated Discovery: frozen at `v3.1-demo` on 2026-08-29.** |
 | Last verified commit | The commit tagged `v3.1-demo` on `feat/v3-automated-discovery`. |
-| Next allowed action | Start either `MKT-07` or `MKT-09`; both are `READY`. `MKT-06` is complete and committed on the current branch. |
+| Next allowed action | Review and commit the `MKT-07` diff, then start `MKT-09` or `MKT-11`; both are now `READY`. |
 | Last verified on | 2026-08-29 (V1/V2 functional certification, V3 regression, baseline freeze, and the two freeze repairs below) |
 | Last tag | `v3.1-demo`, the certified V1-V3 baseline, on `feat/v3-automated-discovery`. `v3.0-demo` still points at `2b98139` and was deliberately left there: it marks what was *claimed* demoable, on a baseline whose V1 and V2 regressions do not pass. Both tags are on origin. `v1.0-demo` and `v2.0-demo` do not exist. |
 | V3 slices | 8 (`DONE` 8, `READY` 0, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 0) — V3's own scope and its V1+V2 regression condition pass in the baseline-freeze state. |
-| V4 slices | 5 (`DONE` 2, `READY` 2, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 1) — `WS-03` and `MKT-06` are done; `MKT-07` and `MKT-09` are ready. |
+| V4 slices | 5 (`DONE` 3, `READY` 2, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 0) — `WS-03`, `MKT-06`, and `MKT-07` are done; `MKT-09` and `MKT-11` are ready. `MKT-07` is not committed yet. |
 | History | [`JOURNAL.md`](JOURNAL.md), sections "V1", "V3", "V1/V2 recovery", "V1-V3 freeze repairs", "Demo data prerequisite", and "V4". The recovery entry records the durable V2 decisions that were missing from the original history. |
 
 ## V1/V2 recovery (opened 2026-08-28)
@@ -396,9 +396,36 @@ the database count moved from 1 to 3, open times `1788006480000` and `1788006540
 revision 1 with one row per identity. After Redis restarted, ingest committed open time
 `1788006660000` normally. Final relevant suite: 13 files and 88 tests pass; backend typecheck,
 scoped lint, Compose config, and `git diff --check` pass. MKT-06 is committed on the current branch.
-| MKT-07 | REQ | M | Chart subscription protocol | **READY** | MKT-06, MKT-05 | [01](01-market-and-realtime.md) |
-| MKT-11 | REQ | M | Four live chart subscriptions | TODO | MKT-07, MKT-08 | [01](01-market-and-realtime.md) |
+| MKT-07 | REQ | M | Chart subscription protocol | **DONE** | MKT-06, MKT-05 | [01](01-market-and-realtime.md) |
+| MKT-11 | REQ | M | Four live chart subscriptions | **READY** | MKT-07, MKT-08 | [01](01-market-and-realtime.md) |
 | MKT-09 | REQ | L | Gap detection, recovery, provider health | **READY** | MKT-06, MKT-02 | [01](01-market-and-realtime.md) |
+
+MKT-07 evidence: live updates are now two wire message types, `candle.tick` and `candle.closed`,
+split into a `MarketLiveNotification` that ingest publishes without any client identity and a
+`MarketLiveMessage` that the gateway stamps with the subscription it matched. The SPA keeps the
+forming bar in separate state from the durable series. All seven criteria are proven. Criteria 1-6
+were proven in a real browser by `pnpm run smoke:mkt07` against Compose `api`/`web` images rebuilt
+from this code, on one chart: a snapshot with a watermark and zero live updates before it, a tick
+that moved the forming bar to open time `1788010800000` while the durable series stayed at 150
+candles, a committed candle that ended the series at that open time and cleared the forming bar,
+the same committed candle republished and not applied a second time, a fresh snapshot after
+`docker compose restart api` with no stale forming bar, and a chart retargeted to `15m` that stopped
+receiving `5m` updates. Criterion 7 (bounded outbound buffer, slow-client disconnect) is not
+browser-observable. WS-03's bound is reused unchanged, but this slice adds ticks as a second,
+higher-rate source of outbound traffic, so the bound is now also exercised by tick traffic in the
+registry tests rather than by closed candles alone. Relevant suites: 22 files and 136 tests pass
+across the API gateway, market realtime, SPA, and contracts. Root typecheck, scoped lint, and
+`git diff --check` pass. The smoke requires `market-ingest` stopped; see the `JOURNAL.md` entry
+for why.
+
+The two-axis review ran on the MKT-07 diff and produced four accepted changes: live delivery
+message shapes became interfaces per `CODING_STANDARDS.md`; the candle guard regained a type
+predicate and lost its flag parameter; a tick can no longer advance the durable revision watermark;
+and two test gaps closed, the ingest wire-type seam and the outbound bound under tick traffic.
+Typecheck, the relevant suites, scoped lint, `git diff --check`, and the one-chart browser smoke
+were all re-run on the post-review code. Known debt, not fixed: `scripts/smoke-mkt07.ts` repeats the
+bootstrap block of `scripts/smoke-ws03.ts`, and the smoke publishes to Redis by hand rather than
+observing a tick produced by live Binance ingest.
 
 WS-03 evidence: Redis joined the Compose topology, the API gained a Socket.IO gateway with a
 subscription registry, and the SPA consumes snapshot-then-live over WebSocket. Acceptance criteria

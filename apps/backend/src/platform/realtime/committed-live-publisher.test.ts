@@ -1,11 +1,11 @@
 // Public seam tests for commit-before-publish and Redis failure semantics.
 
-import type { MarketLiveMessage } from "@crypto-strategy-lab/api-contracts";
+import type { MarketLiveNotification } from "@crypto-strategy-lab/api-contracts";
 import { describe, expect, it } from "vitest";
 import { CommittedLivePublisher } from "./committed-live-publisher.js";
 
-const notification: MarketLiveMessage = {
-  schemaVersion: "v1", type: "market:live", symbol: "BTCUSDT", timeframe: "5m",
+const notification: MarketLiveNotification = {
+  schemaVersion: "v1", type: "candle.closed", symbol: "BTCUSDT", timeframe: "5m",
   revisionWatermark: 1, sequence: 1,
   candle: {
     provider: "binance", symbol: "BTCUSDT", timeframe: "5m", openTime: 1,

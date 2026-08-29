@@ -1,8 +1,8 @@
 // Redis Pub/Sub adapters for ephemeral, at-most-once market notifications.
 
 import {
-  isMarketRealtimeMessage,
-  type MarketLiveMessage
+  isMarketLiveNotification,
+  type MarketLiveNotification
 } from "@crypto-strategy-lab/api-contracts";
 import { createClient, type RedisClientType } from "redis";
 import type { StructuredLogger } from "../logger.js";
@@ -31,7 +31,7 @@ export class RedisLiveNotificationPublisher implements LiveNotificationTransport
     });
   }
 
-  async publish(message: MarketLiveMessage): Promise<void> {
+  async publish(message: MarketLiveNotification): Promise<void> {
     let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
       await Promise.race([
@@ -48,7 +48,7 @@ export class RedisLiveNotificationPublisher implements LiveNotificationTransport
     }
   }
 
-  private async publishNow(message: MarketLiveMessage): Promise<void> {
+  private async publishNow(message: MarketLiveNotification): Promise<void> {
     if (!this.client.isOpen) await this.client.connect();
     if (!this.client.isReady) {
       throw new Error("Redis live publisher is not ready");
@@ -80,7 +80,7 @@ export class RedisLiveNotificationSubscriber {
   }
 
   start(
-    onMessage: (message: MarketLiveMessage) => void,
+    onMessage: (message: MarketLiveNotification) => void,
     onRecovery: () => void | Promise<void>
   ): Promise<void> {
     if (this.started) return Promise.resolve();
@@ -95,7 +95,7 @@ export class RedisLiveNotificationSubscriber {
           this.logger.warn("Ignored malformed Redis live notification", "RealtimePubSub");
           return;
         }
-        if (isMarketRealtimeMessage(parsed) && parsed.type === "market:live") onMessage(parsed);
+        if (isMarketLiveNotification(parsed)) onMessage(parsed);
       }))
       .catch((error: unknown) => {
         const message = error instanceof Error ? error.message : "unknown Redis error";

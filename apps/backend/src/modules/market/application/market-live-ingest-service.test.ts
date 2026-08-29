@@ -162,6 +162,7 @@ describe("MarketLiveIngestService", () => {
 
     expect(watched.committed).toHaveLength(1);
     expect(observed).toStrictEqual(["commit", "publish"]);
+    expect(watchedTransport.published[0]?.type).toBe("candle.closed");
     expect(watchedTransport.published[0]?.candle.closed).toBe(true);
     expect(watchedTransport.published[0]?.symbol).toBe("BTCUSDT");
     expect(watchedTransport.published[0]?.timeframe).toBe("1m");
@@ -180,6 +181,8 @@ describe("MarketLiveIngestService", () => {
 
     expect(store.committed).toStrictEqual([]);
     expect(transport.events).toStrictEqual(["publish:tick", "publish:tick"]);
+    expect(transport.published.map((message) => message.type))
+      .toStrictEqual(["candle.tick", "candle.tick"]);
     expect(transport.published.map((message) => message.candle.closed)).toStrictEqual([false, false]);
     expect(service.attemptedTickPublications).toBe(2);
     expect(service.committedCandles).toBe(0);

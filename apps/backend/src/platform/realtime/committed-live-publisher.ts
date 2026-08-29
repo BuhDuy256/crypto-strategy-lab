@@ -1,9 +1,9 @@
 // Orders an authoritative commit before an optional best-effort live notification.
 
-import type { MarketLiveMessage } from "@crypto-strategy-lab/api-contracts";
+import type { MarketLiveNotification } from "@crypto-strategy-lab/api-contracts";
 
 export interface LiveNotificationTransport {
-  publish(message: MarketLiveMessage): Promise<void>;
+  publish(message: MarketLiveNotification): Promise<void>;
 }
 
 export interface CommitAndPublishResult<T> {
@@ -23,7 +23,7 @@ export class CommittedLivePublisher {
 
   async commitAndPublish<T>(
     commit: () => Promise<T>,
-    notification: (value: T) => MarketLiveMessage
+    notification: (value: T) => MarketLiveNotification
   ): Promise<CommitAndPublishResult<T>> {
     const value = await commit();
     try {

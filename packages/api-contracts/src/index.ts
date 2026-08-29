@@ -493,18 +493,54 @@ export interface MarketSnapshotMessage extends MarketSubscriptionKey {
   readonly candles: readonly ApiCandle[];
 }
 
-export interface MarketLiveMessage extends MarketSubscriptionKey {
+/**
+ * A forming candle. It exists only to move the current bar on a chart and is
+ * never a durable candle, so its `closed` flag can only be `false`.
+ */
+export interface ApiFormingCandle extends Omit<ApiCandle, "closed"> {
+  readonly closed: false;
+}
+
+interface MarketLiveNotificationFields extends MarketSubscriptionKey {
   readonly schemaVersion: "v1";
-  readonly type: "market:live";
   readonly revisionWatermark: number;
   /** Monotonic per symbol/timeframe; gaps require a durable snapshot refresh. */
   readonly sequence: number;
-  readonly candle: ApiLiveCandle;
 }
 
-export interface ApiLiveCandle extends Omit<ApiCandle, "closed"> {
-  readonly closed: boolean;
+/** The forming bar moved. Display only; it never becomes a stored candle. */
+export interface MarketCandleTickNotification extends MarketLiveNotificationFields {
+  readonly type: "candle.tick";
+  readonly candle: ApiFormingCandle;
 }
+
+/** A candle was committed. Authoritative, and it replaces the bar of the same identity. */
+export interface MarketCandleClosedNotification extends MarketLiveNotificationFields {
+  readonly type: "candle.closed";
+  readonly candle: ApiCandle;
+}
+
+/**
+ * What market ingest publishes. It carries no client identity on purpose:
+ * Market Data does not know that client subscriptions exist.
+ */
+export type MarketLiveNotification =
+  | MarketCandleTickNotification
+  | MarketCandleClosedNotification;
+
+/**
+ * What the gateway delivers. The API owns subscription identity, so it is the
+ * API that stamps the subscription a live message was matched to.
+ */
+export interface MarketCandleTickMessage extends MarketCandleTickNotification {
+  readonly subscriptionId: string;
+}
+
+export interface MarketCandleClosedMessage extends MarketCandleClosedNotification {
+  readonly subscriptionId: string;
+}
+
+export type MarketLiveMessage = MarketCandleTickMessage | MarketCandleClosedMessage;
 
 export interface MarketRefreshRequiredMessage {
   readonly schemaVersion: "v1";
@@ -533,7 +569,7 @@ function hasWatermark(value: Readonly<Record<string, unknown>>): boolean {
   return Number.isSafeInteger(value.revisionWatermark) && Number(value.revisionWatermark) >= 0;
 }
 
-function isApiLiveCandle(value: unknown): value is ApiLiveCandle {
+function isApiCandleShape(value: unknown): value is ApiCandle {
   if (!isRecord(value)) return false;
   return typeof value.provider === "string" && typeof value.symbol === "string" &&
     API_TIMEFRAMES.includes(value.timeframe as ApiTimeframe) &&
@@ -542,6 +578,21 @@ function isApiLiveCandle(value: unknown): value is ApiLiveCandle {
     isFiniteNumber(value.low) && isFiniteNumber(value.close) &&
     isFiniteNumber(value.volume) && typeof value.closed === "boolean" &&
     Number.isSafeInteger(value.revision);
+}
+
+/**
+ * Accepts what market ingest publishes over Pub/Sub. A live notification has no
+ * subscription identifier; only the gateway can add one.
+ */
+export function isMarketLiveNotification(value: unknown): value is MarketLiveNotification {
+  if (!isRecord(value) || value.schemaVersion !== "v1") return false;
+  if (value.type !== "candle.tick" && value.type !== "candle.closed") return false;
+  if (!hasMarketKey(value) || !hasWatermark(value)) return false;
+  if (!Number.isSafeInteger(value.sequence) || Number(value.sequence) < 0) return false;
+  // The channel and the candle must agree: only a closed candle may travel as
+  // `candle.closed`, and only a forming one as `candle.tick`.
+  return isApiCandleShape(value.candle) &&
+    value.candle.closed === (value.type === "candle.closed");
 }
 
 export function isMarketRealtimeMessage(value: unknown): value is MarketRealtimeMessage {
@@ -554,10 +605,8 @@ export function isMarketRealtimeMessage(value: unknown): value is MarketRealtime
     return hasSubscriptionId(value) && hasMarketKey(value) && hasWatermark(value) &&
       Array.isArray(value.candles) && value.candles.every(isApiCandle);
   }
-  if (value.type === "market:live") {
-    return hasMarketKey(value) && hasWatermark(value) &&
-      Number.isSafeInteger(value.sequence) && Number(value.sequence) >= 0 &&
-      isApiLiveCandle(value.candle);
+  if (value.type === "candle.tick" || value.type === "candle.closed") {
+    return hasSubscriptionId(value) && isMarketLiveNotification(value);
   }
   return value.type === "market:refresh-required" && hasSubscriptionId(value) &&
     (value.reason === "slow-client" || value.reason === "notification-gap");

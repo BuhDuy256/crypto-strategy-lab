@@ -1940,3 +1940,43 @@ unbounded promise chain upstream.
 
 The final backend Market/realtime suite passes at 13 files and 88 tests. Backend
 typecheck, scoped lint, Compose config, and `git diff --check` pass.
+
+### MKT-07 - the two live channels became two wire message types (2026-08-29)
+
+`WS-03` shipped one `market:live` message whose candle carried a `closed` boolean, and
+`MKT-06` published both channels through it. That let a client decide what a message
+meant by reading a flag, and the SPA duly merged a forming tick straight into its durable
+candle array. The plan already names the two channels `candle.tick` and `candle.closed`,
+and `liveCandleChannel` already decided between them inside ingest, so the decision was
+only ever discarded at the wire. It is now the wire message type.
+
+The second change is who may name a subscription. Live messages are split into two type
+families:
+
+```text
+MarketLiveNotification   ingest -> Redis -> API   no subscriptionId
+MarketLiveMessage        API -> one client        notification + subscriptionId
+```
+
+Market Data must not know that client sessions exist, so it cannot address a message to
+one. The registry stamps the subscription when it matches, which is the API owning
+subscription identity in the type system rather than by convention. `isMarketRealtimeMessage`
+now rejects an unaddressed live message, and the Pub/Sub edge validates with the separate
+`isMarketLiveNotification`. The SPA routes by subscription identifier and keeps the key
+check only as a guard.
+
+The SPA keeps the durable series and the forming bar in separate state. A tick sets the
+forming bar and never enters the series; a committed candle replaces the bar with the same
+open time and clears the forming bar; a fresh snapshot drops the forming bar outright.
+That is what makes a snapshot/live overlap apply once at the chart, and the registry drops
+a closed candle at or below the snapshot watermark so it usually never reaches the chart
+twice in the first place.
+
+WS-03's bounded outbound queue, slow-client disconnect, four-subscription cap, and
+sequence-gap snapshot refresh were reused unchanged and re-verified against the new types.
+
+One debt worth naming: `scripts/smoke-mkt07.ts` requires `market-ingest` to be stopped.
+The registry drops a live message whose sequence is not greater than the last one it saw,
+and ingest seeds its sequence from the wall clock, so a running ingest makes scripted
+publications unobservable. `MKT-09` and `PROOF-RT-001` will need a way to assert protocol
+behaviour with real ingest traffic present.
