@@ -20,10 +20,10 @@ true; keep conversation out of them.
 | Implementation status | `IN PROGRESS - V1-V3 BASELINE CERTIFIED` |
 | Current target version | **V2 - Extensible Strategy Engine** |
 | Previous version | **V1 - Manual Backtest Workbench: certified in the V1-V3 baseline-freeze state on 2026-08-29.** |
-| Last verified commit | `9d47d43` plus the validated baseline-freeze delta in the commit containing this row; use Git for its exact SHA. |
-| Next allowed action | Owner review and explicit product-version authorization. The `v4-realtime-market-data` branch is a handoff boundary only; no V4 implementation is authorized. |
+| Last verified commit | The commit tagged `v3.1-demo` on `feat/v3-automated-discovery`. |
+| Next allowed action | Set `CURRENT PRODUCT VERSION` in `AGENTS.md` (still `V2`) and set the target version below. Until the owner does both, no V4 implementation is authorized; the `v4-realtime-market-data` branch is a handoff boundary only. |
 | Last verified on | 2026-08-29 (V1/V2 functional certification, V3 regression, baseline freeze, and the two freeze repairs below) |
-| Last tag | `v3.0-demo`, on `2b98139`. The tag exists in Git; the earlier claim in this file that no tag existed was wrong. It sits on a baseline whose V1 and V2 regressions do not pass. `v1.0-demo` and `v2.0-demo` do not exist. |
+| Last tag | `v3.1-demo`, the certified V1-V3 baseline, on `feat/v3-automated-discovery`. `v3.0-demo` still points at `2b98139` and was deliberately left there: it marks what was *claimed* demoable, on a baseline whose V1 and V2 regressions do not pass. Both tags are on origin. `v1.0-demo` and `v2.0-demo` do not exist. |
 | V3 slices | 8 (`DONE` 8, `READY` 0, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 0) — V3's own scope and its V1+V2 regression condition pass in the baseline-freeze state. |
 | History | [`JOURNAL.md`](JOURNAL.md), sections "V1", "V3", "V1/V2 recovery", "V1-V3 freeze repairs", and "Demo data prerequisite". The recovery entry records the durable V2 decisions that were missing from the original history. |
 
