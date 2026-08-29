@@ -217,6 +217,7 @@ The repository is a pnpm workspace (`apps/*`, `packages/*`) with TypeScript in s
 | `pnpm run migrate` | Apply every pending database migration (safe to run twice). |
 | `pnpm run migrate:reset` | Drop the module-owned schemas and return the database to empty. |
 | `pnpm run market:backfill -- --symbol BTCUSDT --timeframe 1h --startTime <ms> --endTime <ms>` | Load a closed Binance candle range into append-only Market storage. |
+| `pnpm run demo:seed` | Load the recent candle windows every demo page opens on (30 days of BTCUSDT at 5m, 15m, 1h, 4h). Wraps `market:backfill`. |
 
 ## Two run paths
 
@@ -410,11 +411,21 @@ logs in the foreground and use a second terminal for the commands below.
 
 ### 3. Load candle history
 
-The demo needs candles in the dataset window. Run the documented backfill command
-against the running stack (it fetches from Binance and stores append-only):
+Every page opens on a window derived from the current time, so the stack needs
+candles for a recent range before anything is visible. One command loads what all
+four pages ask for (30 days of BTCUSDT at 5m, 15m, 1h, and 4h, fetched from
+Binance and stored append-only):
 
 ```powershell
-docker compose exec api pnpm run market:backfill -- --symbol BTCUSDT --timeframe 1h --startTime 1704067200000 --endTime 1707663600000
+docker compose exec api pnpm run demo:seed
+```
+
+Skipping this does not break the app: each page correctly reports that it has no
+candles for the window it asked for. To load one specific range instead, the
+underlying CLI still takes an explicit window:
+
+```powershell
+docker compose exec api pnpm run market:backfill -- --symbol BTCUSDT --timeframe 1h --startTime <ms> --endTime <ms>
 ```
 
 ### 4. Walk the demo scenario

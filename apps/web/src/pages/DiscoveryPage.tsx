@@ -42,11 +42,22 @@ import {
 import { CandlestickChart, type ChartState } from "../components/CandlestickChart.js";
 import { pollingSearchDataSource, type SearchDataSource } from "./discovery-data-source.js";
 
-// The demo window backfilled by the runbook (BTCUSDT 1h, 2025-01-01). Defaults
-// only; the operator can change them to whatever range they loaded candles for.
-const DEFAULT_START_TIME = 1_735_689_600_000;
-const DEFAULT_END_TIME = 1_735_776_000_000;
 const CHART_CANDLE_COUNT = 200;
+
+// A default search window, derived the same way the Backtest and Realtime pages
+// derive theirs: recent, and aligned to closed candles. A fixed date was used
+// here before, which meant the page opened on a range the demo data did not
+// cover and the leaderboard stayed empty for a reason nothing on screen
+// explained. Defaults only; the operator can search any range they loaded.
+const DEFAULT_SEARCH_DAYS = 30;
+const DEFAULT_TIMEFRAME_MILLISECONDS = 60 * 60_000;
+
+function defaultSearchWindow(now: number): { startTime: number; endTime: number } {
+  const endTime =
+    Math.floor(now / DEFAULT_TIMEFRAME_MILLISECONDS) * DEFAULT_TIMEFRAME_MILLISECONDS -
+    DEFAULT_TIMEFRAME_MILLISECONDS;
+  return { startTime: endTime - DEFAULT_SEARCH_DAYS * 86_400_000, endTime };
+}
 
 // A run is still being driven while it is running or converging toward a
 // settled control state; polling stops once it settles.
@@ -118,8 +129,8 @@ export function DiscoveryPage({
   const [strategies, setStrategies] = useState<readonly ApiStrategyDescriptor[]>([]);
 
   const [timeframe, setTimeframe] = useState<ApiTimeframe>("1h");
-  const [startTime, setStartTime] = useState(DEFAULT_START_TIME);
-  const [endTime, setEndTime] = useState(DEFAULT_END_TIME);
+  const [startTime, setStartTime] = useState(() => defaultSearchWindow(Date.now()).startTime);
+  const [endTime, setEndTime] = useState(() => defaultSearchWindow(Date.now()).endTime);
   const [generatorId, setGeneratorId] = useState("");
   const [selectedStrategies, setSelectedStrategies] = useState<readonly string[]>([]);
   const [seed, setSeed] = useState("discovery-demo");

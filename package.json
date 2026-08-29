@@ -15,6 +15,7 @@
     "start:ui": "pnpm --filter @crypto-strategy-lab/web run dev",
     "start:backtest-runner": "pnpm --filter @crypto-strategy-lab/backend run start:backtest-runner",
     "market:backfill": "pnpm --filter @crypto-strategy-lab/backend run market:backfill --",
+    "demo:seed": "node scripts/seed-demo-data.mjs",
     "leaderboard:rebuild": "pnpm --filter @crypto-strategy-lab/backend run leaderboard:rebuild --",
     "migrate": "pnpm --filter @crypto-strategy-lab/backend run migrate",
     "migrate:reset": "pnpm --filter @crypto-strategy-lab/backend run migrate:reset"

@@ -17,5 +17,13 @@ export default tseslint.config(
     rules: {
       "@typescript-eslint/no-unused-vars": "error"
     }
+  },
+  {
+    // Plain-JavaScript repository tooling. TypeScript files get their Node
+    // globals from @types/node; these do not, so declare the few they use.
+    files: ["scripts/**/*.mjs"],
+    languageOptions: {
+      globals: { console: "readonly", process: "readonly" }
+    }
   }
 );

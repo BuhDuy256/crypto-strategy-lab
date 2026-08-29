@@ -1,12 +1,13 @@
 # Demo script
 
-The numbered walkthrough for the current product version. This is the script a
-person follows to show the version end to end on the full-system Compose
-topology (see the README's "Full-system integration and demo path"). It holds
-the current version only; each version updates it as part of `DEMO-01`.
+The numbered walkthrough for the certified V1-V3 baseline. This is the script a
+person follows to show each version end to end on the full-system Compose topology
+(see the README's "Full-system integration and demo path"). Each version updates it
+as part of `DEMO-01`.
 
-Current version: **V3 - Automated Discovery**. The demo scenario source is
-[`implementation-plan/VERSIONS.md`](../implementation-plan/VERSIONS.md#v3---automated-discovery).
+Current certified baseline: **V1 through V3**. Repository product authorization
+remains **V2**; this evidence script does not advance it. Demo scenario sources are in
+[`implementation-plan/VERSIONS.md`](../implementation-plan/VERSIONS.md).
 
 ## Before you start
 
@@ -29,29 +30,24 @@ Current version: **V3 - Automated Discovery**. The demo scenario source is
    healthy, and `runner` and `web` up. No Redis, BullMQ, or news service is
    present; V3 does not use them.
 
-3. Load candle history for the dataset window the demo uses:
+3. Load the demo market data:
 
    ```powershell
-   docker compose exec api pnpm run market:backfill -- --symbol BTCUSDT --timeframe 1h --startTime 1704067200000 --endTime 1707663600000
+   docker compose exec api pnpm run demo:seed
    ```
 
-   V2's four historical charts read the latest 150 closed candles. Seed those
-   four windows too:
+   Every page opens on a window derived from the current time: Realtime shows the
+   last 150 closed candles per timeframe, and Backtest, Strategy Engine, and
+   Discovery each open on a recent range. This command loads 30 days of BTCUSDT
+   candles at 5m, 15m, 1h, and 4h, which covers all of them.
+
+   Run it before opening the SPA. Without it the pages are not broken, they are
+   empty: each one correctly reports that it has no candles for the window it
+   asked for. If you would rather load a specific range, the underlying CLI still
+   takes one directly:
 
    ```powershell
-   $demoNow = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
-   $demoFrames = @(
-     @{ Name = '5m'; Ms = 300000 },
-     @{ Name = '15m'; Ms = 900000 },
-     @{ Name = '1h'; Ms = 3600000 },
-     @{ Name = '4h'; Ms = 14400000 }
-   )
-   foreach ($demoFrame in $demoFrames) {
-     $demoOpen = [math]::Floor($demoNow / $demoFrame.Ms) * $demoFrame.Ms
-     $demoEnd = $demoOpen - $demoFrame.Ms
-     $demoStart = $demoEnd - (149 * $demoFrame.Ms)
-     docker compose exec api pnpm run market:backfill -- --symbol BTCUSDT --timeframe $demoFrame.Name --startTime $demoStart --endTime $demoEnd
-   }
+   docker compose exec api pnpm run market:backfill -- --symbol BTCUSDT --timeframe 1h --startTime <ms> --endTime <ms>
    ```
 
 4. Open the SPA at <http://localhost:8080> and go to the Discovery page.
