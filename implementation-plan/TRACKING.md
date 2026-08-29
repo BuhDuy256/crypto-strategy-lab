@@ -420,7 +420,7 @@ added so the API can report how many subscriptions it actually holds, which is w
 checkable outside a unit test. Relevant suites: 12 files and 90 tests pass across the SPA, the subscription
 registry, the new status controller, and platform config. Root typecheck, scoped lint, and `git diff --check`
 pass. The smoke requires `market-ingest` stopped, for the sequence reason recorded for `MKT-07`; it stops and
-restarts it itself. The two-axis review was skipped on the owner's explicit
+restarts it itself. The `MKT-11` diff is committed at `6b3a326`. The two-axis review was skipped on the owner's explicit
 instruction, not overlooked, so this diff carries no review record. Anyone auditing V4 later should read
 `MKT-11` as validated by tests and browser smoke only, the same way `WS-03` is.
 
