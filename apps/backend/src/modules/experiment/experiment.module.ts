@@ -179,15 +179,17 @@ class ExperimentDatabaseLifecycle implements OnApplicationShutdown {
         BacktestRunService,
         StrategyGeneratorRegistry,
         RankingPolicyRegistry,
-        PostgresSearchRunStore
+        PostgresSearchRunStore,
+        LeaderboardProjector
       ],
       useFactory: (
         specifications: ExperimentSpecificationService,
         runs: BacktestRunService,
         generators: StrategyGeneratorRegistry,
         rankings: RankingPolicyRegistry,
-        store: PostgresSearchRunStore
-      ) => new SearchCoordinator(specifications, runs, generators, rankings, store)
+        store: PostgresSearchRunStore,
+        projection: LeaderboardProjector
+      ) => new SearchCoordinator(specifications, runs, generators, rankings, store, projection)
     },
     {
       provide: SearchExperimentCreationService,

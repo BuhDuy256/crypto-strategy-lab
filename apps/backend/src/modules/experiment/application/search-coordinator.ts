@@ -154,6 +154,12 @@ export interface SearchRankings {
   resolve(ref: RankingPolicyRef): RankingPolicy;
 }
 
+// Narrow port onto the leaderboard projector. The coordinator needs it only for
+// the adopted-run case below; the normal path is driven by result acceptance.
+export interface SearchLeaderboardProjection {
+  applyCompletedRun(runId: string): Promise<unknown>;
+}
+
 export type TickOutcome =
   | { readonly kind: "submitted"; readonly contentHash: string }
   | { readonly kind: "waited" }
@@ -176,6 +182,7 @@ export class SearchCoordinator {
     private readonly generators: SearchGenerators,
     private readonly rankings: SearchRankings,
     private readonly store: SearchRunStore,
+    private readonly projection: SearchLeaderboardProjection,
     private readonly now: () => number = Date.now,
     private readonly pollMilliseconds = 250
   ) {}
@@ -442,7 +449,7 @@ export class SearchCoordinator {
     // a crash returns the same run rather than enqueuing a duplicate.
     const run = await this.runs.start(draft.specId, correlationId);
     const sequenceNumber = await this.store.candidateCount(specId);
-    await this.store.recordCandidate({
+    const { recorded } = await this.store.recordCandidate({
       specId,
       contentHash: candidate.contentHash,
       sequenceNumber,
@@ -450,6 +457,15 @@ export class SearchCoordinator {
       derivedSpecId: run.specId,
       runId: run.runId
     });
+    // An adopted run: a previous experiment already generated this candidate over
+    // the same dataset window, so the content-derived run is complete and no new
+    // result will ever be accepted for it. Acceptance therefore cannot fill this
+    // experiment's leaderboard, and without this the board stays empty until
+    // someone runs leaderboard:rebuild. Projecting is idempotent per leaderboard,
+    // so doing it here is safe even if the run finished a moment ago.
+    if (recorded && run.status === "completed") {
+      await this.projection.applyCompletedRun(run.runId);
+    }
   }
 
   private async iterator(

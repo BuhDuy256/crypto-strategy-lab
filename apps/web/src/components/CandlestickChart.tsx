@@ -5,6 +5,7 @@ import {
   CandlestickSeries,
   ColorType,
   createChart,
+  createSeriesMarkers,
   HistogramSeries,
   LineSeries,
   type CandlestickData,
@@ -176,8 +177,9 @@ export function CandlestickChart({ state, candles, annotations = [], trades = []
 
     markers.sort((a, b) => (a.time as number) - (b.time as number));
     if (markers.length > 0) {
-      // @ts-expect-error setMarkers exists but ts complains
-      candleSeries.setMarkers(markers);
+      // lightweight-charts v5 moved markers off the series API into their own
+      // plugin. The plugin is owned by the chart, so chart.remove() disposes it.
+      createSeriesMarkers(candleSeries, markers);
     }
 
 

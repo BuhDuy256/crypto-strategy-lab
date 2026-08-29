@@ -94,4 +94,38 @@ describe("StrategyController", () => {
       requiredInputs: descriptor.requiredInputs
     });
   });
+
+  it("keeps an unresolvable legacy composite from breaking the runnable catalog", async () => {
+    const runnable = {
+      id: "composite-runnable",
+      version: "1.0.0",
+      name: "Runnable composite",
+      description: "Uses registered components",
+      components: [],
+      policy: { id: "majority-vote", version: "1.0.0", configuration: {} }
+    };
+    const legacy = { ...runnable, id: "composite-legacy", name: "Legacy composite" };
+    const descriptor = new FakeStrategy().descriptor;
+    const module = await Test.createTestingModule({
+      controllers: [StrategyController],
+      providers: [
+        { provide: StrategyRegistry, useValue: new StrategyRegistry([new FakeStrategy()]) },
+        {
+          provide: CompositeStrategyService,
+          useValue: {
+            list: vi.fn(async () => [runnable, legacy]),
+            resolve: vi.fn(async (id: string) => {
+              if (id === legacy.id) throw new Error("STRATEGY_NOT_FOUND: ma@1.0.0");
+              return { descriptor: { ...descriptor, id: runnable.id } };
+            })
+          }
+        },
+        { provide: MARKET_DATA_QUERY, useValue: { getCandles: vi.fn() } }
+      ]
+    }).compile();
+
+    const response = await module.get(StrategyController).listComposites();
+
+    expect(response.map((entry) => entry.id)).toEqual([runnable.id]);
+  });
 });

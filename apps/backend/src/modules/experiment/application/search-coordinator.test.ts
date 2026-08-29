@@ -137,8 +137,22 @@ describe("SearchCoordinator", () => {
     await pool?.end();
   });
 
+  // Records which runs the coordinator asked to project, which is how the
+  // adopted-run path (a candidate whose content-addressed run another experiment
+  // already completed) is observed without a real projector.
+  let projectedRuns: string[] = [];
+  const projection = {
+    applyCompletedRun: (runId: string): Promise<unknown> => {
+      projectedRuns.push(runId);
+      return Promise.resolve(undefined);
+    }
+  };
+
   function newCoordinator(now: () => number = Date.now): SearchCoordinator {
-    return new SearchCoordinator(specifications, runs, generators, rankings, searchStore, now);
+    projectedRuns = [];
+    return new SearchCoordinator(
+      specifications, runs, generators, rankings, searchStore, projection, now
+    );
   }
 
   async function createExperiment(search: SearchConfiguration): Promise<string> {

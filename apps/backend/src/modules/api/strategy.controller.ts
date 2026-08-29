@@ -1,4 +1,15 @@
-import { Controller, Get, Post, Param, Body, Inject, HttpCode, BadRequestException, NotFoundException } from "@nestjs/common";
+import {
+  Controller,
+  Get,
+  Post,
+  Param,
+  Body,
+  Inject,
+  HttpCode,
+  BadRequestException,
+  NotFoundException,
+  Logger
+} from "@nestjs/common";
 import { StrategyRegistry } from "../strategy/index.js";
 import { CompositeStrategyService } from "../strategy/index.js";
 import type {
@@ -19,6 +30,12 @@ import type {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown strategy error";
+}
+
+function isUnavailableComposite(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return error.message.startsWith("STRATEGY_NOT_FOUND:") ||
+    error.message.startsWith("COMBINATION_POLICY_NOT_FOUND:");
 }
 
 function toStrategyParameters(parameters: Record<string, unknown>): StrategyParameters {
@@ -64,6 +81,8 @@ function toApiDescriptor(descriptor: StrategyDescriptor): ApiStrategyDescriptor 
 
 @Controller("strategies")
 export class StrategyController {
+  private readonly logger = new Logger(StrategyController.name);
+
   constructor(
     @Inject(StrategyRegistry) private readonly strategyRegistry: StrategyRegistry,
     @Inject(CompositeStrategyService) private readonly compositeService: CompositeStrategyService,
@@ -97,12 +116,23 @@ export class StrategyController {
   @Get("composites")
   async listComposites(): Promise<ApiCompositeCatalogEntry[]> {
     const list = await this.compositeService.list();
-    return Promise.all(list.map(async (definition) => ({
-      ...definition,
-      descriptor: toApiDescriptor(
-        (await this.compositeService.resolve(definition.id, definition.version)).descriptor
-      )
-    })));
+    const catalog: ApiCompositeCatalogEntry[] = [];
+    for (const definition of list) {
+      try {
+        catalog.push({
+          ...definition,
+          descriptor: toApiDescriptor(
+            (await this.compositeService.resolve(definition.id, definition.version)).descriptor
+          )
+        });
+      } catch (error: unknown) {
+        if (!isUnavailableComposite(error)) throw error;
+        this.logger.warn(
+          `Skipping unavailable composite ${definition.id}@${definition.version}: ${errorMessage(error)}`
+        );
+      }
+    }
+    return catalog;
   }
 
   @Get("composites/:id")

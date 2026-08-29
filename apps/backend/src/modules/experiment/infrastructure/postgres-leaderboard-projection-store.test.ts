@@ -206,7 +206,7 @@ describe("PostgresLeaderboardProjectionStore", () => {
     await board.apply(await seedCandidate(leaderboardId, 1, "b", metrics(0.2, 0)));
     const last = await seedCandidate(leaderboardId, 2, "c", metrics(0.1, 0));
     await board.apply(last);
-    const outcome = await board.apply(await seedCandidate(leaderboardId, 3, "d", metrics(0.25, 0)));
+    const [outcome] = await board.apply(await seedCandidate(leaderboardId, 3, "d", metrics(0.25, 0)));
 
     expect(outcome).toEqual({ applied: true, rank: 2 });
     expect(await scores(leaderboardId)).toEqual([
@@ -227,7 +227,7 @@ describe("PostgresLeaderboardProjectionStore", () => {
     await board.apply(await seedCandidate(leaderboardId, 0, "a", metrics(0.3, 0)));
     await board.apply(await seedCandidate(leaderboardId, 1, "b", metrics(0.2, 0)));
     await board.apply(await seedCandidate(leaderboardId, 2, "c", metrics(0.1, 0)));
-    const outcome = await board.apply(await seedCandidate(leaderboardId, 3, "e", metrics(0.05, 0)));
+    const [outcome] = await board.apply(await seedCandidate(leaderboardId, 3, "e", metrics(0.05, 0)));
 
     expect(outcome).toEqual({ applied: false, reason: "unchanged" });
     expect(await scores(leaderboardId)).toEqual([
@@ -244,7 +244,7 @@ describe("PostgresLeaderboardProjectionStore", () => {
     await board.apply(a);
     await board.apply(await seedCandidate(leaderboardId, 1, "b", metrics(0.2, 0)));
     const before = await board.projectionHash(leaderboardId);
-    const outcome = await board.apply(a);
+    const [outcome] = await board.apply(a);
     const after = await board.projectionHash(leaderboardId);
 
     expect(outcome).toEqual({ applied: false, reason: "stale-or-duplicate" });
@@ -270,7 +270,7 @@ describe("PostgresLeaderboardProjectionStore", () => {
       aggregateVersion: 1,
       metrics: metrics(0.99, 0)
     };
-    const outcome = await board.apply(stale);
+    const [outcome] = await board.apply(stale);
     const after = await board.projectionHash(leaderboardId);
 
     expect(outcome).toEqual({ applied: false, reason: "stale-or-duplicate" });
@@ -295,7 +295,7 @@ describe("PostgresLeaderboardProjectionStore", () => {
       aggregateVersion: 1,
       metrics: metrics(0.99, 0)
     };
-    const outcome = await board.apply(stale);
+    const [outcome] = await board.apply(stale);
 
     expect(outcome).toEqual({ applied: false, reason: "stale-or-duplicate" });
     expect(await board.projectionHash(leaderboardId)).toBe(before);
@@ -304,6 +304,35 @@ describe("PostgresLeaderboardProjectionStore", () => {
       [c.runId]
     );
     expect(cRow.rowCount).toBe(0);
+  });
+
+  it("fills a second experiment that adopted an already completed candidate run", async () => {
+    // Two searches over the same dataset window can generate the same candidate.
+    // The backtest run is content-addressed, so the second search adopts the run
+    // the first one already completed and no new result is ever accepted for it.
+    const first = await createLeaderboard();
+    const second = await createLeaderboard();
+    const board = projector(3);
+    const shared = await seedCandidate(first, 0, "a", metrics(0.3, 0));
+    await board.apply(shared);
+    await pool.query(
+      `INSERT INTO experiment.search_candidates
+         (spec_id, content_hash, sequence_number, candidate, derived_spec_id, run_id)
+       SELECT $1, content_hash, 0, candidate, derived_spec_id, run_id
+       FROM experiment.search_candidates WHERE spec_id = $2`,
+      [second, first]
+    );
+
+    const outcomes = await board.applyCompletedRun(shared.runId);
+
+    // Both boards hold the candidate, and the first one is not applied twice.
+    // Membership order follows spec_id, which is a random UUID, so compare as a set.
+    expect([...outcomes].sort((a, b) => Number(a.applied) - Number(b.applied))).toEqual([
+      { applied: false, reason: "stale-or-duplicate" },
+      { applied: true, rank: 1 }
+    ]);
+    expect(await scores(first)).toEqual([{ rank: 1, score: 0.3 }]);
+    expect(await scores(second)).toEqual([{ rank: 1, score: 0.3 }]);
   });
 
   it("reproduces the same content and hash after a delete and rebuild", async () => {

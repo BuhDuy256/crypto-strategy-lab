@@ -13,7 +13,7 @@ const chartMocks = vi.hoisted(() => ({
   createChart: vi.fn(),
   fitContent: vi.fn(),
   remove: vi.fn(),
-  setMarkers: vi.fn(),
+  createSeriesMarkers: vi.fn(),
   setVisibleRange: vi.fn(),
   volumeSetData: vi.fn()
 }));
@@ -23,7 +23,8 @@ vi.mock("lightweight-charts", () => ({
   ColorType: { Solid: "Solid" },
   HistogramSeries: Symbol("HistogramSeries"),
   LineSeries: Symbol("LineSeries"),
-  createChart: chartMocks.createChart
+  createChart: chartMocks.createChart,
+  createSeriesMarkers: chartMocks.createSeriesMarkers
 }));
 
 beforeEach(() => {
@@ -33,7 +34,6 @@ beforeEach(() => {
       chartMocks.addSeries.mock.calls.length % 2 === 1
         ? {
             setData: chartMocks.candleSetData,
-            setMarkers: chartMocks.setMarkers,
             createPriceLine: chartMocks.createPriceLine
           }
         : { setData: chartMocks.volumeSetData }
@@ -208,5 +208,48 @@ describe("CandlestickChart", () => {
     );
     expect(chartMocks.remove).toHaveBeenCalled();
     expect(chartMocks.createPriceLine).toHaveBeenCalledTimes(highlightedCallCount);
+  });
+
+  it("attaches trade markers through the series-markers plugin", () => {
+    const candle = {
+      provider: "binance",
+      symbol: "BTCUSDT",
+      timeframe: "1h" as const,
+      openTime: 1_700_000_000_000,
+      closeTime: 1_700_003_599_999,
+      open: 100,
+      high: 120,
+      low: 90,
+      close: 110,
+      volume: 12,
+      closed: true,
+      revision: 1
+    };
+    const trade = {
+      sequenceNumber: 1,
+      direction: "long" as const,
+      entryTime: 1_700_000_000_000,
+      entryPrice: 101,
+      exitTime: 1_700_003_600_000,
+      exitPrice: 109,
+      quantity: 1,
+      entryFee: 0.1,
+      exitFee: 0.1,
+      slippage: 0,
+      profitAndLoss: 7.8,
+      exitReason: "signal" as const
+    };
+
+    render(<CandlestickChart state="ready" candles={[candle]} trades={[trade]} />);
+
+    // The v5 marker API is a module-level plugin, not a series method. Asserting
+    // it here is what keeps a v4-era candleSeries.setMarkers() call from coming
+    // back and crashing the page at runtime.
+    expect(chartMocks.createSeriesMarkers).toHaveBeenCalledTimes(1);
+    const [series, markers] = chartMocks.createSeriesMarkers.mock.calls[0] ?? [];
+    expect(series.setData).toBe(chartMocks.candleSetData);
+    expect(markers).toHaveLength(2);
+    expect(markers[0]).toMatchObject({ shape: "arrowUp", position: "belowBar" });
+    expect(markers[1]).toMatchObject({ shape: "arrowDown", position: "aboveBar" });
   });
 });

@@ -84,7 +84,15 @@ export interface LeaderboardWriteScope {
 }
 
 export interface LeaderboardProjectionStore {
-  findCandidateMembership(runId: string): Promise<CandidateMembership | undefined>;
+  // Every leaderboard the run is a candidate in. A run is content-addressed and
+  // therefore shared by any search experiment that generated the same candidate
+  // over the same dataset window, so this is a list, not a single row.
+  findCandidateMemberships(runId: string): Promise<CandidateMembership[]>;
+  // The authoritative evaluated result of a completed run, if it has one. Used
+  // when a search adopts a run that another experiment already completed, so the
+  // adopting leaderboard is projected without waiting for a result that will
+  // never be produced again.
+  findEvaluatedResult(runId: string): Promise<EvaluatedResultRef | undefined>;
   readCompletedCandidateResults(leaderboardId: string): Promise<CompletedCandidateResult[]>;
   readEntries(leaderboardId: string): Promise<LeaderboardEntry[]>;
   // Run `run` with exclusive access to one leaderboard's rows, in a transaction.
@@ -138,13 +146,36 @@ export class LeaderboardProjector {
     }
   }
 
-  // Apply one evaluated result to its leaderboard. Idempotent and safe to call
-  // again with the same or an older result.
-  async apply(result: EvaluatedResultRef): Promise<ProjectionApplication> {
-    const membership = await this.store.findCandidateMembership(result.runId);
-    if (membership === undefined) {
-      return { applied: false, reason: "not-a-search-candidate" };
+  // Apply one evaluated result to its leaderboards. Idempotent and safe to call
+  // again with the same or an older result. Returns one entry per leaderboard the
+  // result belongs to: a run shared by two search experiments projects into both,
+  // each guarded by its own applied-version record, so a repeated delivery is
+  // still a no-op per leaderboard.
+  async apply(result: EvaluatedResultRef): Promise<ProjectionApplication[]> {
+    const memberships = await this.store.findCandidateMemberships(result.runId);
+    if (memberships.length === 0) {
+      return [{ applied: false, reason: "not-a-search-candidate" }];
     }
+    const applications: ProjectionApplication[] = [];
+    for (const membership of memberships) {
+      applications.push(await this.applyTo(membership, result));
+    }
+    return applications;
+  }
+
+  // Project the result a completed run already produced. A search that generated
+  // a candidate an earlier experiment had already run gets no new result to
+  // accept, so nothing else would ever fill its leaderboard.
+  async applyCompletedRun(runId: string): Promise<ProjectionApplication[]> {
+    const result = await this.store.findEvaluatedResult(runId);
+    if (result === undefined) return [];
+    return this.apply(result);
+  }
+
+  private async applyTo(
+    membership: CandidateMembership,
+    result: EvaluatedResultRef
+  ): Promise<ProjectionApplication> {
     const { policy, configuration } = await this.resolvePolicy(membership.leaderboardId);
     const ranked = policy.rank(
       { metrics: result.metrics, contentHash: membership.contentHash },

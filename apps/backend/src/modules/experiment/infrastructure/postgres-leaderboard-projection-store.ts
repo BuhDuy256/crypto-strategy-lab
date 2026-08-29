@@ -10,6 +10,7 @@ import type { Pool, PoolClient } from "pg";
 import type {
   CandidateMembership,
   CompletedCandidateResult,
+  EvaluatedResultRef,
   LeaderboardEntry,
   LeaderboardProjectionStore,
   LeaderboardWriteScope
@@ -53,16 +54,44 @@ const SELECT_ENTRIES =
 export class PostgresLeaderboardProjectionStore implements LeaderboardProjectionStore {
   constructor(private readonly pool: Pool) {}
 
-  async findCandidateMembership(runId: string): Promise<CandidateMembership | undefined> {
+  async findCandidateMemberships(runId: string): Promise<CandidateMembership[]> {
+    // Ordered so a run shared by several experiments projects in a stable order.
     const result = await this.pool.query<{ spec_id: string; content_hash: string; derived_spec_id: string }>(
       `SELECT spec_id, content_hash, derived_spec_id
-       FROM experiment.search_candidates WHERE run_id = $1`,
+       FROM experiment.search_candidates WHERE run_id = $1
+       ORDER BY spec_id ASC`,
+      [runId]
+    );
+    return result.rows.map((row) => ({
+      leaderboardId: row.spec_id,
+      contentHash: row.content_hash,
+      derivedSpecId: row.derived_spec_id
+    }));
+  }
+
+  async findEvaluatedResult(runId: string): Promise<EvaluatedResultRef | undefined> {
+    const result = await this.pool.query<{
+      result_id: string;
+      aggregate_version: string | number;
+      metrics: Readonly<Record<string, number>>;
+    }>(
+      `SELECT res.result_id, a.attempt_number AS aggregate_version, res.metrics
+       FROM experiment.backtest_results res
+       JOIN experiment.backtest_runs r ON r.run_id = res.run_id AND r.status = 'completed'
+       JOIN experiment.backtest_attempts a ON a.run_id = res.run_id
+         AND a.completed_at IS NOT NULL AND a.failure_reason IS NULL
+       WHERE res.run_id = $1`,
       [runId]
     );
     const row = result.rows[0];
     return row === undefined
       ? undefined
-      : { leaderboardId: row.spec_id, contentHash: row.content_hash, derivedSpecId: row.derived_spec_id };
+      : {
+          resultId: row.result_id,
+          runId,
+          aggregateVersion: Number(row.aggregate_version),
+          metrics: row.metrics
+        };
   }
 
   async readCompletedCandidateResults(leaderboardId: string): Promise<CompletedCandidateResult[]> {
