@@ -21,7 +21,7 @@ true; keep conversation out of them.
 | Current target version | **V4 - Realtime Market Data** |
 | Previous version | **V3 - Automated Discovery: frozen at `v3.1-demo` on 2026-08-29.** |
 | Last verified commit | The commit tagged `v3.1-demo` on `feat/v3-automated-discovery`. |
-| Next allowed action | Review and commit the `WS-03` diff. `MKT-06` is the next `READY` slice; start it in a separate session. |
+| Next allowed action | Start `MKT-06`. `WS-03` is committed at `7bc5bf3`. |
 | Last verified on | 2026-08-29 (V1/V2 functional certification, V3 regression, baseline freeze, and the two freeze repairs below) |
 | Last tag | `v3.1-demo`, the certified V1-V3 baseline, on `feat/v3-automated-discovery`. `v3.0-demo` still points at `2b98139` and was deliberately left there: it marks what was *claimed* demoable, on a baseline whose V1 and V2 regressions do not pass. Both tags are on origin. `v1.0-demo` and `v2.0-demo` do not exist. |
 | V3 slices | 8 (`DONE` 8, `READY` 0, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 0) — V3's own scope and its V1+V2 regression condition pass in the baseline-freeze state. |
@@ -406,8 +406,8 @@ Note for the next session: the backend integration tests drop and recreate the P
 which deletes demo data. Run `pnpm run demo:seed` again before any browser smoke or demo that
 follows a backend suite run.
 
-The coherent WS-03 diff has not been through the two-axis review since the last fixes, and it is
-not committed. Do both before starting `MKT-06`.
+The WS-03 diff is committed at `7bc5bf3`. The two-axis review was deliberately skipped for it to
+conserve budget, so that diff carries no review record.
 
 | ID | Proof | Status | Prerequisites |
 |---|---|---|---|
