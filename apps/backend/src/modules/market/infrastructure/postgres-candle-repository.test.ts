@@ -142,6 +142,21 @@ describe("PostgresCandleRepository", () => {
     expect(result.map((item) => item.openTime)).toEqual([START, START + 2 * HOUR]);
   });
 
+  it("returns the latest bounded durable snapshot with its commit watermark", async () => {
+    await repository.appendMany([
+      candle(START), candle(START + HOUR), candle(START + 2 * HOUR)
+    ]);
+
+    const snapshot = await repository.getLatestSnapshot({
+      provider: "binance", symbol: "BTCUSDT", timeframe: "1h", limit: 2
+    });
+
+    expect(snapshot.candles.map((item) => item.openTime)).toEqual([
+      START + HOUR, START + 2 * HOUR
+    ]);
+    expect(snapshot.revisionWatermark).toBeGreaterThan(0);
+  });
+
   it("serializes concurrent set-based backfills without losing revisions", async () => {
     const firstBatch = [candle(START), candle(START + HOUR)];
     const secondBatch = [

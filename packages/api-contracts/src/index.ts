@@ -468,6 +468,101 @@ export interface ApiCompositeStrategyDefinition {
   readonly policy: ApiCombinationPolicyReference;
 }
 
+export interface MarketSubscriptionKey {
+  readonly symbol: string;
+  readonly timeframe: ApiTimeframe;
+}
+
+export interface MarketSubscribeMessage extends MarketSubscriptionKey {
+  readonly schemaVersion: "v1";
+  readonly type: "market:subscribe";
+  readonly subscriptionId: string;
+}
+
+export interface MarketUnsubscribeMessage {
+  readonly schemaVersion: "v1";
+  readonly type: "market:unsubscribe";
+  readonly subscriptionId: string;
+}
+
+export interface MarketSnapshotMessage extends MarketSubscriptionKey {
+  readonly schemaVersion: "v1";
+  readonly type: "market:snapshot";
+  readonly subscriptionId: string;
+  readonly revisionWatermark: number;
+  readonly candles: readonly ApiCandle[];
+}
+
+export interface MarketLiveMessage extends MarketSubscriptionKey {
+  readonly schemaVersion: "v1";
+  readonly type: "market:live";
+  readonly revisionWatermark: number;
+  /** Monotonic per symbol/timeframe; gaps require a durable snapshot refresh. */
+  readonly sequence: number;
+  readonly candle: ApiLiveCandle;
+}
+
+export interface ApiLiveCandle extends Omit<ApiCandle, "closed"> {
+  readonly closed: boolean;
+}
+
+export interface MarketRefreshRequiredMessage {
+  readonly schemaVersion: "v1";
+  readonly type: "market:refresh-required";
+  readonly subscriptionId: string;
+  readonly reason: "slow-client" | "notification-gap";
+}
+
+export type MarketRealtimeMessage =
+  | MarketSubscribeMessage
+  | MarketUnsubscribeMessage
+  | MarketSnapshotMessage
+  | MarketLiveMessage
+  | MarketRefreshRequiredMessage;
+
+function hasSubscriptionId(value: Readonly<Record<string, unknown>>): boolean {
+  return typeof value.subscriptionId === "string" && value.subscriptionId.trim().length > 0;
+}
+
+function hasMarketKey(value: Readonly<Record<string, unknown>>): boolean {
+  return typeof value.symbol === "string" && value.symbol.trim().length > 0 &&
+    API_TIMEFRAMES.includes(value.timeframe as ApiTimeframe);
+}
+
+function hasWatermark(value: Readonly<Record<string, unknown>>): boolean {
+  return Number.isSafeInteger(value.revisionWatermark) && Number(value.revisionWatermark) >= 0;
+}
+
+function isApiLiveCandle(value: unknown): value is ApiLiveCandle {
+  if (!isRecord(value)) return false;
+  return typeof value.provider === "string" && typeof value.symbol === "string" &&
+    API_TIMEFRAMES.includes(value.timeframe as ApiTimeframe) &&
+    isFiniteNumber(value.openTime) && isFiniteNumber(value.closeTime) &&
+    isFiniteNumber(value.open) && isFiniteNumber(value.high) &&
+    isFiniteNumber(value.low) && isFiniteNumber(value.close) &&
+    isFiniteNumber(value.volume) && typeof value.closed === "boolean" &&
+    Number.isSafeInteger(value.revision);
+}
+
+export function isMarketRealtimeMessage(value: unknown): value is MarketRealtimeMessage {
+  if (!isRecord(value) || value.schemaVersion !== "v1" || typeof value.type !== "string") {
+    return false;
+  }
+  if (value.type === "market:subscribe") return hasSubscriptionId(value) && hasMarketKey(value);
+  if (value.type === "market:unsubscribe") return hasSubscriptionId(value);
+  if (value.type === "market:snapshot") {
+    return hasSubscriptionId(value) && hasMarketKey(value) && hasWatermark(value) &&
+      Array.isArray(value.candles) && value.candles.every(isApiCandle);
+  }
+  if (value.type === "market:live") {
+    return hasMarketKey(value) && hasWatermark(value) &&
+      Number.isSafeInteger(value.sequence) && Number(value.sequence) >= 0 &&
+      isApiLiveCandle(value.candle);
+  }
+  return value.type === "market:refresh-required" && hasSubscriptionId(value) &&
+    (value.reason === "slow-client" || value.reason === "notification-gap");
+}
+
 export interface ApiCompositeCatalogEntry extends ApiCompositeStrategyDefinition {
   readonly descriptor: ApiStrategyDescriptor;
 }

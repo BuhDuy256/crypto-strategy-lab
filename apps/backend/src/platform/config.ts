@@ -22,6 +22,8 @@ export interface AppConfig {
   // Fixed Top-K size of every leaderboard projection. A project-wide value, not a
   // per-experiment field, so a rebuild always uses the same K.
   readonly leaderboard: { readonly topK: number };
+  readonly redis: { readonly url: string };
+  readonly websocket: { readonly maxOutboundMessages: number };
 }
 
 type RequiredEnvVar =
@@ -73,6 +75,17 @@ export function loadConfig(env: EnvSource = process.env): AppConfig {
   if (!Number.isInteger(leaderboardTopK) || leaderboardTopK <= 0) {
     throw new Error("Environment variable \"LEADERBOARD_TOP_K\" must be a positive integer.");
   }
+  const redisUrl = env.REDIS_URL ?? "redis://localhost:6379";
+  try {
+    const parsed = new URL(redisUrl);
+    if (parsed.protocol !== "redis:" && parsed.protocol !== "rediss:") throw new Error();
+  } catch {
+    throw new Error("Environment variable \"REDIS_URL\" must be a valid redis:// or rediss:// URL.");
+  }
+  const maxOutboundMessages = Number(env.WS_OUTBOUND_BUFFER_MAX ?? "32");
+  if (!Number.isSafeInteger(maxOutboundMessages) || maxOutboundMessages < 1) {
+    throw new Error("Environment variable \"WS_OUTBOUND_BUFFER_MAX\" must be a positive integer.");
+  }
 
   return {
     postgres: {
@@ -83,6 +96,8 @@ export function loadConfig(env: EnvSource = process.env): AppConfig {
       database
     },
     backtestRunner: { concurrency },
-    leaderboard: { topK: leaderboardTopK }
+    leaderboard: { topK: leaderboardTopK },
+    redis: { url: redisUrl },
+    websocket: { maxOutboundMessages }
   };
 }

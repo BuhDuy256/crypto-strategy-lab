@@ -22,7 +22,9 @@ describe("loadConfig", () => {
         database: "crypto_strategy_lab"
       },
       backtestRunner: { concurrency: 1 },
-      leaderboard: { topK: 10 }
+      leaderboard: { topK: 10 },
+      redis: { url: "redis://localhost:6379" },
+      websocket: { maxOutboundMessages: 32 }
     });
   });
 
@@ -59,5 +61,13 @@ describe("loadConfig", () => {
       .toEqual({ topK: 25 });
     expect(() => loadConfig({ ...VALID_ENV, LEADERBOARD_TOP_K: "0" }))
       .toThrow(/LEADERBOARD_TOP_K/);
+  });
+
+  it("validates Redis and outbound buffer configuration", () => {
+    expect(loadConfig({ ...VALID_ENV, REDIS_URL: "redis://redis:6379" }).redis)
+      .toEqual({ url: "redis://redis:6379" });
+    expect(() => loadConfig({ ...VALID_ENV, REDIS_URL: "http://redis" })).toThrow(/REDIS_URL/);
+    expect(() => loadConfig({ ...VALID_ENV, WS_OUTBOUND_BUFFER_MAX: "0" }))
+      .toThrow(/WS_OUTBOUND_BUFFER_MAX/);
   });
 });

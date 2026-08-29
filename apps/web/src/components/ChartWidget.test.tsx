@@ -3,11 +3,11 @@
 
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getCandleHistory } from "../api/client.js";
 import { ChartWidget } from "./ChartWidget.js";
 
-vi.mock("../api/client.js", () => ({
-  getCandleHistory: vi.fn()
+const { subscribe } = vi.hoisted(() => ({ subscribe: vi.fn() }));
+vi.mock("../api/market-realtime-client.js", () => ({
+  getMarketRealtimeClient: () => ({ subscribe })
 }));
 
 vi.mock("./CandlestickChart.js", () => ({
@@ -21,15 +21,21 @@ afterEach(() => {
 
 describe("ChartWidget data states", () => {
   it("shows a loading state while candle history is pending", () => {
-    vi.mocked(getCandleHistory).mockImplementation(() => new Promise(() => undefined));
+    subscribe.mockReturnValue(() => undefined);
 
     render(<ChartWidget id="chart-1" initialTimeframe="5m" />);
 
     expect(screen.getByText("Loading market data...")).not.toBeNull();
   });
 
-  it("shows an empty state when the candle API returns no history", async () => {
-    vi.mocked(getCandleHistory).mockResolvedValue({ candles: [] });
+  it("shows an empty state when the durable snapshot has no history", async () => {
+    subscribe.mockImplementation((_request, handlers) => {
+      handlers.onSnapshot({
+        schemaVersion: "v1", type: "market:snapshot", subscriptionId: "chart-1",
+        symbol: "BTCUSDT", timeframe: "5m", revisionWatermark: 0, candles: []
+      });
+      return () => undefined;
+    });
 
     render(<ChartWidget id="chart-1" initialTimeframe="5m" />);
 
@@ -38,8 +44,11 @@ describe("ChartWidget data states", () => {
     ).not.toBeNull();
   });
 
-  it("shows the API error instead of hiding a failed candle request", async () => {
-    vi.mocked(getCandleHistory).mockRejectedValue(new Error("market history unavailable"));
+  it("shows the gateway error instead of hiding a failed snapshot", async () => {
+    subscribe.mockImplementation((_request, handlers) => {
+      handlers.onError("market history unavailable");
+      return () => undefined;
+    });
 
     render(<ChartWidget id="chart-1" initialTimeframe="5m" />);
 

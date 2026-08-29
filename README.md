@@ -7,7 +7,7 @@ Crypto Strategy Lab is an architecture-first platform for crypto market data, st
 - **Architecture:** `FROZEN v1.2`
 - **Validation:** `PENDING IMPLEMENTATION PROOFS`
 - **Implementation:** `IN PROGRESS`
-- **Current product version:** `V2`
+- **Current product version:** `V4`
 
 `FROZEN ≠ PROVEN`: the baseline is normative for implementation, but its proof obligations still require implementation evidence.
 
@@ -442,3 +442,16 @@ docker compose down
 
 Candle and result data persist in the `postgres_data` volume across
 `down` / `up`. Add `-v` only to permanently delete local data.
+# Realtime delivery in V4
+
+The API exposes Socket.IO WebSocket transport at `/ws`. Each market subscription
+has its own identifier, symbol, and timeframe. The server reads a PostgreSQL
+snapshot first, then forwards matching Redis Pub/Sub notifications. Redis is
+ephemeral and is never proof that a candle was stored or delivered.
+
+`WS_OUTBOUND_BUFFER_MAX` defaults to 32 messages per subscription, and each client
+may hold at most four subscriptions. When a client
+cannot accept messages and the bound is exceeded, the API disconnects that client.
+Socket.IO reconnects it and every active subscription requests a new PostgreSQL
+snapshot before live delivery resumes. This prevents unbounded memory use and
+repairs missed notifications without Redis persistence.

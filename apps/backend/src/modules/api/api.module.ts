@@ -23,6 +23,9 @@ import { SpecificationController } from "./specification.controller.js";
 import { SearchController } from "./search.controller.js";
 import { SearchExperimentController } from "./search-experiment.controller.js";
 import { LeaderboardController } from "./leaderboard.controller.js";
+import { MarketRealtimeGateway } from "./market-realtime.gateway.js";
+import { RedisLiveNotificationSubscriber } from "../../platform/realtime/redis-live-notifications.js";
+import { loadConfig } from "../../platform/config.js";
 
 // Drives the search host across the API process lifecycle: resume running
 // experiments on start (a coordinator restart recovers from durable state), and
@@ -36,6 +39,17 @@ class SearchExperimentLifecycle implements OnApplicationBootstrap, OnApplication
 
   onApplicationShutdown(): void {
     this.host.stopAll();
+  }
+}
+
+class RealtimeLifecycle implements OnApplicationShutdown {
+  constructor(
+    @Inject(RedisLiveNotificationSubscriber)
+    private readonly subscriber: RedisLiveNotificationSubscriber
+  ) {}
+
+  async onApplicationShutdown(): Promise<void> {
+    await this.subscriber.close();
   }
 }
 
@@ -53,6 +67,18 @@ class SearchExperimentLifecycle implements OnApplicationBootstrap, OnApplication
     LeaderboardController
   ],
   providers: [
+    {
+      provide: RedisLiveNotificationSubscriber,
+      useFactory: () => new RedisLiveNotificationSubscriber(
+        loadConfig().redis.url, new StructuredLogger("api")
+      )
+    },
+    {
+      provide: "WS_OUTBOUND_BUFFER_MAX",
+      useFactory: () => loadConfig().websocket.maxOutboundMessages
+    },
+    MarketRealtimeGateway,
+    RealtimeLifecycle,
     {
       provide: SearchExperimentHost,
       inject: [SearchCoordinator],

@@ -1768,3 +1768,59 @@ down -v` and a clean volume, then `docker compose up --build` and one
 - V3 Discovery: the search filled a four-row leaderboard with no
   `leaderboard:rebuild`, and opening the top entry showed its chart, markers,
   trades, and the full provenance checklist without unmounting.
+
+---
+
+## V4 - Realtime Market Data
+
+### 2026-08-29 — V4 — WS-03 completed
+
+WS-03 put Redis into the local topology and gave the API a Socket.IO gateway, a
+subscription registry, and a post-commit publisher. It is the first slice where a
+live notification crosses a process boundary, so it fixes the pattern that MKT-06
+will carry real candles through.
+
+**The ordering rule this slice establishes**
+
+Commit to PostgreSQL first, publish to Redis second, and never treat the publish
+as evidence of delivery. `CommittedLivePublisher` enforces that order: a failed
+commit never publishes, and a failed publish is logged without rolling back state
+that is already durable. Recovery is always a fresh PostgreSQL snapshot, never a
+replayed message. That is why this Redis instance has no AOF, no RDB file, and no
+volume. Losing a notification is already handled. SETUP-08 adds persistence in V6,
+when BullMQ makes it a correctness requirement rather than a convenience.
+
+A subscription is keyed by subscription identifier, symbol, and timeframe. A
+sequence gap, a reconnect, or Redis subscriber readiness all force the same
+response: drop back to the snapshot phase and re-read durable state before
+delivering anything live. Each client holds at most four subscriptions, matching
+the four charts V4 shows, and each subscription has a bounded outbound queue.
+Overflow or an unwritable socket disconnects the client, because reconnect
+recovers correctly by snapshot and an unbounded buffer does not.
+
+**Validation**
+
+Acceptance criteria 1 through 5 were proven in a real browser by
+`pnpm run smoke:ws03`, against Compose `api` and `web` images rebuilt from the
+final code. Criterion 6 is not observable from a browser and is covered by the
+registry unit tests. Backend: 64 files, 361 tests. SPA and contracts: 10 files,
+60 tests. Root typecheck, lint, and `git diff --check` pass.
+
+**Two operational facts worth knowing before reading a failure here as a defect**
+
+The backend integration tests drop and recreate the PostgreSQL schema, which
+deletes seeded demo data. The first smoke run after the backend suite failed with
+`WS03_SMOKE_DATA` for exactly that reason. Re-run `pnpm run demo:seed` before any
+browser smoke or demo that follows a backend suite run.
+
+The smoke deliberately stops Redis to prove criterion 4, so
+`Redis live publisher error` warnings during that window are the designed
+behaviour, not a fault. The smoke starts Redis again when it finishes.
+
+**Carried forward**
+
+The registry stores subscription state under a NUL-delimited composite string key
+rather than a nested structure. It is contained inside one private method and does
+not affect behaviour, so it was left as is. The coherent WS-03 diff has not been
+through the two-axis review since the last round of fixes, and it is not yet
+committed. Both belong before MKT-06 starts.

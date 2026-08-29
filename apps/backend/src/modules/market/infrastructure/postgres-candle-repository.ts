@@ -7,6 +7,11 @@ import type {
   MarketDataQuery,
   MarketDataRangeRequest
 } from "../application/market-data-query.js";
+import type {
+  MarketSnapshot,
+  MarketSnapshotQuery,
+  MarketSnapshotRequest
+} from "../application/market-snapshot-query.js";
 import {
   assertHistoricalCandleSeries,
   type Candle
@@ -76,7 +81,7 @@ const CANDLE_COLUMNS = `
 `;
 
 /** Internal SQL adapter; consumers outside Market Data receive only MarketDataQuery. */
-export class PostgresCandleRepository implements MarketDataQuery {
+export class PostgresCandleRepository implements MarketDataQuery, MarketSnapshotQuery {
   constructor(private readonly pool: Pool) {}
 
   async append(candle: Candle): Promise<Candle> {
@@ -265,5 +270,47 @@ export class PostgresCandleRepository implements MarketDataQuery {
       ]
     );
     return result.rows.map((row) => mapRow(row).candle);
+  }
+
+  async getLatestSnapshot(request: MarketSnapshotRequest): Promise<MarketSnapshot> {
+    if (!Number.isSafeInteger(request.limit) || request.limit < 1 || request.limit > 10_000) {
+      throw new Error("MARKET_SNAPSHOT_LIMIT: limit must be between 1 and 10000");
+    }
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
+        WRITE_LOCK_NAME
+      ]);
+      const watermark = await client.query<{ watermark: string }>(
+        `SELECT COALESCE(MAX(ingest_sequence), 0)::text AS watermark
+         FROM market.candles WHERE provider = $1 AND symbol = $2 AND timeframe = $3`,
+        [request.provider, request.symbol, request.timeframe]
+      );
+      const result = await client.query<CandleRow>(
+        `
+          WITH current_candles AS (
+            SELECT DISTINCT ON (provider, symbol, timeframe, open_time) ${CANDLE_COLUMNS}
+            FROM market.candles
+            WHERE provider = $1 AND symbol = $2 AND timeframe = $3
+            ORDER BY provider, symbol, timeframe, open_time, revision DESC
+          ), latest AS (
+            SELECT * FROM current_candles ORDER BY open_time DESC LIMIT $4
+          )
+          SELECT * FROM latest ORDER BY open_time ASC
+        `,
+        [request.provider, request.symbol, request.timeframe, request.limit]
+      );
+      await client.query("COMMIT");
+      return {
+        candles: result.rows.map((row) => mapRow(row).candle),
+        revisionWatermark: Number(watermark.rows[0]?.watermark ?? 0)
+      };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 }

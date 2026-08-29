@@ -4,7 +4,8 @@ export { MarketModule } from "./market.module.js";
 export {
   DATASET_SERVICE,
   MARKET_DATA_PROVIDER,
-  MARKET_DATA_QUERY
+  MARKET_DATA_QUERY,
+  MARKET_SNAPSHOT_QUERY
 } from "./application/tokens.js";
 export { MarketBackfillService } from "./application/market-backfill-service.js";
 export {
@@ -25,3 +26,8 @@ export type {
   MarketDataQuery,
   MarketDataRangeRequest
 } from "./application/market-data-query.js";
+export type {
+  MarketSnapshot,
+  MarketSnapshotQuery,
+  MarketSnapshotRequest
+} from "./application/market-snapshot-query.js";

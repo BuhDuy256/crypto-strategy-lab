@@ -18,14 +18,15 @@ true; keep conversation out of them.
 | Field | Value |
 |---|---|
 | Implementation status | `IN PROGRESS - V1-V3 BASELINE CERTIFIED` |
-| Current target version | **V2 - Extensible Strategy Engine** |
-| Previous version | **V1 - Manual Backtest Workbench: certified in the V1-V3 baseline-freeze state on 2026-08-29.** |
+| Current target version | **V4 - Realtime Market Data** |
+| Previous version | **V3 - Automated Discovery: frozen at `v3.1-demo` on 2026-08-29.** |
 | Last verified commit | The commit tagged `v3.1-demo` on `feat/v3-automated-discovery`. |
-| Next allowed action | Set `CURRENT PRODUCT VERSION` in `AGENTS.md` (still `V2`) and set the target version below. Until the owner does both, no V4 implementation is authorized; the `v4-realtime-market-data` branch is a handoff boundary only. |
+| Next allowed action | Review and commit the `WS-03` diff. `MKT-06` is the next `READY` slice; start it in a separate session. |
 | Last verified on | 2026-08-29 (V1/V2 functional certification, V3 regression, baseline freeze, and the two freeze repairs below) |
 | Last tag | `v3.1-demo`, the certified V1-V3 baseline, on `feat/v3-automated-discovery`. `v3.0-demo` still points at `2b98139` and was deliberately left there: it marks what was *claimed* demoable, on a baseline whose V1 and V2 regressions do not pass. Both tags are on origin. `v1.0-demo` and `v2.0-demo` do not exist. |
 | V3 slices | 8 (`DONE` 8, `READY` 0, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 0) — V3's own scope and its V1+V2 regression condition pass in the baseline-freeze state. |
-| History | [`JOURNAL.md`](JOURNAL.md), sections "V1", "V3", "V1/V2 recovery", "V1-V3 freeze repairs", and "Demo data prerequisite". The recovery entry records the durable V2 decisions that were missing from the original history. |
+| V4 slices | 5 (`DONE` 1, `READY` 1, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 3) — `WS-03` is done; `MKT-06` is the next `READY` slice. |
+| History | [`JOURNAL.md`](JOURNAL.md), sections "V1", "V3", "V1/V2 recovery", "V1-V3 freeze repairs", "Demo data prerequisite", and "V4". The recovery entry records the durable V2 decisions that were missing from the original history. |
 
 ## V1/V2 recovery (opened 2026-08-28)
 
@@ -385,11 +386,28 @@ Demo contract: [`VERSIONS.md` V4](VERSIONS.md#v4---realtime-market-data)
 
 | ID | Priority | Effort | Slice | Status | Depends on | Plan |
 |---|---|---|---|---|---|---|
-| WS-03 | REQ | M | WebSocket gateway, Redis, Pub/Sub fan-out | TODO | SETUP-06, MKT-04 | [00](00-setup-and-walking-skeleton.md) |
-| MKT-06 | REQ | L | Binance live ingest process | TODO | MKT-03, WS-03 | [01](01-market-and-realtime.md) |
+| WS-03 | REQ | M | WebSocket gateway, Redis, Pub/Sub fan-out | **DONE** | SETUP-06, MKT-04 | [00](00-setup-and-walking-skeleton.md) |
+| MKT-06 | REQ | L | Binance live ingest process | **READY** | MKT-03, WS-03 | [01](01-market-and-realtime.md) |
 | MKT-07 | REQ | M | Chart subscription protocol | TODO | MKT-06, MKT-05 | [01](01-market-and-realtime.md) |
 | MKT-11 | REQ | M | Four live chart subscriptions | TODO | MKT-07, MKT-08 | [01](01-market-and-realtime.md) |
 | MKT-09 | REQ | L | Gap detection, recovery, provider health | TODO | MKT-06, MKT-02 | [01](01-market-and-realtime.md) |
+
+WS-03 evidence: Redis joined the Compose topology, the API gained a Socket.IO gateway with a
+subscription registry, and the SPA consumes snapshot-then-live over WebSocket. Acceptance criteria
+1-5 were proven in a real browser by `pnpm run smoke:ws03` against Compose `api`/`web` images
+rebuilt from this code: four durable snapshots before any live message, a post-commit live update
+reaching only the matching subscription, an untouched second subscription on a different key,
+fresh snapshots after reconnect, and a durable snapshot still served with Redis stopped. Criterion
+6 (bounded outbound buffer, slow-client disconnect) is not browser-observable and is covered by the
+registry unit tests. Backend suite: 64 files, 361 tests pass. SPA and contracts: 10 files, 60 tests
+pass. Root typecheck, lint, and `git diff --check` pass.
+
+Note for the next session: the backend integration tests drop and recreate the PostgreSQL schema,
+which deletes demo data. Run `pnpm run demo:seed` again before any browser smoke or demo that
+follows a backend suite run.
+
+The coherent WS-03 diff has not been through the two-axis review since the last fixes, and it is
+not committed. Do both before starting `MKT-06`.
 
 | ID | Proof | Status | Prerequisites |
 |---|---|---|---|
