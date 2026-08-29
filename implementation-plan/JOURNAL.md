@@ -1827,3 +1827,105 @@ The slice was committed at `7bc5bf3` without a two-axis review. The review was
 skipped deliberately to conserve budget, not overlooked, so this diff carries no
 review record. Anyone auditing V4 later should read WS-03 as validated by tests
 and browser smoke only.
+
+
+### MKT-06 - Binance live ingest process
+
+**What was built**
+
+A separate `market-ingest` process role. `apps/backend/src/main.market-ingest.ts`
+starts it, `market-ingest.module.ts` is its own narrow composition root, and
+`MarketIngestRuntime` owns which streams the role holds. It joins Compose as the
+`market-ingest` service, so the V4 topology now starts the role the WS-03 comment
+said was deliberately absent.
+
+**The decision that shapes the code: two channels, one place**
+
+A Binance kline arrives with a boolean `x`. That single flag separates two things
+that are different in kind, so exactly one function decides it -
+`liveCandleChannel` in `market-live-ingest-service.ts`:
+
+```text
+x = false -> candle.tick   -> published, never stored, no durable side effect
+x = true  -> candle.closed -> committed to PostgreSQL first, announced after
+```
+
+Everything else follows. The tick path calls no store at all, and the durable
+write path independently refuses a candle that is not closed, so a later caller
+cannot smuggle a forming candle into a dataset even by mistake.
+
+**Notification sequence is seeded from the wall clock**
+
+The API drops a live message whose sequence is not greater than the last one it
+saw, and asks for a fresh durable snapshot when it sees a jump. A counter that
+restarted at zero would therefore make a restarted ingest process invisible to
+every already-connected client. Seeding the counter from `Date.now()` turns a
+restart into a jump instead, which the API already handles by refreshing the
+snapshot. Losing a notification costs a chart one update; going silently deaf
+would not have been recoverable.
+
+**`ws` was added as a real dependency**
+
+`ws` is now a backend dependency and a root dev dependency, and `pnpm-lock.yaml`
+changed with it. Two reasons for `ws` over the platform WebSocket: it works on the
+Node version the engines field allows, and it reports the ping frame. Binance drops
+a connection that has not answered a ping within a minute, so "we answer pings" had
+to be observable rather than implicit. Anyone regenerating `DEPENDENCY_LOCK_HASH`
+from the lock file must do it again after this change.
+
+**Deliberately not built here**
+
+Reconnect, backoff, gap detection, and provider health are `MKT-09`. A closed
+connection is reported to the registry, which ends every subscriber stream; the
+process then stops rather than pretending to be healthy. This is the documented
+boundary of `MKT-06`, not an omission.
+
+**Redis-down root cause and fix**
+
+The first Redis-down tests exposed two separate starvation paths. Tick publication was
+initially sequential, so a slow tick could stop a closed kline from reaching the commit
+path. Making ticks non-blocking removed that path and kept at most one tick publication
+in flight per stream.
+
+Instrumentation then found the remaining defect. A closed kline reached `handle`,
+`appendClosed` completed, and only the notification step stopped progressing. The Redis
+publisher client was open but not ready while node-redis retried the connection forever;
+the publish promise did not settle, so the sequential stream consumer never processed
+the next candle. The publisher now disables its offline queue and automatic reconnect,
+bounds each publication to one second, and destroys the client on timeout so the
+underlying connection and command settle too. Recovery remains simple: the next market
+update makes a new best-effort connection attempt. The subscriber and its WS-03 snapshot
+recovery behaviour did not change.
+
+The earlier zero-row Redis-down runs were not reproduced under instrumentation: the
+instrumented run committed its first closed candle before blocking in publication. The
+confirmed defect was still sufficient to fail acceptance criterion 7 because later
+closed candles could not continue. Final validation below proves the required continuing
+behaviour directly.
+
+**Validation**
+
+The original Redis-available run ingested two closed 1m candles from real Binance,
+answered server pings, and stored no forming tick. The final Redis-down run on
+2026-08-29 inspected the database before and after two consecutive closed intervals:
+
+```text
+before: 1 row for BTCUSDT 1m
+after:  3 rows
+new:    open times 1788006480000 and 1788006540000, both revision 1,
+        closed = true, one row per logical identity
+```
+
+Every notification failed as expected while Redis was stopped, but both commits
+completed and ingest continued across the second close. After Redis restarted, the
+publisher integration test passed and live ingest committed the next observed candle,
+open time `1788006660000`, without a notification warning.
+
+The deterministic regression uses an endpoint that accepts TCP but never completes a
+Redis handshake. Two publication attempts each settle at the one-second bound. The
+service regression holds one tick publication unresolved while later notifications
+fail, commits two consecutive closed candles, and observes no more than two publications
+in flight. The final backend Market/realtime suite passes at 12 files and 85 tests.
+Backend typecheck, scoped lint, Compose config, and `git diff --check` pass. A two-axis
+review could not run because its required committed three-dot diff is empty and this
+session was explicitly not authorized to commit.

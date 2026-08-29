@@ -24,6 +24,13 @@ export interface AppConfig {
   readonly leaderboard: { readonly topK: number };
   readonly redis: { readonly url: string };
   readonly websocket: { readonly maxOutboundMessages: number };
+  // Which live streams the market ingest process holds open. One symbol and a
+  // timeframe list, because a Binance connection carries many streams at once.
+  readonly marketIngest: {
+    readonly symbol: string;
+    readonly timeframes: readonly string[];
+    readonly streamBaseUrl: string;
+  };
 }
 
 type RequiredEnvVar =
@@ -86,6 +93,24 @@ export function loadConfig(env: EnvSource = process.env): AppConfig {
   if (!Number.isSafeInteger(maxOutboundMessages) || maxOutboundMessages < 1) {
     throw new Error("Environment variable \"WS_OUTBOUND_BUFFER_MAX\" must be a positive integer.");
   }
+  const ingestSymbol = (env.MARKET_INGEST_SYMBOL ?? "BTCUSDT").trim();
+  if (ingestSymbol === "") {
+    throw new Error("Environment variable \"MARKET_INGEST_SYMBOL\" must not be empty.");
+  }
+  const ingestTimeframes = (env.MARKET_INGEST_TIMEFRAMES ?? "1m,5m,15m,30m,1h,2h,4h,1d")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry !== "");
+  if (ingestTimeframes.length === 0) {
+    throw new Error("Environment variable \"MARKET_INGEST_TIMEFRAMES\" must name at least one timeframe.");
+  }
+  const streamBaseUrl = env.BINANCE_STREAM_URL ?? "wss://data-stream.binance.vision";
+  try {
+    const parsed = new URL(streamBaseUrl);
+    if (parsed.protocol !== "ws:" && parsed.protocol !== "wss:") throw new Error();
+  } catch {
+    throw new Error("Environment variable \"BINANCE_STREAM_URL\" must be a valid ws:// or wss:// URL.");
+  }
 
   return {
     postgres: {
@@ -98,6 +123,7 @@ export function loadConfig(env: EnvSource = process.env): AppConfig {
     backtestRunner: { concurrency },
     leaderboard: { topK: leaderboardTopK },
     redis: { url: redisUrl },
-    websocket: { maxOutboundMessages }
+    websocket: { maxOutboundMessages },
+    marketIngest: { symbol: ingestSymbol, timeframes: ingestTimeframes, streamBaseUrl }
   };
 }

@@ -24,8 +24,40 @@ describe("loadConfig", () => {
       backtestRunner: { concurrency: 1 },
       leaderboard: { topK: 10 },
       redis: { url: "redis://localhost:6379" },
-      websocket: { maxOutboundMessages: 32 }
+      websocket: { maxOutboundMessages: 32 },
+      marketIngest: {
+        symbol: "BTCUSDT",
+        timeframes: ["1m", "5m", "15m", "30m", "1h", "2h", "4h", "1d"],
+        streamBaseUrl: "wss://data-stream.binance.vision"
+      }
     });
+  });
+
+  it("reads the ingest stream set from the environment", () => {
+    const config = loadConfig({
+      ...VALID_ENV,
+      MARKET_INGEST_SYMBOL: "BTCUSDT",
+      MARKET_INGEST_TIMEFRAMES: " 1m , 5m ",
+      BINANCE_STREAM_URL: "ws://127.0.0.1:9001"
+    });
+
+    expect(config.marketIngest).toEqual({
+      symbol: "BTCUSDT",
+      timeframes: ["1m", "5m"],
+      streamBaseUrl: "ws://127.0.0.1:9001"
+    });
+  });
+
+  it("rejects an ingest stream set that names no timeframe", () => {
+    expect(() => loadConfig({ ...VALID_ENV, MARKET_INGEST_TIMEFRAMES: " , " })).toThrow(
+      /MARKET_INGEST_TIMEFRAMES/
+    );
+  });
+
+  it("rejects a stream URL that is not a WebSocket URL", () => {
+    expect(() => loadConfig({ ...VALID_ENV, BINANCE_STREAM_URL: "https://example.com" })).toThrow(
+      /BINANCE_STREAM_URL/
+    );
   });
 
   it("throws a clear error naming the missing variable", () => {

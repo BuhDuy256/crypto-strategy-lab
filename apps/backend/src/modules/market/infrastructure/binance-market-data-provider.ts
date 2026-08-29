@@ -17,6 +17,11 @@ import {
   type BinanceHttpClient,
   type BinanceHttpResponse
 } from "./binance-http-client.js";
+import {
+  BinanceKlineStreamClient,
+  type BinanceStreamLogger
+} from "./binance-kline-stream.js";
+import { BinanceLiveSubscriptionRegistry } from "./binance-live-subscriptions.js";
 
 const PROVIDER_ID = "binance";
 const DEFAULT_BASE_URL = "https://data-api.binance.vision";
@@ -35,6 +40,9 @@ export interface BinanceMarketDataProviderOptions {
   readonly baseUrl?: string;
   readonly now?: () => number;
   readonly sleep?: (delayMs: number) => Promise<void>;
+  /** WebSocket origin for live klines. Live subscription stays off unless set or defaulted. */
+  readonly streamBaseUrl?: string;
+  readonly streamLogger?: BinanceStreamLogger;
 }
 
 export class BinanceMarketDataProvider implements MarketDataProvider {
@@ -42,12 +50,18 @@ export class BinanceMarketDataProvider implements MarketDataProvider {
   private readonly baseUrl: string;
   private readonly now: () => number;
   private readonly sleep: (delayMs: number) => Promise<void>;
+  private readonly liveStreams: BinanceLiveSubscriptionRegistry;
 
   constructor(options: BinanceMarketDataProviderOptions = {}) {
     this.httpClient = options.httpClient ?? new FetchBinanceHttpClient();
     this.baseUrl = options.baseUrl ?? DEFAULT_BASE_URL;
     this.now = options.now ?? Date.now;
     this.sleep = options.sleep ?? sleep;
+    this.liveStreams = new BinanceLiveSubscriptionRegistry(() => new BinanceKlineStreamClient({
+      ...(options.streamBaseUrl !== undefined ? { baseUrl: options.streamBaseUrl } : {}),
+      ...(options.streamLogger !== undefined ? { logger: options.streamLogger } : {}),
+      provider: PROVIDER_ID
+    }));
   }
 
   async fetchHistorical(request: HistoricalCandlesRequest): Promise<readonly Candle[]> {
@@ -104,13 +118,18 @@ export class BinanceMarketDataProvider implements MarketDataProvider {
     return candles;
   }
 
+  /**
+   * Live klines for one symbol and timeframe. Forming and closed candles both
+   * arrive here; the caller decides durability from the `closed` flag.
+   */
   subscribeLive(request: LiveCandlesRequest): AsyncIterable<Candle> {
     this.assertSupported(request.symbol, request.timeframe);
-    throw new MarketDataProviderError(
-      "NOT_SUPPORTED",
-      PROVIDER_ID,
-      "Binance live subscriptions are not implemented in V1."
-    );
+    return this.liveStreams.subscribe(request);
+  }
+
+  /** Releases the shared live connection. Historical fetching is unaffected. */
+  closeLiveStreams(): void {
+    this.liveStreams.close();
   }
 
   async getHealth(): Promise<ProviderHealth> {

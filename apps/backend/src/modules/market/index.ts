@@ -1,6 +1,8 @@
 // Public surface of the market module. Nothing else in this module is
 // importable from outside it.
 export { MarketModule } from "./market.module.js";
+export { MarketIngestModule } from "./market-ingest.module.js";
+export { MarketIngestRuntime } from "./application/market-ingest-runtime.js";
 export {
   DATASET_SERVICE,
   MARKET_DATA_PROVIDER,

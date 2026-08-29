@@ -60,7 +60,7 @@ function assertFinite(value: number, field: string): void {
   }
 }
 
-function assertHistoricalCandle(candle: Candle): void {
+function assertCandleShape(candle: Candle, requireClosed: boolean): void {
   const duration = timeframeDurationMs(candle.timeframe);
   if (!Number.isInteger(candle.openTime) || candle.openTime % duration !== 0) {
     fail(
@@ -97,12 +97,23 @@ function assertHistoricalCandle(candle: Candle): void {
   if (!Number.isFinite(candle.volume) || candle.volume < 0) {
     fail("CANDLE_VOLUME_NON_NEGATIVE", `volume must be finite and non-negative, got ${candle.volume}`);
   }
-  if (!candle.closed) {
+  if (requireClosed && !candle.closed) {
     fail("CANDLE_NOT_CLOSED", "historical series may contain only closed candles");
   }
   if (!Number.isSafeInteger(candle.revision) || candle.revision < 1) {
     fail("CANDLE_REVISION", `revision must be a positive safe integer, got ${candle.revision}`);
   }
+}
+
+/**
+ * Validates one normalized live candle at the provider seam.
+ *
+ * A live candle may still be forming, so the closed flag is reported rather than
+ * required. Every other rule - alignment, OHLC order, volume, revision - is the
+ * same rule the historical path applies.
+ */
+export function assertLiveCandle(candle: Candle): void {
+  assertCandleShape(candle, false);
 }
 
 /** Validates normalized historical output at the provider seam. */
@@ -111,7 +122,7 @@ export function assertHistoricalCandleSeries(candles: readonly Candle[]): void {
   let previousIdentity: string | undefined;
 
   for (const candle of candles) {
-    assertHistoricalCandle(candle);
+    assertCandleShape(candle, true);
     const identity = candleIdentity(candle);
     if (
       previousOpenTime !== undefined &&
