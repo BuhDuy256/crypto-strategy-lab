@@ -1821,6 +1821,9 @@ behaviour, not a fault. The smoke starts Redis again when it finishes.
 
 The registry stores subscription state under a NUL-delimited composite string key
 rather than a nested structure. It is contained inside one private method and does
-not affect behaviour, so it was left as is. The coherent WS-03 diff has not been
-through the two-axis review since the last round of fixes, and it is not yet
-committed. Both belong before MKT-06 starts.
+not affect behaviour, so it was left as is.
+
+The slice was committed at `7bc5bf3` without a two-axis review. The review was
+skipped deliberately to conserve budget, not overlooked, so this diff carries no
+review record. Anyone auditing V4 later should read WS-03 as validated by tests
+and browser smoke only.
