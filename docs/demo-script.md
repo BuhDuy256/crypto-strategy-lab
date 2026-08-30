@@ -5,8 +5,9 @@ person follows to show each version end to end on the full-system Compose topolo
 (see the README's "Full-system integration and demo path"). Each version updates it
 as part of `DEMO-01`.
 
-Current certified baseline: **V1 through V4**. Repository product authorization
-remains **V4**; this evidence script does not advance it. Demo scenario sources are in
+Current certified baseline: **V1 through V4**, frozen at `v4.0-demo`. Repository
+product authorization is now **V5**; this evidence script records what is certified
+and does not advance it. Demo scenario sources are in
 [`implementation-plan/VERSIONS.md`](../implementation-plan/VERSIONS.md).
 
 ## Before you start

@@ -18,15 +18,40 @@ true; keep conversation out of them.
 | Field | Value |
 |---|---|
 | Implementation status | `IN PROGRESS - V1-V4 BASELINE CERTIFIED` |
-| Current target version | **V4 - Realtime Market Data** |
-| Previous version | **V3 - Automated Discovery: frozen at `v3.1-demo` on 2026-08-29.** |
-| Last verified commit | The V4 release commit tagged `v4.0-demo` on `v4-realtime-market-data`. |
-| Next allowed action | Stop implementation work. V4 is frozen at `v4.0-demo`; V5 remains separate owner-directed work and is not authorized by this freeze. |
+| Current target version | **V5 - News and Sentiment** |
+| Previous version | **V4 - Realtime Market Data: frozen at `v4.0-demo` on 2026-08-30.** V3 was frozen at `v3.1-demo` on 2026-08-29. |
+| Last verified commit | `5f2f7af`, the V4 release commit tagged `v4.0-demo`. `v5-news-and-sentiment` starts from it; no V5 code exists yet. |
+| Next allowed action | Take `NEWS-01`, the only `READY` V5 slice. `NEWS-02` and `NEWS-04` are `BLOCKED` on owner decisions (news sources, sentiment model) that can be resolved in parallel. |
 | Last verified on | 2026-08-30 (V4 final regression, Compose demo, `PROOF-RT-001`, and Definition of Demoable). |
 | Last tag | `v4.0-demo`, the certified V1-V4 baseline, on `v4-realtime-market-data`. `v3.1-demo` remains the certified V1-V3 baseline on `feat/v3-automated-discovery`; `v3.0-demo` deliberately remains on `2b98139`. `v1.0-demo` and `v2.0-demo` do not exist. |
 | V3 slices | 8 (`DONE` 8, `READY` 0, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 0) — V3's own scope and its V1+V2 regression condition pass in the baseline-freeze state. |
 | V4 slices | 5 (`DONE` 5, `READY` 0, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 0) — `WS-03`, `MKT-06`, `MKT-07`, `MKT-09`, and `MKT-11` are done. |
-| History | [`JOURNAL.md`](JOURNAL.md), sections "V1", "V3", "V1/V2 recovery", "V1-V3 freeze repairs", "Demo data prerequisite", and "V4". The recovery entry records the durable V2 decisions that were missing from the original history. |
+| V5 slices | 7 required plus 1 optional (`DONE` 0, `READY` 1, `IN_PROGRESS` 0, `BLOCKED` 2, `TODO` 5) — `NEWS-01` is ready; `NEWS-02` and `NEWS-04` are blocked on owner decisions. |
+| History | [`JOURNAL.md`](JOURNAL.md), sections "V1", "V3", "V1/V2 recovery", "V1-V3 freeze repairs", "Demo data prerequisite", and "V4". The V4 -> V5 transition below records the version handover. The recovery entry records the durable V2 decisions that were missing from the original history. |
+
+## V4 -> V5 transition (2026-08-30)
+
+Target moved to V5 by the owner. This is an explicit owner decision, not an agent
+action. The agent verified the five version-authorization conditions in `AGENTS.md`
+against the repository before the handover, at commit `5f2f7af` with a clean tree:
+
+- All five V4 slices (`WS-03`, `MKT-06`, `MKT-07`, `MKT-09`, `MKT-11`) are `DONE`
+  and present in code.
+- Every V4 Definition-of-Demoable condition passes; see the V4 release gate section.
+- The V4 demo scenario ran end to end on the topology brought up through the
+  documented Docker Compose path, not on host processes.
+- `PROOF-RT-001` passed and is recorded under `docs/validation/evidence/`.
+- Git, code, and tests agree: 94 test files and 544 tests pass, governance passes on
+  a clean checkout of the release commit, and `v4.0-demo` points at `5f2f7af`.
+
+Open items carried into V5. They do not reopen V4, which is frozen and demoable, but
+someone must decide them before the slices they block can start:
+
+- `NEWS-02` needs approved concrete news sources.
+- `NEWS-04` needs a chosen sentiment model or service.
+
+V5 work starts on branch `v5-news-and-sentiment`, branched from `5f2f7af`. The V4
+branch stays at the frozen release commit.
 
 ## V1/V2 recovery (opened 2026-08-28)
 
@@ -646,10 +671,10 @@ Demo contract: [`VERSIONS.md` V5](VERSIONS.md#v5---news-and-sentiment)
 
 | ID | Priority | Effort | Slice | Status | Depends on | Blocker | Plan |
 |---|---|---|---|---|---|---|---|
-| NEWS-01 | REQ | M | News contract, provider port, contract suite | TODO | SETUP-05 | | [05](05-news-and-sentiment.md) |
-| NEWS-02 | REQ | M | Collection worker and first provider adapter | TODO | NEWS-01, SETUP-04 | Concrete news sources not approved | [05](05-news-and-sentiment.md) |
+| NEWS-01 | REQ | M | News contract, provider port, contract suite | **READY** | SETUP-05 | | [05](05-news-and-sentiment.md) |
+| NEWS-02 | REQ | M | Collection worker and first provider adapter | **BLOCKED** | NEWS-01, SETUP-04 | Concrete news sources not approved | [05](05-news-and-sentiment.md) |
 | NEWS-03 | REQ | M | Analyzer port, result contract, lifecycle | TODO | NEWS-02 | | [05](05-news-and-sentiment.md) |
-| NEWS-04 | REQ | M | First real sentiment analyzer | TODO | NEWS-03 | Sentiment model or service not chosen | [05](05-news-and-sentiment.md) |
+| NEWS-04 | REQ | M | First real sentiment analyzer | **BLOCKED** | NEWS-03 | Sentiment model or service not chosen | [05](05-news-and-sentiment.md) |
 | NEWS-05 | REQ | S | Sentiment feature query and degradation policy | TODO | NEWS-04 | | [05](05-news-and-sentiment.md) |
 | NEWS-07 | REQ | S | News list, health, and sentiment query surface | TODO | NEWS-05 | | [05](05-news-and-sentiment.md) |
 | UI-07 | REQ | M | News page | TODO | NEWS-07, SETUP-06 | | [06](06-ui-and-demo-integration.md) |

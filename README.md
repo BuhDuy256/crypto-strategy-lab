@@ -7,8 +7,8 @@ Crypto Strategy Lab is an architecture-first platform for crypto market data, st
 - **Architecture:** `FROZEN v1.2`
 - **Validation:** `PENDING IMPLEMENTATION PROOFS`
 - **Implementation:** `IN PROGRESS`
-- **Current product version:** `V4`
-- **V4 release:** `FROZEN at v4.0-demo`
+- **Current product version:** `V5`
+- **Last frozen release:** `V4 at v4.0-demo`
 
 `FROZEN ≠ PROVEN`: the baseline is normative for implementation, but its proof obligations still require implementation evidence.
 

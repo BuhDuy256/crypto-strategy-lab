@@ -2115,3 +2115,28 @@ are `MKT-09`, which is the remaining V4 slice. It was classified and left alone 
 The two-axis review was skipped on the owner's explicit instruction, to conserve budget,
 not overlooked. `WS-03` carries the same gap for the same reason. Read `MKT-11` as
 validated by its tests and its browser smoke, and by nothing else.
+
+---
+
+## V5 - News and Sentiment
+
+### 2026-08-30 - V4 -> V5 handover
+
+**Decisions**
+
+- The owner moved the target version to V5 and authorized the branch and the version
+  field change. The agent verified the five `AGENTS.md` authorization conditions
+  against the repository first, at `5f2f7af` with a clean tree, rather than trusting
+  the instruction alone. `TRACKING.md` records that check.
+- V5 work starts on `v5-news-and-sentiment`, branched from the V4 release commit.
+  The V4 branch stays at `5f2f7af` so `v4.0-demo` remains reproducible.
+
+**Open decisions that block work**
+
+- `NEWS-02` cannot start until concrete news sources are approved, and `NEWS-04`
+  until a sentiment model or service is chosen. Both are now `BLOCKED` rather than
+  `TODO`, so they stay visible while `NEWS-01` proceeds.
+
+**Ending state**
+
+- No V5 code exists. `NEWS-01` is the only `READY` slice.
