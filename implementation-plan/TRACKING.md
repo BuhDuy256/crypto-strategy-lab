@@ -17,13 +17,13 @@ true; keep conversation out of them.
 
 | Field | Value |
 |---|---|
-| Implementation status | `IN PROGRESS - V1-V3 BASELINE CERTIFIED` |
+| Implementation status | `IN PROGRESS - V1-V4 BASELINE CERTIFIED` |
 | Current target version | **V4 - Realtime Market Data** |
 | Previous version | **V3 - Automated Discovery: frozen at `v3.1-demo` on 2026-08-29.** |
-| Last verified commit | The commit tagged `v3.1-demo` on `feat/v3-automated-discovery`. |
-| Next allowed action | `MKT-09` is complete. Stop implementation work here: V4 freeze, `PROOF-RT-001`, a tag, and V5 remain separate owner-directed work. |
-| Last verified on | 2026-08-29 (V1/V2 functional certification, V3 regression, baseline freeze, and the two freeze repairs below) |
-| Last tag | `v3.1-demo`, the certified V1-V3 baseline, on `feat/v3-automated-discovery`. `v3.0-demo` still points at `2b98139` and was deliberately left there: it marks what was *claimed* demoable, on a baseline whose V1 and V2 regressions do not pass. Both tags are on origin. `v1.0-demo` and `v2.0-demo` do not exist. |
+| Last verified commit | The V4 release commit tagged `v4.0-demo` on `v4-realtime-market-data`. |
+| Next allowed action | Stop implementation work. V4 is frozen at `v4.0-demo`; V5 remains separate owner-directed work and is not authorized by this freeze. |
+| Last verified on | 2026-08-30 (V4 final regression, Compose demo, `PROOF-RT-001`, and Definition of Demoable). |
+| Last tag | `v4.0-demo`, the certified V1-V4 baseline, on `v4-realtime-market-data`. `v3.1-demo` remains the certified V1-V3 baseline on `feat/v3-automated-discovery`; `v3.0-demo` deliberately remains on `2b98139`. `v1.0-demo` and `v2.0-demo` do not exist. |
 | V3 slices | 8 (`DONE` 8, `READY` 0, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 0) — V3's own scope and its V1+V2 regression condition pass in the baseline-freeze state. |
 | V4 slices | 5 (`DONE` 5, `READY` 0, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 0) — `WS-03`, `MKT-06`, `MKT-07`, `MKT-09`, and `MKT-11` are done. |
 | History | [`JOURNAL.md`](JOURNAL.md), sections "V1", "V3", "V1/V2 recovery", "V1-V3 freeze repairs", "Demo data prerequisite", and "V4". The recovery entry records the durable V2 decisions that were missing from the original history. |
@@ -281,7 +281,7 @@ more than one session.
 | EXP-11 | REQ | S | Visualization annotation capture | **DONE** | EXP-10, STRAT-01 | | Implemented annotation downsampler and integrated into PostgresResultAcceptanceStore. Fixed API process timeout in E2E tests (`integration/backtest-runner-lifecycle.e2e.test.ts`). Tests pass. | [03](03-experiment-backtest-evaluation.md) |
 | UI-04 | CRIT | M | Backtest page with metrics and trades | **DONE** | EXP-10, MKT-05 | | Original claim, kept as written: "Interaction defaults accepted (2s poll, 20 trades/page, static panel). Implemented metrics dashboard, trade list, pagination, and sorting; test suite and visual inspection confirmed." **Reopened 2026-08-28** (audit, R1): pressing Start returned 500, used an invented DatasetRef and an unregistered strategy id, assembled Experiment business configuration in the browser, and hid the error. **Functionally restored 2026-08-28:** the page now sends a versioned dataset-window and catalog-strategy request; the backend resolves the real content-addressed dataset, supplies the V1 execution and metric profiles, and freezes real runtime provenance. Focused backend/frontend tests pass; the specification E2E uses the real DatasetService and StrategyRegistry; a rebuilt Compose run completed over 1,000 real Binance candles with 58 trades, four metrics, and recorded provenance. **Historical deviation:** AC9 remains failed because the pre-existing backend endpoint was unusable and required a bounded backend enabler. The original implementer should have stopped and reported that missing capability. | [06](06-ui-and-demo-integration.md) |
 | UI-05 | REQ | M | Signal and trade visualization | **DONE** | UI-04, EXP-11 | | **Certified 2026-08-29:** the restored V1 Compose flow completed with four real trades, including final liquidation, and returned stored strategy annotations through the same result surface used by the page. Focused `CandlestickChart` and `BacktestPage` tests cover annotation rendering, trade markers, selection, deselection, and visible-range movement; the final full suite passes. Original reopening retained for history: the 2026-08-28 audit could not verify this slice while UI-04 was broken. | [06](06-ui-and-demo-integration.md) |
-| DEMO-01 | CRIT | M | Run documentation, Compose topology, and version demo script | **DONE** | UI-04, UI-05 | | **Certified 2026-08-29:** `docs/demo-script.md` now includes V1 and V2 regression walkthroughs. A fresh `docker compose up --build -d` brought up only `postgres`, one-shot `migrate`, `api`, `runner`, and `web`; health passed. Runtime proof completed a real MA backtest with four metrics/trades/provenance, a saved MA+RSI composite with server evaluation and component annotations, four independent chart API windows with 150 real candles each through the web proxy, and a five-candidate V3 regression with five ranked entries. | [06](06-ui-and-demo-integration.md) |
+| DEMO-01 | CRIT | M | Run documentation, Compose topology, and version demo script | **DONE** | UI-04, UI-05 | | **Certified 2026-08-29:** `docs/demo-script.md` now includes V1 and V2 regression walkthroughs. A fresh `docker compose up --build -d` brought up only `postgres`, one-shot `migrate`, `api`, `runner`, and `web`; health passed. Runtime proof completed a real MA backtest with four metrics/trades/provenance, a saved MA+RSI composite with server evaluation and component annotations, four independent chart API windows with 150 real candles each through the web proxy, and a five-candidate V3 regression with five ranked entries. **Recertified 2026-08-30 for V4:** `docs/demo-script.md` gained the V4 realtime walkthrough, and the Compose topology now also brings up `redis` and `market-ingest`; see the V4 Compose integration gate. | [06](06-ui-and-demo-integration.md) |
 
 ## V1 proof
 
@@ -541,7 +541,8 @@ charts or fill the bounded queue and disconnect them. `market-realtime.gateway.t
 busy `candle.tick` through Socket.IO volatile delivery; snapshots and closed candles retain the bounded
 durable path. A new gateway regression test was red before the change and green after it. Targeted
 gateway test, backend typecheck, targeted lint, `git diff --check`, and the final browser smoke pass.
-Nothing is committed. The slice is `DONE`; no V4 freeze or later-version work was started.
+MKT-09 is committed at `4e00730`. The slice is `DONE`; the later V4 freeze record
+holds the final regression, demo, and proof evidence.
 MKT-11 evidence: the four `MKT-08` identifiers `chart-1`..`chart-4` are now the subscription identifiers,
 and the per-chart subscribe/retarget/cleanup lifecycle lives in one shared hook,
 `apps/web/src/hooks/use-chart-subscription.ts`, reusing the `MKT-07` protocol unchanged. All six criteria
@@ -614,7 +615,28 @@ conserve budget, so that diff carries no review record.
 
 | ID | Proof | Status | Prerequisites |
 |---|---|---|---|
-| PROOF-RT-001 | Realtime recovery and chart isolation | TODO | MKT-06, MKT-07, MKT-09, MKT-11 |
+| PROOF-RT-001 | Realtime recovery and chart isolation | **DONE** - [evidence](../docs/validation/evidence/PROOF-RT-001.md): four-chart isolation, controlled provider recovery, immutable snapshot, API restart, Redis-loss durability, and delivery latency baseline pass on the V4 Compose topology. | MKT-06, MKT-07, MKT-09, MKT-11 |
+
+## V4 Definition of Demoable (release gate)
+
+**PASS** on 2026-08-30 - [evidence](../docs/validation/evidence/V4-DEFINITION-OF-DEMOABLE.md).
+Every V4 condition in `VERSIONS.md` has release-candidate evidence: four live
+subscriptions with distinct identifiers, a timeframe change that resets only its own
+subscription with no page reload, a controlled provider outage that recovered with the
+correct missing intervals and left no unresolved gap and no duplicate, committed candles
+and fresh snapshots that survive stopping Redis, no forming tick written as a closed
+candle, the V1-V3 regression, and `PROOF-RT-001`. The final regression passed 94 test
+files and 544 tests plus workspace typecheck, lint, Compose config, and diff checks.
+
+## V4 Compose integration gate (Compose path)
+
+**PASS** on 2026-08-30 - the same [evidence](../docs/validation/evidence/V4-DEFINITION-OF-DEMOABLE.md)
+record, section "Compose and browser walkthrough". `DEMO-01` grew the topology to the
+V4 roles and no further: `docker compose up --build -d --force-recreate` brought up
+`postgres`, `redis`, one-shot `migrate`, `api`, `runner`, `market-ingest`, and `web`
+from the release source, with no BullMQ, outbox dispatcher, or news service. The V4
+demo scenario, the proof runs, and the browser reload check all ran on that assembled
+topology rather than on host processes.
 
 ---
 

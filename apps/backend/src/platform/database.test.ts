@@ -38,7 +38,7 @@ describe("database schemas", () => {
       throw new Error("Database test pool was not initialized");
     }
     const expectedTables: Readonly<Record<(typeof MODULE_SCHEMAS)[number], readonly string[]>> = {
-      market: ["candles", "datasets"],
+      market: ["candles", "datasets", "provider_health"],
       strategy: ["composites"],
       experiment: [
         "backtest_annotations",

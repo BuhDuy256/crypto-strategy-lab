@@ -1773,6 +1773,42 @@ down -v` and a clean volume, then `docker compose up --build` and one
 
 ## V4 - Realtime Market Data
 
+### 2026-08-30 - V4 release freeze
+
+**Validation**
+
+- Final regression passed 94 Vitest files and 544 tests, plus workspace typecheck,
+  lint, Compose config, architecture boundary, and diff checks. The only first-run
+  failure was a stale Market schema expectation missing the MKT-09
+  `provider_health` table; the focused repair and the one permitted full rerun pass.
+- `PROOF-RT-001` passed on rebuilt Compose images. Its record is
+  [`PROOF-RT-001.md`](../docs/validation/evidence/PROOF-RT-001.md). The controlled
+  provider outage recovered with no unresolved gap or duplicate; snapshots stayed
+  immutable; four subscriptions stayed isolated; and Redis loss did not block a
+  closed-candle PostgreSQL commit.
+- The V4 Definition of Demoable and the complete V4 browser/demo scenario pass.
+  [`V4-DEFINITION-OF-DEMOABLE.md`](../docs/validation/evidence/V4-DEFINITION-OF-DEMOABLE.md)
+  is the release evidence.
+- `DEMO-01` recertified the Compose path for V4. The assembled topology adds only
+  `redis` and `market-ingest` to the V1-V3 roles, and every release gate above ran
+  on that topology instead of on host processes.
+
+**Operational note**
+
+- The local governance command still sees an ignored, pre-existing legacy process
+  directory and fails only for that directory. It was not deleted. The same command
+  passes on a detached clean worktree at the release source commit, so no ignored
+  local artifact enters the release tree.
+
+**Ending state**
+
+- V4 is frozen by the release commit that carries this entry and local annotated tag
+  `v4.0-demo`. No branch, tag, or authorization for V5 was created.
+- The freeze also repaired the host-development section of the README, which still
+  said Redis was not started yet and that `docker compose up -d` starts one
+  PostgreSQL container. Since V4 that bare command starts the whole topology, so
+  the host path now names `postgres redis` explicitly.
+
 ### 2026-08-30 — V4 — MKT-09
 
 **Decisions**

@@ -1,12 +1,12 @@
 # Demo script
 
-The numbered walkthrough for the certified V1-V3 baseline. This is the script a
+The numbered walkthrough for the certified V1-V4 baseline. This is the script a
 person follows to show each version end to end on the full-system Compose topology
 (see the README's "Full-system integration and demo path"). Each version updates it
 as part of `DEMO-01`.
 
-Current certified baseline: **V1 through V3**. Repository product authorization
-remains **V2**; this evidence script does not advance it. Demo scenario sources are in
+Current certified baseline: **V1 through V4**. Repository product authorization
+remains **V4**; this evidence script does not advance it. Demo scenario sources are in
 [`implementation-plan/VERSIONS.md`](../implementation-plan/VERSIONS.md).
 
 ## Before you start
@@ -27,8 +27,9 @@ remains **V2**; this evidence script does not advance it. Demo scenario sources 
    ```
 
    You should see `postgres` healthy, `migrate` exited with code 0, `api`
-   healthy, and `runner` and `web` up. No Redis, BullMQ, or news service is
-   present; V3 does not use them.
+   healthy, `runner`, `market-ingest`, and `web` up, and `redis` healthy. BullMQ,
+   an outbox dispatcher, and a news service are not present; they belong to later
+   versions.
 
 3. Load the demo market data:
 
@@ -51,6 +52,42 @@ remains **V2**; this evidence script does not advance it. Demo scenario sources 
    ```
 
 4. Open the SPA at <http://localhost:8080> and go to the Discovery page.
+
+## V4 Realtime Market Data walkthrough
+
+1. Open the Realtime page. Confirm four BTCUSDT charts run at `5m`, `15m`, `1h`,
+   and `4h`. A forming candle moves through live ticks and closed candles remain in
+   the durable series.
+2. Change chart 1 to `1m`. Only chart 1 receives a new snapshot. Charts 2 to 4
+   keep their candles and live updates, and the page does not reload.
+3. Run the controlled provider outage browser check:
+
+   ```powershell
+   pnpm run smoke:mkt09
+   ```
+
+   It recreates only `market-ingest` with the tracked provider-host override,
+   checks `healthy -> degraded -> healthy`, keeps four subscriptions on the same
+   page, and restores the normal Compose definition even when it fails.
+4. Confirm recovery is complete through the Market read endpoint over the outage
+   range. It must report `resolved: true`, no gaps, and matching expected and
+   present candle counts. The release evidence shows an example command and range.
+5. Reload the Realtime page. Each chart must return a PostgreSQL snapshot before
+   live continuation; it must not rely on Redis replay.
+6. Show the Redis boundary with the focused smoke:
+
+   ```powershell
+   pnpm run smoke:ws03
+   ```
+
+   It restarts the API and verifies fresh snapshots, including while Redis is
+   stopped. Redis stops live push, but it never becomes candle durability truth.
+
+For repeatable four-chart isolation and forming-tick checks, run:
+
+```powershell
+pnpm run smoke:mkt11
+```
 
 ## V1 regression walkthrough
 

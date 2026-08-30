@@ -8,6 +8,7 @@ Crypto Strategy Lab is an architecture-first platform for crypto market data, st
 - **Validation:** `PENDING IMPLEMENTATION PROOFS`
 - **Implementation:** `IN PROGRESS`
 - **Current product version:** `V4`
+- **V4 release:** `FROZEN at v4.0-demo`
 
 `FROZEN ≠ PROVEN`: the baseline is normative for implementation, but its proof obligations still require implementation evidence.
 
@@ -234,18 +235,17 @@ The rule itself is not repeated here. It lives in [`AGENTS.md`](AGENTS.md) under
 
 ### Status of the full-system path
 
-`docker-compose.yml` brings up the full V1 topology — PostgreSQL, a one-shot
-migration step, the API process, the backtest runner process, and the SPA —
-through one `docker compose up --build` command, built by `DEMO-01`. Through V3
-this topology is unchanged. See [Full-system integration and demo
-path](#full-system-integration-and-demo-path) below for the command and the
-service roles.
+`docker-compose.yml` brings up the full V4 topology: PostgreSQL, Redis, a one-shot
+migration step, the API process, the separate backtest runner, the separate
+market-ingest process, and the SPA. One `docker compose up --build` command builds
+the topology through `DEMO-01`. See [Full-system integration and demo
+path](#full-system-integration-and-demo-path) below for the command and service roles.
 
 The topology grows with the roadmap and never ahead of it: Redis and the market ingest process arrive in V4, the news worker in V5, and the outbox dispatcher and BullMQ backtest workers in V6.
 
 ## Local setup (host development path)
 
-V1 needs durable storage only, so local setup starts PostgreSQL through Docker Compose. Redis is not started yet; it arrives with the live fan-out slice (V4).
+V4 development needs PostgreSQL, and realtime work also needs Redis. Both run through Docker Compose on this path; the API, runner, market-ingest, and SPA processes then run on the host.
 
 ### 1. Configure environment variables
 
@@ -261,13 +261,13 @@ for commands that do not need PostgreSQL.
 
 `POSTGRES_HOST=localhost` is correct for this path, where the backend runs on your machine and reaches the container through a published port. A backend running *inside* Compose reaches PostgreSQL by its service name instead, so the full-system path supplies its own value for that variable rather than expecting you to edit `.env`. `DEMO-01` wires this up.
 
-### 2. Start PostgreSQL
+### 2. Start the backing services
 
 ```powershell
-docker compose up -d
+docker compose up -d postgres redis
 ```
 
-This starts one PostgreSQL container (service `postgres` in `docker-compose.yml`), using the variables from `.env`, with a named volume (`postgres_data`) so data survives container restarts.
+This starts PostgreSQL and Redis only (services `postgres` and `redis` in `docker-compose.yml`), using the variables from `.env`, with a named volume (`postgres_data`) so data survives container restarts. Name the two services explicitly: since V4 a bare `docker compose up -d` starts the whole topology, which is the full-system path below, not this one. Leave `redis` out when the work does not touch realtime delivery.
 
 ### 3. Check health
 
@@ -275,7 +275,7 @@ This starts one PostgreSQL container (service `postgres` in `docker-compose.yml`
 docker compose ps
 ```
 
-The `postgres` service should show `healthy` once its healthcheck (`pg_isready`) passes. `docker compose logs postgres` shows startup output if it does not.
+The `postgres` service should show `healthy` once its healthcheck (`pg_isready`) passes, and `redis` once its `PING` healthcheck passes. `docker compose logs postgres` shows startup output if it does not.
 
 ### 4. Stop the topology
 
@@ -371,9 +371,9 @@ The full-system path brings up the whole process topology the current product
 version needs, from a clean checkout, with one Docker Compose command. It is how
 a version is proven demoable; it does not replace the host development path above.
 
-The topology is defined in [`docker-compose.yml`](docker-compose.yml). Through V3
-it is V1's topology, unchanged, and contains no later-version service (no Redis,
-no BullMQ, no news worker):
+The topology is defined in [`docker-compose.yml`](docker-compose.yml). V4 adds Redis
+and the separate market-ingest process to the V1-V3 roles. It contains no
+later-version service: no BullMQ, outbox dispatcher, or news worker.
 
 | Service | Role |
 |---|---|
@@ -381,6 +381,8 @@ no BullMQ, no news worker):
 | `migrate` | One-shot: applies every pending migration, then exits. `api` and `runner` wait for it |
 | `api` | The NestJS API/HTTP process |
 | `runner` | The separate PostgreSQL-backed backtest runner process |
+| `market-ingest` | The Binance stream and REST recovery process; commits closed candles before best-effort notification |
+| `redis` | Best-effort live notification fan-out only; never durable truth |
 | `web` | The built React SPA served by Nginx, which proxies `/api` to `api` |
 
 ### 1. Configure environment variables
@@ -402,12 +404,12 @@ and `WORKER_COMMIT` values in `.env`; the runner requires explicit build identit
 docker compose up --build -d
 ```
 
-This builds the images and starts every service in dependency order: PostgreSQL
-becomes healthy, `migrate` applies the schema and exits, `api` starts and passes
-its health check, `runner` starts, and `web` comes up. Migrations run
-automatically as the `migrate` service; there is no manual migration step. `-d`
-runs it detached so the next steps use the same terminal; drop `-d` to watch the
-logs in the foreground and use a second terminal for the commands below.
+This builds the images and starts every service in dependency order: PostgreSQL and
+Redis become healthy, `migrate` applies the schema and exits, `api` starts and passes
+its health check, then `runner`, `market-ingest`, and `web` come up. Migrations run
+automatically as the `migrate` service; there is no manual migration step. `-d` runs
+it detached so the next steps use the same terminal; drop `-d` to watch the logs in
+the foreground and use a second terminal for the commands below.
 
 ### 3. Load candle history
 
