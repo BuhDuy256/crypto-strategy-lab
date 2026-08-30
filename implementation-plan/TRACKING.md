@@ -20,13 +20,13 @@ true; keep conversation out of them.
 | Implementation status | `IN PROGRESS - V1-V4 BASELINE CERTIFIED` |
 | Current target version | **V5 - News and Sentiment** |
 | Previous version | **V4 - Realtime Market Data: frozen at `v4.0-demo` on 2026-08-30.** V3 was frozen at `v3.1-demo` on 2026-08-29. |
-| Last verified commit | `6f387d6`, the owner-accepted NEWS-01 baseline on `v5-news-and-sentiment`. |
-| Next allowed action | Start `NEWS-03`, now `READY` because `NEWS-02` is `DONE`. `NEWS-02` is complete but deliberately uncommitted, awaiting owner review. `NEWS-04` remains `BLOCKED` on a sentiment model decision; `NEWS-05`, `NEWS-07`, and `UI-07` remain dependency-blocked. |
+| Last verified commit | `93958a9`, the NEWS-02 collection worker and CoinDesk RSS adapter on `v5-news-and-sentiment`. `6f387d6` is the NEWS-01 baseline. |
+| Next allowed action | Review the `NEWS-02` diff in `93958a9`, then start `NEWS-03`, which is now `READY`. `NEWS-04` remains `BLOCKED` on a sentiment model decision; `NEWS-05`, `NEWS-07`, and `UI-07` remain dependency-blocked. |
 | Last verified on | 2026-08-30 (V4 final regression, Compose demo, `PROOF-RT-001`, and Definition of Demoable). |
 | Last tag | `v4.0-demo`, the certified V1-V4 baseline, on `v4-realtime-market-data`. `v3.1-demo` remains the certified V1-V3 baseline on `feat/v3-automated-discovery`; `v3.0-demo` deliberately remains on `2b98139`. `v1.0-demo` and `v2.0-demo` do not exist. |
 | V3 slices | 8 (`DONE` 8, `READY` 0, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 0) — V3's own scope and its V1+V2 regression condition pass in the baseline-freeze state. |
 | V4 slices | 5 (`DONE` 5, `READY` 0, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 0) — `WS-03`, `MKT-06`, `MKT-07`, `MKT-09`, and `MKT-11` are done. |
-| V5 slices | 7 required plus 1 optional (`DONE` 2, `READY` 1, `IN_PROGRESS` 0, `BLOCKED` 1, `TODO` 4) — `NEWS-01` and `NEWS-02` are done; `NEWS-02` collects from the owner-approved CoinDesk RSS source in its own worker process and is uncommitted pending owner review; `NEWS-03` is ready; `NEWS-04` remains blocked on an owner model decision. |
+| V5 slices | 7 required plus 1 optional (`DONE` 2, `READY` 1, `IN_PROGRESS` 0, `BLOCKED` 1, `TODO` 4) — `NEWS-01` and `NEWS-02` are done; `NEWS-02` collects from the owner-approved CoinDesk RSS source in its own worker process and is committed as `93958a9`; `NEWS-03` is ready; `NEWS-04` remains blocked on an owner model decision. |
 | History | [`JOURNAL.md`](JOURNAL.md), sections "V1", "V3", "V1/V2 recovery", "V1-V3 freeze repairs", "Demo data prerequisite", and "V4". The V4 -> V5 transition below records the version handover. The recovery entry records the durable V2 decisions that were missing from the original history. |
 
 ## V4 -> V5 transition (2026-08-30)
