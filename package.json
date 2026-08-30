@@ -19,6 +19,7 @@
     "demo:seed": "node scripts/seed-demo-data.mjs",
     "smoke:ws03": "tsx scripts/smoke-ws03.ts",
     "smoke:mkt07": "tsx scripts/smoke-mkt07.ts",
+    "smoke:mkt09": "tsx scripts/smoke-mkt09.ts",
     "smoke:mkt11": "tsx scripts/smoke-mkt11.ts",
     "leaderboard:rebuild": "pnpm --filter @crypto-strategy-lab/backend run leaderboard:rebuild --",
     "migrate": "pnpm --filter @crypto-strategy-lab/backend run migrate",

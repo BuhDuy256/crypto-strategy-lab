@@ -12,6 +12,7 @@
 import type { MarketLiveNotification } from "@crypto-strategy-lab/api-contracts";
 import type { Candle } from "../domain/candle.js";
 import type { LiveCandlesRequest, MarketDataProvider } from "./market-data-provider.js";
+import type { LiveStreamObserver } from "./provider-health.js";
 
 export type LiveCandleChannel = "candle.tick" | "candle.closed";
 
@@ -52,6 +53,14 @@ export interface MarketLiveIngestOptions {
    * than like a message from the past, so clients recover instead of going deaf.
    */
   readonly sequenceSeed?: number;
+  /**
+   * Notified for every live candle, tick or closed, before it is routed.
+   *
+   * The only current observer is provider health, which needs to know that data
+   * is actually arriving. Keep any observer synchronous and cheap: this runs on
+   * the tick path, about once a second per stream.
+   */
+  readonly observer?: LiveStreamObserver;
 }
 
 const CONTEXT = "MarketIngest";
@@ -61,7 +70,9 @@ export class MarketLiveIngestService {
   private readonly watermarks = new Map<string, number>();
   private readonly ticksInFlight = new Map<string, Promise<void>>();
   private readonly sequenceSeed: number;
+  private readonly observer: LiveStreamObserver | undefined;
   private committedCount = 0;
+  private routedCount = 0;
   private attemptedTickCount = 0;
   private droppedTickCount = 0;
 
@@ -73,10 +84,21 @@ export class MarketLiveIngestService {
     options: MarketLiveIngestOptions = {}
   ) {
     this.sequenceSeed = options.sequenceSeed ?? Date.now();
+    this.observer = options.observer;
   }
 
   get committedCandles(): number {
     return this.committedCount;
+  }
+
+  /**
+   * Every live candle routed, tick or closed.
+   *
+   * The connection supervisor compares this across a generation to tell a
+   * reconnect that actually carried data from one that merely opened a socket.
+   */
+  get routedCandles(): number {
+    return this.routedCount;
   }
 
   get attemptedTickPublications(): number {
@@ -109,6 +131,8 @@ export class MarketLiveIngestService {
    * Exposed so the channel split can be tested without a provider connection.
    */
   async handle(candle: Candle): Promise<void> {
+    this.routedCount += 1;
+    this.observer?.onLiveCandle(candle);
     if (liveCandleChannel(candle) === "candle.tick") {
       this.publishTick(candle);
       return;

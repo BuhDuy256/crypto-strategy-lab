@@ -26,6 +26,8 @@ import {
   isBacktestResultResponse,
   isBacktestTradesResponse,
   isHealthResponse,
+  isProviderHealthResponse,
+  type ProviderHealthResponse,
   type CandleHistoryRequest,
   type CandleHistoryResponse,
   type HealthResponse,
@@ -93,6 +95,17 @@ async function getJson<T>(path: string, isValid: (value: unknown) => value is T)
 /** Calls the backend's GET /health endpoint. */
 export function getHealth(): Promise<HealthResponse> {
   return getJson("/health", isHealthResponse);
+}
+
+/**
+ * Reads Market Data's own view of the exchange connection.
+ *
+ * The SPA only displays this. It never computes a gap and never calls the
+ * exchange: repairing a gap belongs to Market Data.
+ */
+export function getProviderHealth(provider = "binance"): Promise<ProviderHealthResponse> {
+  const query = new URLSearchParams({ provider });
+  return getJson(`/market/provider-health?${query.toString()}`, isProviderHealthResponse);
 }
 
 async function postJson<T>(path: string, input: unknown, isValid: (value: unknown) => value is T): Promise<T> {

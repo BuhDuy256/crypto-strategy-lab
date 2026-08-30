@@ -25,6 +25,8 @@ import { SearchExperimentController } from "./search-experiment.controller.js";
 import { LeaderboardController } from "./leaderboard.controller.js";
 import { MarketRealtimeGateway } from "./market-realtime.gateway.js";
 import { RealtimeStatusController } from "./realtime-status.controller.js";
+import { ProviderHealthController } from "./provider-health.controller.js";
+import { MarketGapController } from "./market-gap.controller.js";
 import { RedisLiveNotificationSubscriber } from "../../platform/realtime/redis-live-notifications.js";
 import { loadConfig } from "../../platform/config.js";
 
@@ -66,7 +68,9 @@ class RealtimeLifecycle implements OnApplicationShutdown {
     SearchController,
     SearchExperimentController,
     LeaderboardController,
-    RealtimeStatusController
+    RealtimeStatusController,
+    ProviderHealthController,
+    MarketGapController
   ],
   providers: [
     {

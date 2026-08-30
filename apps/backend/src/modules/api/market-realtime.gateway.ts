@@ -54,10 +54,16 @@ class DurableMarketSnapshotReader implements MarketSnapshotReader {
 function socketSink(socket: Socket): MarketClientSink {
   return {
     send(message: MarketRealtimeMessage): boolean {
-      if (
-        !socket.connected ||
-        !socket.conn.transport.writable
-      ) return false;
+      if (!socket.connected) return false;
+      // A forming candle is explicitly ephemeral. During the short window in
+      // which Socket.IO is writing a snapshot, queueing ticks turns an ordinary
+      // recovery burst into a false slow-client disconnect. Volatile delivery
+      // keeps the latest bar flowing without weakening the durable path below.
+      if (message.type === "candle.tick" && !socket.conn.transport.writable) {
+        socket.volatile.emit("market:message", message);
+        return true;
+      }
+      if (!socket.conn.transport.writable) return false;
       socket.emit("market:message", message);
       return true;
     },

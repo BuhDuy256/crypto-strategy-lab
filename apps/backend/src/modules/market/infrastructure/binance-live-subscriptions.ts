@@ -118,6 +118,8 @@ export class BinanceLiveSubscriptionRegistry {
   private client: BinanceKlineStreamClient | undefined;
   private connecting: Promise<void> | undefined;
   private readonly queues = new Map<string, Set<LiveCandleQueue>>();
+  private readonly pendingStreams = new Set<string>();
+  private openScheduled = false;
 
   constructor(private readonly createClient: () => BinanceKlineStreamClient) {}
 
@@ -139,9 +141,25 @@ export class BinanceLiveSubscriptionRegistry {
     this.client?.close();
     this.client = undefined;
     this.connecting = undefined;
+    this.pendingStreams.clear();
     this.endAll();
   }
 
+  /**
+   * Joins one stream to the shared connection.
+   *
+   * Streams requested in the same tick are collected and opened as a single
+   * connection carrying all of them, rather than opening on the first and
+   * adding the rest with SUBSCRIBE control frames. Binance accepts at most five
+   * incoming messages per second on a connection, and live ingest asks for
+   * every configured timeframe at once: eight timeframes meant seven control
+   * frames in the same millisecond, and the server closed the connection about
+   * 450 ms after it opened, every time. The combined-stream endpoint already
+   * takes the whole stream set in its URL, so opening once costs no frames.
+   *
+   * A subscriber that genuinely arrives later still joins with one SUBSCRIBE
+   * frame, which is well inside the limit.
+   */
   private attach(stream: string): void {
     if (this.client !== undefined) {
       this.client.subscribe([stream]);
@@ -154,11 +172,26 @@ export class BinanceLiveSubscriptionRegistry {
       });
       return;
     }
+    this.pendingStreams.add(stream);
+    if (this.openScheduled) return;
+    this.openScheduled = true;
+    // A microtask is enough: live ingest subscribes to every stream in one
+    // synchronous pass, so they are all collected before this runs.
+    queueMicrotask(() => {
+      this.openScheduled = false;
+      this.openPending();
+    });
+  }
+
+  private openPending(): void {
+    const streams = [...this.pendingStreams];
+    this.pendingStreams.clear();
+    if (streams.length === 0 || this.client !== undefined || this.connecting !== undefined) return;
     const client = this.createClient();
     client.onCandle(async (candle) => this.dispatch(candle));
     client.onClose(() => this.handleClose());
     this.connecting = client
-      .open([stream])
+      .open(streams)
       .then(() => {
         this.client = client;
       })
@@ -178,6 +211,7 @@ export class BinanceLiveSubscriptionRegistry {
   private handleClose(): void {
     this.client = undefined;
     this.connecting = undefined;
+    this.pendingStreams.clear();
     this.endAll();
   }
 
