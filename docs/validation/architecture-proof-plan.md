@@ -1,7 +1,7 @@
 # Architecture Proof Plan
 
 Validation Status: PENDING IMPLEMENTATION PROOFS
-Baseline: [`architecture-baseline.md`](../architecture/architecture-baseline.md) v1.1
+Baseline: [`architecture-baseline.md`](../architecture/architecture-baseline.md) v1.2
 
 Visual index: [Proof Coverage Map](../diagrams/10-proof-coverage-map.md). The proof definitions in this file remain authoritative.
 

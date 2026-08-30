@@ -1,11 +1,61 @@
-// StrategyModule backs ARC-STRATEGY (Strategy).
-//
-// Owns strategy contracts and implementations, normalized signals,
-// descriptors/semantic versions, parameter schemas, registry, composite
-// definitions, combination policies, and StrategyGenerator
-// implementations/contracts (see architecture-baseline.md). Empty in
-// this slice: composition boundary only, no business logic yet.
-import { Module } from "@nestjs/common";
+import { Module, type OnApplicationShutdown } from "@nestjs/common";
+import { StrategyRegistry } from "./application/strategy-registry.js";
+import { createBuiltInStrategyRegistry } from "./application/built-in-strategy-registry.js";
+import { CombinationPolicyRegistry } from "./application/combination-policy-registry.js";
+import { createBuiltInCombinationPolicyRegistry } from "./application/built-in-combination-policy-registry.js";
+import { CompositeStrategyService } from "./application/composite-strategy.service.js";
+import { StrategyGeneratorRegistry } from "./application/strategy-generator-registry.js";
+import { createBuiltInStrategyGeneratorRegistry } from "./application/built-in-strategy-generator-registry.js";
+import { PostgresCompositeRepository } from "./infrastructure/postgres-composite-repository.js";
+import { loadConfig } from "../../platform/config.js";
+import { createDatabasePool } from "../../platform/database.js";
+import type { Pool } from "pg";
 
-@Module({})
+const STRATEGY_DATABASE_POOL = Symbol("STRATEGY_DATABASE_POOL");
+
+class StrategyDatabaseLifecycle implements OnApplicationShutdown {
+  constructor(private readonly pool: Pool) {}
+  async onApplicationShutdown(): Promise<void> {
+    await this.pool.end();
+  }
+}
+
+@Module({
+  providers: [
+    {
+      provide: STRATEGY_DATABASE_POOL,
+      useFactory: (): Pool => createDatabasePool(loadConfig().postgres)
+    },
+    {
+      provide: StrategyRegistry,
+      useFactory: createBuiltInStrategyRegistry
+    },
+    {
+      provide: CombinationPolicyRegistry,
+      useFactory: createBuiltInCombinationPolicyRegistry
+    },
+    {
+      provide: StrategyGeneratorRegistry,
+      useFactory: (stratReg: StrategyRegistry, polReg: CombinationPolicyRegistry) =>
+        createBuiltInStrategyGeneratorRegistry(stratReg, polReg),
+      inject: [StrategyRegistry, CombinationPolicyRegistry]
+    },
+    {
+      provide: PostgresCompositeRepository,
+      useFactory: (pool: Pool) => new PostgresCompositeRepository(pool),
+      inject: [STRATEGY_DATABASE_POOL]
+    },
+    {
+      provide: CompositeStrategyService,
+      useFactory: (repo: PostgresCompositeRepository, stratReg: StrategyRegistry, polReg: CombinationPolicyRegistry) => new CompositeStrategyService(repo, stratReg, polReg),
+      inject: [PostgresCompositeRepository, StrategyRegistry, CombinationPolicyRegistry]
+    },
+    {
+      provide: StrategyDatabaseLifecycle,
+      useFactory: (pool: Pool) => new StrategyDatabaseLifecycle(pool),
+      inject: [STRATEGY_DATABASE_POOL]
+    }
+  ],
+  exports: [StrategyRegistry, CombinationPolicyRegistry, CompositeStrategyService, StrategyGeneratorRegistry]
+})
 export class StrategyModule {}

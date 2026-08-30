@@ -6,23 +6,34 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "start:api": "tsx src/main.api.ts",
+    "start:backtest-runner": "tsx src/main.backtest-runner.ts",
+    "market:backfill": "tsx src/modules/market/infrastructure/run-market-backfill.ts",
+    "leaderboard:rebuild": "tsx src/modules/experiment/infrastructure/run-leaderboard-rebuild.ts",
     "migrate": "tsx src/migrate/run-migrations.ts",
-    "migrate:reset": "tsx src/migrate/reset-database.ts"
+    "migrate:reset": "tsx src/migrate/reset-database.ts",
+    "start:market-ingest": "tsx src/main.market-ingest.ts"
   },
   "dependencies": {
+    "@crypto-strategy-lab/api-contracts": "workspace:*",
     "@nestjs/common": "^11.2.1",
     "@nestjs/core": "^11.2.1",
     "@nestjs/platform-express": "^11.2.1",
+    "@nestjs/platform-socket.io": "^11.2.1",
+    "@nestjs/websockets": "^11.2.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
     "pg": "^8.23.0",
+    "redis": "^5.8.2",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.2"
+    "rxjs": "^7.8.2",
+    "socket.io": "^4.8.1",
+    "ws": "^8.21.3"
   },
   "devDependencies": {
     "@nestjs/testing": "^11.2.1",
     "@types/express": "^5.0.6",
     "@types/pg": "^8.23.1",
+    "@types/ws": "^8.18.1",
     "tsx": "^4.23.12"
   }
 }

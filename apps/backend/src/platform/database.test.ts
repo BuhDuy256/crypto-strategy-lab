@@ -1,5 +1,5 @@
 // Smoke test proving the migration-created schemas exist and are queryable,
-// and that a test gets clean isolated state with no manual setup.
+// and that a test gets the complete migrated schema state with no manual setup.
 //
 // Requires PostgreSQL reachable using the configured environment variables
 // (see .env.example / README.md "Local setup"). Run `docker compose up -d`
@@ -11,17 +11,20 @@ import { MODULE_SCHEMAS } from "../migrate/migration-runner.js";
 import { resetTestDatabase } from "./test-database.js";
 
 describe("database schemas", () => {
-  let pool: Pool;
+  let pool: Pool | undefined;
 
   beforeAll(async () => {
     pool = await resetTestDatabase();
   });
 
   afterAll(async () => {
-    await pool.end();
+    await pool?.end();
   });
 
   it("creates exactly the four module-owned schemas", async () => {
+    if (pool === undefined) {
+      throw new Error("Database test pool was not initialized");
+    }
     const result = await pool.query<{ schema_name: string }>(
       "SELECT schema_name FROM information_schema.schemata WHERE schema_name = ANY($1::text[])",
       [MODULE_SCHEMAS]
@@ -30,13 +33,35 @@ describe("database schemas", () => {
     expect(found).toEqual([...MODULE_SCHEMAS].sort());
   });
 
-  it("each module schema is queryable and starts with no tables", async () => {
+  it("creates only the tables currently owned by each module", async () => {
+    if (pool === undefined) {
+      throw new Error("Database test pool was not initialized");
+    }
+    const expectedTables: Readonly<Record<(typeof MODULE_SCHEMAS)[number], readonly string[]>> = {
+      market: ["candles", "datasets", "provider_health"],
+      strategy: ["composites"],
+      experiment: [
+        "backtest_annotations",
+        "backtest_attempts",
+        "backtest_result_provenance",
+        "backtest_results",
+        "backtest_runs",
+        "backtest_trades",
+        "leaderboard_applied_versions",
+        "leaderboard_entries",
+        "search_candidate_dispositions",
+        "search_candidates",
+        "search_runs",
+        "specifications"
+      ],
+      news: []
+    };
     for (const schema of MODULE_SCHEMAS) {
-      const result = await pool.query(
-        "SELECT table_name FROM information_schema.tables WHERE table_schema = $1",
+      const result = await pool.query<{ table_name: string }>(
+        "SELECT table_name FROM information_schema.tables WHERE table_schema = $1 ORDER BY table_name",
         [schema]
       );
-      expect(result.rows).toEqual([]);
+      expect(result.rows.map((row) => row.table_name)).toEqual(expectedTables[schema]);
     }
   });
 });

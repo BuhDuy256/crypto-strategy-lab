@@ -49,13 +49,19 @@ candle revisions**:
 logical candle identity   = provider + symbol + timeframe + openTime      (frozen contract)
 storage row identity      = logical identity + revision                   (append-only)
 current view              = highest revision per logical candle
-dataset resolution        = highest revision <= the snapshot's revision watermark
+dataset resolution        = latest local revision whose global ingest sequence <= snapshot watermark
 ```
 
-Nothing is ever updated in place, so an old `DatasetRef` keeps resolving to the
-rows it saw. This reading is compatible with the frozen contract, which states the
-logical identity as the four fields and separately lists a "closed/revision state"
-as part of the candle. Revision versions the candle; it does not re-identify it.
+Each candle identity has its own local revision sequence. Every inserted revision
+also receives a storage-only, globally increasing ingest sequence. A
+`DatasetRef.revisionWatermark` is the greatest ingest sequence visible when the
+snapshot is created; resolution first excludes later ingest sequences and then
+selects the highest local revision for each logical candle. Nothing is ever updated
+in place, so an old `DatasetRef` keeps resolving to the rows it saw even when a
+different candle receives the same local revision number later. This reading is
+compatible with the frozen contract, which states the logical identity as the four
+fields and separately lists a "closed/revision state" as part of the candle.
+Revision versions one candle; it does not re-identify it or act as a global clock.
 
 The alternative - copying candle rows into a snapshot table - costs storage
 proportional to every experiment and buys nothing extra here. Append-only revisions
@@ -216,6 +222,9 @@ dataset snapshot still resolve correctly after V4 begins repairing gaps.
 - Writing an identical candle again is a no-op, not a new revision. Only genuinely
   different values create a revision.
 - The current view selects the highest revision per logical candle.
+- Every inserted revision receives a globally increasing, storage-only ingest
+  sequence. A revision watermark is an ingest-sequence boundary, not a local candle
+  revision number.
 - The repository stays in `market/infrastructure` and is never exported from
   `index.ts`.
 - Only closed candles are stored. An in-progress candle is not durable state.
@@ -391,9 +400,9 @@ here and impossible to retrofit honestly later.
 
 **Architecture constraints**
 - A dataset row is append-only. It is never edited after creation.
-- The snapshot records a **revision watermark**, and resolution reads the highest
-  revision at or below it. This is what makes the snapshot immune to later gap
-  repair.
+- The snapshot records a **revision watermark** over the global ingest sequence.
+  Resolution excludes later ingests, then reads the highest local revision for each
+  logical candle. This is what makes the snapshot immune to later gap repair.
 - The integrity hash is computed by canonical serialization so it is stable across
   processes and machines.
 - Market Data owns dataset manifests. No other module writes them.

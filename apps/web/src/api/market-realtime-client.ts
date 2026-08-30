@@ -1,0 +1,153 @@
+// One shared SPA WebSocket client with per-subscription snapshot gating on reconnect.
+
+import {
+  isMarketRealtimeMessage,
+  type MarketCandleClosedMessage,
+  type MarketCandleTickMessage,
+  type MarketSnapshotMessage,
+  type MarketSubscribeMessage
+} from "@crypto-strategy-lab/api-contracts";
+import { io } from "socket.io-client";
+
+export interface RealtimeSocket {
+  readonly connected: boolean;
+  on(event: string, handler: (body?: unknown) => void): void;
+  emit(event: string, body: unknown): void;
+}
+
+/** State of the one shared socket, not of any single subscription. */
+export type RealtimeConnectionState = "connected" | "disconnected";
+
+export interface MarketSubscriptionRequest {
+  readonly subscriptionId: string;
+  readonly symbol: string;
+  readonly timeframe: MarketSubscribeMessage["timeframe"];
+}
+
+export interface MarketSubscriptionHandlers {
+  onSnapshot(message: MarketSnapshotMessage): void;
+  /** The forming bar moved. Display only. */
+  onTick(message: MarketCandleTickMessage): void;
+  /** A candle was committed and replaces the bar with the same open time. */
+  onClosed(message: MarketCandleClosedMessage): void;
+  onError(message: string): void;
+}
+
+interface ActiveSubscription {
+  readonly request: MarketSubscribeMessage;
+  readonly handlers: MarketSubscriptionHandlers;
+  awaitingSnapshot: boolean;
+}
+
+export class MarketRealtimeClient {
+  private readonly subscriptions = new Map<string, ActiveSubscription>();
+  private readonly connectionListeners = new Set<(state: RealtimeConnectionState) => void>();
+
+  constructor(private readonly socket: RealtimeSocket) {
+    socket.on("connect", () => {
+      this.resubscribeAll();
+      this.announceConnection("connected");
+    });
+    socket.on("disconnect", () => {
+      for (const subscription of this.subscriptions.values()) {
+        subscription.awaitingSnapshot = true;
+      }
+      this.announceConnection("disconnected");
+    });
+    socket.on("market:message", (body) => this.receive(body));
+    socket.on("market:error", (body) => {
+      if (typeof body !== "object" || body === null) return;
+      const error = body as Readonly<Record<string, unknown>>;
+      if (typeof error.subscriptionId !== "string" || typeof error.message !== "string") return;
+      this.subscriptions.get(error.subscriptionId)?.handlers.onError(error.message);
+    });
+  }
+
+  get connectionState(): RealtimeConnectionState {
+    return this.socket.connected ? "connected" : "disconnected";
+  }
+
+  /** Notifies while the listener is registered. Returns the release function. */
+  onConnectionChange(listener: (state: RealtimeConnectionState) => void): () => void {
+    this.connectionListeners.add(listener);
+    return () => {
+      this.connectionListeners.delete(listener);
+    };
+  }
+
+  subscribe(
+    request: MarketSubscriptionRequest,
+    handlers: MarketSubscriptionHandlers
+  ): () => void {
+    const message: MarketSubscribeMessage = {
+      schemaVersion: "v1",
+      type: "market:subscribe",
+      ...request
+    };
+    this.subscriptions.set(request.subscriptionId, {
+      request: message,
+      handlers,
+      awaitingSnapshot: true
+    });
+    if (this.socket.connected) this.socket.emit("market:subscribe", message);
+    return () => {
+      if (!this.subscriptions.delete(request.subscriptionId)) return;
+      this.socket.emit("market:unsubscribe", {
+        schemaVersion: "v1", type: "market:unsubscribe",
+        subscriptionId: request.subscriptionId
+      });
+    };
+  }
+
+  private announceConnection(state: RealtimeConnectionState): void {
+    for (const listener of this.connectionListeners) listener(state);
+  }
+
+  private resubscribeAll(): void {
+    for (const subscription of this.subscriptions.values()) {
+      subscription.awaitingSnapshot = true;
+      this.socket.emit("market:subscribe", subscription.request);
+    }
+  }
+
+  private receive(body: unknown): void {
+    if (!isMarketRealtimeMessage(body)) return;
+    if (body.type === "market:snapshot") {
+      const subscription = this.subscriptions.get(body.subscriptionId);
+      if (subscription === undefined || !this.matches(subscription, body)) return;
+      subscription.awaitingSnapshot = false;
+      subscription.handlers.onSnapshot(body);
+      return;
+    }
+    if (body.type === "market:refresh-required") {
+      const subscription = this.subscriptions.get(body.subscriptionId);
+      if (subscription === undefined) return;
+      subscription.awaitingSnapshot = true;
+      this.socket.emit("market:subscribe", subscription.request);
+      return;
+    }
+    if (body.type !== "candle.tick" && body.type !== "candle.closed") return;
+    const subscription = this.subscriptions.get(body.subscriptionId);
+    // The gateway already filtered by key and addressed the message. The key
+    // check stays as a guard against a stale delivery for a retargeted id.
+    if (subscription === undefined || subscription.awaitingSnapshot) return;
+    if (!this.matches(subscription, body)) return;
+    if (body.type === "candle.tick") subscription.handlers.onTick(body);
+    else subscription.handlers.onClosed(body);
+  }
+
+  private matches(
+    subscription: ActiveSubscription,
+    message: { readonly symbol: string; readonly timeframe: string }
+  ): boolean {
+    return subscription.request.symbol === message.symbol &&
+      subscription.request.timeframe === message.timeframe;
+  }
+}
+
+let sharedClient: MarketRealtimeClient | undefined;
+
+export function getMarketRealtimeClient(): MarketRealtimeClient {
+  sharedClient ??= new MarketRealtimeClient(io({ path: "/ws", transports: ["websocket"] }));
+  return sharedClient;
+}

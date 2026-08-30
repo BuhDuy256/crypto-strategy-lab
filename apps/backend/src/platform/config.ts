@@ -18,6 +18,22 @@ export interface PostgresConfig {
 
 export interface AppConfig {
   readonly postgres: PostgresConfig;
+  readonly backtestRunner: { readonly concurrency: number };
+  // Fixed Top-K size of every leaderboard projection. A project-wide value, not a
+  // per-experiment field, so a rebuild always uses the same K.
+  readonly leaderboard: { readonly topK: number };
+  readonly redis: { readonly url: string };
+  readonly websocket: {
+    readonly maxOutboundMessages: number;
+    readonly maxSubscriptionsPerClient: number;
+  };
+  // Which live streams the market ingest process holds open. One symbol and a
+  // timeframe list, because a Binance connection carries many streams at once.
+  readonly marketIngest: {
+    readonly symbol: string;
+    readonly timeframes: readonly string[];
+    readonly streamBaseUrl: string;
+  };
 }
 
 type RequiredEnvVar =
@@ -61,6 +77,49 @@ export function loadConfig(env: EnvSource = process.env): AppConfig {
   const user = readRequiredEnvVar("POSTGRES_USER", env);
   const password = readRequiredEnvVar("POSTGRES_PASSWORD", env);
   const database = readRequiredEnvVar("POSTGRES_DB", env);
+  const concurrency = Number(env.BACKTEST_RUNNER_CONCURRENCY ?? "1");
+  if (!Number.isInteger(concurrency) || concurrency <= 0) {
+    throw new Error("Environment variable \"BACKTEST_RUNNER_CONCURRENCY\" must be a positive integer.");
+  }
+  const leaderboardTopK = Number(env.LEADERBOARD_TOP_K ?? "10");
+  if (!Number.isInteger(leaderboardTopK) || leaderboardTopK <= 0) {
+    throw new Error("Environment variable \"LEADERBOARD_TOP_K\" must be a positive integer.");
+  }
+  const redisUrl = env.REDIS_URL ?? "redis://localhost:6379";
+  try {
+    const parsed = new URL(redisUrl);
+    if (parsed.protocol !== "redis:" && parsed.protocol !== "rediss:") throw new Error();
+  } catch {
+    throw new Error("Environment variable \"REDIS_URL\" must be a valid redis:// or rediss:// URL.");
+  }
+  const maxOutboundMessages = Number(env.WS_OUTBOUND_BUFFER_MAX ?? "32");
+  if (!Number.isSafeInteger(maxOutboundMessages) || maxOutboundMessages < 1) {
+    throw new Error("Environment variable \"WS_OUTBOUND_BUFFER_MAX\" must be a positive integer.");
+  }
+  // A resource bound on one client, not a count of charts. The page decides how
+  // many charts it opens; the API only refuses to hold an unbounded number.
+  const maxSubscriptionsPerClient = Number(env.WS_SUBSCRIPTION_MAX ?? "32");
+  if (!Number.isSafeInteger(maxSubscriptionsPerClient) || maxSubscriptionsPerClient < 1) {
+    throw new Error("Environment variable \"WS_SUBSCRIPTION_MAX\" must be a positive integer.");
+  }
+  const ingestSymbol = (env.MARKET_INGEST_SYMBOL ?? "BTCUSDT").trim();
+  if (ingestSymbol === "") {
+    throw new Error("Environment variable \"MARKET_INGEST_SYMBOL\" must not be empty.");
+  }
+  const ingestTimeframes = (env.MARKET_INGEST_TIMEFRAMES ?? "1m,5m,15m,30m,1h,2h,4h,1d")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry !== "");
+  if (ingestTimeframes.length === 0) {
+    throw new Error("Environment variable \"MARKET_INGEST_TIMEFRAMES\" must name at least one timeframe.");
+  }
+  const streamBaseUrl = env.BINANCE_STREAM_URL ?? "wss://data-stream.binance.vision";
+  try {
+    const parsed = new URL(streamBaseUrl);
+    if (parsed.protocol !== "ws:" && parsed.protocol !== "wss:") throw new Error();
+  } catch {
+    throw new Error("Environment variable \"BINANCE_STREAM_URL\" must be a valid ws:// or wss:// URL.");
+  }
 
   return {
     postgres: {
@@ -69,6 +128,11 @@ export function loadConfig(env: EnvSource = process.env): AppConfig {
       user,
       password,
       database
-    }
+    },
+    backtestRunner: { concurrency },
+    leaderboard: { topK: leaderboardTopK },
+    redis: { url: redisUrl },
+    websocket: { maxOutboundMessages, maxSubscriptionsPerClient },
+    marketIngest: { symbol: ingestSymbol, timeframes: ingestTimeframes, streamBaseUrl }
   };
 }

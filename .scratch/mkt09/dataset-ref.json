@@ -1,0 +1,16 @@
+{
+  "datasetId": "sha256:1378366542995a572d63039235866f2759f85db32b53f3e338424e6a39d00267",
+  "version": 1,
+  "manifestVersion": "v1",
+  "provider": "binance",
+  "symbols": [
+    "BTCUSDT"
+  ],
+  "timeframe": "1m",
+  "range": {
+    "startTime": 1788058980000,
+    "endTime": 1788059100000
+  },
+  "revisionWatermark": 12428,
+  "integrityHash": "1378366542995a572d63039235866f2759f85db32b53f3e338424e6a39d00267"
+}

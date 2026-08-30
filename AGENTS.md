@@ -9,15 +9,15 @@
 
 PROJECT MODE: IMPLEMENTATION AGAINST FROZEN ARCHITECTURE
 
-ARCHITECTURE STATUS: FROZEN v1.1
+ARCHITECTURE STATUS: FROZEN v1.2
 
 VALIDATION STATUS: PENDING IMPLEMENTATION PROOFS
 
 IMPLEMENTATION STATUS: IN PROGRESS
 
-CURRENT PRODUCT VERSION: V1
+CURRENT PRODUCT VERSION: V5
 
-Architecture baseline v1.1 is FROZEN with validation status PENDING IMPLEMENTATION PROOFS. `FROZEN` means normative, not empirically proven.
+Architecture baseline v1.2 is FROZEN with validation status PENDING IMPLEMENTATION PROOFS. `FROZEN` means normative, not empirically proven.
 
 `IMPLEMENTATION STATUS` and `CURRENT PRODUCT VERSION` are separate facts. The first says whether application work has begun at all. The second names the only product version an agent is authorized to build right now. Both are set by the user. A coding agent never advances either one, and never creates a version tag.
 
@@ -25,7 +25,7 @@ Implementation work is planned as versioned slices. The entry point for any codi
 
 ## Normative source hierarchy
 
-1. `docs/architecture/architecture-baseline.md` (FROZEN v1.1)
+1. `docs/architecture/architecture-baseline.md` (FROZEN v1.2)
 2. Accepted ADRs in `docs/adr/`
 3. Official project sources in `docs/requirements/`
 4. Project coding and test conventions in `CODING_STANDARDS.md`
@@ -38,7 +38,7 @@ Implementation work is planned as versioned slices. The entry point for any codi
 - Domain logic depends on contracts/ports, never on exchange payloads, databases, queues, web frameworks, or UI code.
 - Core backend and initial workers use Node.js + TypeScript; NestJS is limited to application composition and HTTP/WebSocket transport edges.
 - Major logical modules map to explicit NestJS module/composition boundaries; cross-module access uses exported application/domain ports, never another module's repository, adapter, ORM model/repository, or private provider.
-- BullMQ/Redis is the correctness delivery path for asynchronous work; Redis Pub/Sub is only best-effort live/UI notification after authoritative state or projection commit; PostgreSQL remains authoritative truth.
+- BullMQ/Redis is the mandatory V6 correctness delivery path. V1 through V5 may run backtests through the PostgreSQL-backed durable executor authorized by ADR-010, always in a separate runner process. Redis Pub/Sub is only best-effort live/UI notification after authoritative state or projection commit; PostgreSQL remains authoritative truth.
 - Python is optional only behind the framework-independent `SentimentAnalyzer` boundary when a selected model/library provides a concrete benefit.
 - Logical boundaries are not deployment boundaries. Do not create a new service merely to represent a module.
 - Cross-process work is at-least-once. Consumers must be idempotent and duplicate-safe.
@@ -79,7 +79,7 @@ If implementation reveals a conflict:
 - Keep application modules in one codebase unless an accepted ADR explicitly permits a split.
 - Never overwrite versioned strategy, dataset, model, engine, or experiment inputs used by completed runs.
 - Make retries, cancellation, pause/resume, outbox publication, and projection updates observable and testable.
-- Keep CPU-heavy backtests in separate BullMQ worker processes, never in NestJS request or WebSocket execution.
+- Keep CPU-heavy backtests outside NestJS request and WebSocket execution: a separate PostgreSQL-backed runner process in V1 through V5, then separate BullMQ worker processes in V6.
 - Follow `CODING_STANDARDS.md` for naming, TypeScript usage, module surfaces, error handling, logging, validation placement, migrations, tests, formatting, and commit messages. It records conventions this codebase already uses; it does not create architecture rules.
 - Commit at slice boundaries and review each slice's coherent diff (`code-review` skill) before starting the next unblocked slice. Committing and pushing still require a separate explicit user request (see the `implement` guardrail below).
 

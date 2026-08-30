@@ -6,7 +6,7 @@ This repository uses a single project context. Agent workflows must consume doma
 
 Read the sources relevant to the work in this order:
 
-1. `docs/architecture/architecture-baseline.md` — frozen architecture baseline v1.1.
+1. `docs/architecture/architecture-baseline.md` — frozen architecture baseline v1.2.
 2. Accepted ADRs in `docs/adr/` that touch the area.
 3. Official project sources in `docs/requirements/`.
 4. `CONTEXT.md`, if it exists, for project vocabulary only.

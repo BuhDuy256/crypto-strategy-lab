@@ -33,8 +33,6 @@ default and must record the choice; the user may override at any time.
 
 | Decision | Blocks | Needed by |
 |---|---|---|
-| Execution model defaults: starting capital, fee, slippage, fill rule, rounding, position sizing, stop rules | `EXP-02` | **V1** - baseline reproducibility rule 5 requires these to be resolvable per result, so they must be specification fields with supplied values, not constants inside the engine |
-| Architecture review of the backtest execution transport deviation | `EXP-04` | **V1** - a formal review under the `AGENTS.md` deviation procedure, not an acknowledgement. See [`deviation-proposal-001`](../docs/architecture/deviation-proposal-001-backtest-execution-transport.md) |
 | Ranking weights and tie-break rule | `SEARCH-03` | **V3** - resolve during V2 so it does not stall V3 |
 | Concrete news sources | `NEWS-02` | **V5** - licensing and rate policy have to be reviewed before collection starts (ADR-007 risk) |
 | Concrete sentiment model or service | `NEWS-04` | **V5** - decides whether the optional Python runtime behind `SentimentAnalyzer` is justified |

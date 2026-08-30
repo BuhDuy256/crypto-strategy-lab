@@ -1,14 +1,19 @@
 # Crypto Strategy Lab Architecture Baseline
 
 **Architecture Status:** FROZEN
-**Baseline Version:** v1.1
+**Baseline Version:** v1.2
 **Validation Status:** PENDING IMPLEMENTATION PROOFS
-**Frozen:** 2026-08-21
+**Frozen:** 2026-08-23
 **Normative for:** all application implementation after bootstrap
 
-**Previous baseline:** [`architecture-baseline-v1.md`](architecture-baseline-v1.md) (FROZEN v1)
+**Previous baseline:** [`architecture-baseline-v1.1.md`](architecture-baseline-v1.1.md) (FROZEN v1.1)
 
-This revision supersedes v1 because the core backend realization changed from Python/FastAPI/Celery to Node.js/TypeScript/NestJS/BullMQ, the durable path after the transactional outbox is now explicit, architecture and validation status are separated, and the result-acceptance transaction invariant now permits either direct trade rows or an immutable content-addressed trade artifact. The architecture style, logical boundaries, ownership, domain contracts, and proof obligations are unchanged.
+This revision supersedes v1.1 only to authorize staged asynchronous-execution
+realization. V1 through V5 may use a PostgreSQL-backed durable executor behind the
+same `BacktestExecutor` port, while BullMQ with persistence-configured Redis remains
+the mandatory final target in V6. Architecture style, logical boundaries, ownership,
+domain contracts, and proof obligations are unchanged. See
+[`ADR-010`](../adr/ADR-010-realization-sequencing-for-asynchronous-backtest-execution.md).
 
 ## Scope
 
@@ -25,7 +30,7 @@ Use a **modular monolith with selectively separated process roles**:
 - separate runtime roles for API/WebSocket, market ingestion, CPU-heavy backtest workers, news/sentiment work, and outbox dispatch;
 - shared PostgreSQL and Redis infrastructure with explicit semantic limits and data ownership.
 
-Logical boundary does not imply deployment boundary. Do not create domain microservices for v1.1.
+Logical boundary does not imply deployment boundary. Do not create domain microservices for v1.2.
 
 ## System boundaries
 
@@ -42,7 +47,7 @@ External systems:
 - configured news providers;
 - configured sentiment model runtime.
 
-Real order execution, exchange-account trading, custody, public multi-tenancy, and production security architecture are outside baseline v1.1.
+Real order execution, exchange-account trading, custody, public multi-tenancy, and production security architecture are outside baseline v1.2.
 
 ## Logical modules / bounded contexts
 
@@ -124,13 +129,32 @@ Contract schemas must be versioned before crossing a process boundary.
 
 - SPA -> API: HTTP for commands/queries and WebSocket for subscription control, market updates, progress, degradation, and leaderboard notifications.
 - API -> modules: in-process application/query ports.
-- API/coordinator -> workers: immutable BullMQ commands through Redis, delivered at least once to separate Node.js/TypeScript worker processes.
+- API/coordinator -> backtest execution: immutable commands through the `BacktestExecutor` port to a separate Node.js/TypeScript process. V1 through V5 use the permitted PostgreSQL-backed durable executor; V6 uses BullMQ through persistence-configured Redis, delivered at least once.
 - Worker -> durable state: PostgreSQL transaction.
 - Durable state -> correctness-relevant integration work: PostgreSQL transactional outbox -> outbox dispatcher -> BullMQ durable queue -> idempotent consumer -> PostgreSQL durable state/projection.
 - Authoritative state/projection -> API live fan-out: Redis Pub/Sub -> NestJS WebSocket Gateway, explicitly best-effort and ephemeral; durable snapshots and recovery use PostgreSQL.
 - Module integration: public commands/queries and versioned integration events only.
 
 Pause/resume/cancel and stop conditions are durable Experiment state. They are not delegated to broker-specific cancellation semantics.
+
+### Realization sequencing
+
+The final target realization is BullMQ and persistence-configured Redis for durable
+asynchronous execution. V1 through V5 may use a PostgreSQL-backed durable executor
+behind the same `BacktestExecutor` port under all of these conditions:
+
+1. backtest execution runs outside the API and WebSocket process;
+2. durable run state remains PostgreSQL-authoritative;
+3. domain and application contracts expose no PostgreSQL polling, claiming, lease,
+   cursor, or transaction semantics;
+4. the V6 migration replaces only the adapter and process entry point, not
+   `Backtester`, `Evaluator`, `ResultCommitter`, `ExperimentSpec`, or another domain
+   or application contract;
+5. no correctness-relevant cross-process integration publication exists before the
+   transactional outbox and BullMQ path is implemented.
+
+The intermediate realization closes only when `EXP-12` and the applicable V6 proofs
+pass. PostgreSQL polling is not authorized as a general substitute for messaging.
 
 ## Events
 
@@ -162,7 +186,7 @@ All correctness-relevant publication uses an outbox and BullMQ. An outbox entry 
 - Use one PostgreSQL instance initially with module-owned schemas/tables.
 - Only the owning module writes its data.
 - Started experiment specs and all versions/artifacts referenced by completed results are append-only/immutable.
-- A completed result may be accepted only when the complete accepted trade result is durably represented and content-addressably linked. Its local acceptance transaction commits logical result identity, metrics, completion state, required provenance references, the outbox record, and either directly stored trade rows or an immutable trade-data reference plus cryptographic/content hash. No external object store is required for v1.1.
+- A completed result may be accepted only when the complete accepted trade result is durably represented and content-addressably linked. Its local acceptance transaction commits logical result identity, metrics, completion state, required provenance references, the outbox record when the V6 integration path is active, and either directly stored trade rows or an immutable trade-data reference plus cryptographic/content hash. No external object store is required for v1.2.
 - Authoritative experiment/results are never reconstructed from the leaderboard projection.
 - Redis is not authoritative for experiments, results, candles, news, or provenance.
 - Schema migrations must preserve frozen ownership and completed-run provenance.
@@ -191,7 +215,7 @@ Initial roles:
 1. static React/TypeScript SPA;
 2. NestJS HTTP Controller/WebSocket Gateway process;
 3. Market ingest process;
-4. one or more Node.js/TypeScript BullMQ backtest worker processes on a dedicated queue;
+4. one or more Node.js/TypeScript backtest runner processes using the permitted PostgreSQL-backed executor in V1 through V5, replaced by BullMQ workers on a dedicated queue in V6;
 5. Node.js/TypeScript news/sentiment worker on separately routed BullMQ queues, with an optional Python model runtime only behind `SentimentAnalyzer` when justified;
 6. outbox dispatcher;
 7. PostgreSQL;
@@ -205,14 +229,15 @@ Roles may share the same application image/build and use role-specific entry com
 - NestJS Controllers for HTTP and a NestJS WebSocket Gateway for realtime client transport.
 - React + TypeScript for the single SPA.
 - PostgreSQL for durable state and local transactions.
-- BullMQ + Redis for durable asynchronous job and integration-work delivery; Redis persistence is an operational requirement for this correctness path.
+- A PostgreSQL-backed durable executor behind `BacktestExecutor` is permitted for backtest execution in V1 through V5 under the Realization sequencing conditions.
+- BullMQ + Redis is the mandatory V6 target for durable asynchronous job and integration-work delivery; Redis persistence is an operational requirement for this correctness path.
 - Redis Pub/Sub only for best-effort live/UI fan-out after authoritative state or a projection has been updated.
 - `SentimentAnalyzer` remains a framework- and language-independent port; Python is optional only behind that boundary when a selected model/library provides a concrete benefit.
 - Docker images and a Docker Compose-style local/demo topology during implementation.
 
 Library/runtime versions must be pinned by implementation dependency locks. Version upgrades do not require architecture review unless they change a contract, semantic guarantee, ownership rule, or topology.
 
-Not selected for v1.1: arbitrary runtime plugin loading, domain microservices, Kafka, RabbitMQ, general CQRS, Event Sourcing, Kubernetes, or service mesh.
+Not selected for v1.2: arbitrary runtime plugin loading, domain microservices, Kafka, RabbitMQ, general CQRS, Event Sourcing, Kubernetes, or service mesh.
 
 ## NestJS realization invariants
 
@@ -239,7 +264,7 @@ These invariants are implementation constraints to be enforced with dependency/i
 8. Leaderboard is derived and traceable to immutable Experiment truth.
 9. No cross-module table writes or hidden infrastructure dependencies.
 10. No architectural technology without a traced problem/scenario/ADR.
-11. BullMQ is the correctness delivery path, Redis Pub/Sub is a best-effort notification path, and PostgreSQL remains authoritative durable truth.
+11. BullMQ is the final correctness delivery path from V6. The V1-to-V5 PostgreSQL-backed executor is permitted only under the Realization sequencing conditions. Redis Pub/Sub is always a best-effort notification path, and PostgreSQL remains authoritative durable truth.
 
 ## Accepted ADRs
 
@@ -252,6 +277,7 @@ These invariants are implementation constraints to be enforced with dependency/i
 - [ADR-007 - News and sentiment isolation](../adr/ADR-007-news-sentiment-isolation.md)
 - [ADR-008 - Realtime delivery and market recovery](../adr/ADR-008-realtime-delivery-recovery.md)
 - [ADR-009 - Technology realization for baseline v1.1](../adr/ADR-009-technology-realization.md)
+- [ADR-010 - Realization sequencing for asynchronous backtest execution](../adr/ADR-010-realization-sequencing-for-asynchronous-backtest-execution.md)
 
 ## Deviation procedure
 

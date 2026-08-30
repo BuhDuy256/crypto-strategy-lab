@@ -1,19 +1,20 @@
 // Entry command for the API/WebSocket process role (see
 // architecture-baseline.md, "Deployment topology", role 2).
 //
-// This slice starts plain HTTP with a health endpoint and global DTO
-// validation. It intentionally does not touch PostgreSQL, Redis,
-// BullMQ, or WebSocket transport; those arrive in later slices.
+// The process serves HTTP plus the V4 WebSocket Gateway. PostgreSQL supplies
+// durable snapshots and Redis supplies only best-effort live notifications.
 import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
 import { ValidationPipe } from "@nestjs/common";
 import { AppModule } from "./app.module.js";
 import { StructuredLogger } from "./platform/logger.js";
+import { loadRootEnvFile } from "./platform/root-env.js";
 
 const PROCESS_ROLE = "api";
 const DEFAULT_PORT = 3000;
 
 async function bootstrap(): Promise<void> {
+  loadRootEnvFile();
   const logger = new StructuredLogger(PROCESS_ROLE);
   const app = await NestFactory.create(AppModule, { logger });
 
