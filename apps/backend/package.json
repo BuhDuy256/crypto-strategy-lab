@@ -7,6 +7,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "start:api": "tsx src/main.api.ts",
     "start:backtest-runner": "tsx src/main.backtest-runner.ts",
+    "start:news-worker": "tsx src/main.news-worker.ts",
+    "news:collect": "tsx src/main.news-worker.ts --once",
     "market:backfill": "tsx src/modules/market/infrastructure/run-market-backfill.ts",
     "leaderboard:rebuild": "tsx src/modules/experiment/infrastructure/run-leaderboard-rebuild.ts",
     "migrate": "tsx src/migrate/run-migrations.ts",

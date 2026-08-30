@@ -1,5 +1,7 @@
 // Public surface of the News Intelligence module.
 export { NewsModule } from "./news.module.js";
+export { NewsWorkerModule } from "./news-worker.module.js";
+export { NewsWorkerRuntime } from "./application/news-worker-runtime.js";
 export {
   MAX_NEWS_CONTENT_LENGTH,
   assertNewsItemCollection,

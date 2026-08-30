@@ -161,6 +161,29 @@ services:
     command: ["pnpm", "run", "start:market-ingest"]
     restart: unless-stopped
 
+  # The News collection worker owns RSS collection and News table writes. It has no
+  # dependency on API, market ingest, Redis, or the backtest runner, so a provider
+  # outage stays inside this process role (NEWS-02).
+  news-worker:
+    build:
+      context: .
+      target: backend
+    image: crypto-strategy-lab-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      <<: *backend-postgres-env
+      NEWS_COINDESK_RSS_URL: ${NEWS_COINDESK_RSS_URL:-https://www.coindesk.com/arc/outboundfeeds/rss/}
+      NEWS_POLL_INTERVAL_MS: ${NEWS_POLL_INTERVAL_MS:-900000}
+      NEWS_REQUEST_TIMEOUT_MS: ${NEWS_REQUEST_TIMEOUT_MS:-10000}
+      NEWS_RETRY_COUNT: ${NEWS_RETRY_COUNT:-2}
+      NEWS_RETRY_DELAY_MS: ${NEWS_RETRY_DELAY_MS:-1000}
+    command: ["pnpm", "run", "start:news-worker"]
+    restart: unless-stopped
+
   # The React SPA, built and served by Nginx, which proxies /api to the api
   # process (apps/web/nginx.conf).
   web:

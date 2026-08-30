@@ -2187,3 +2187,73 @@ validated by its tests and its browser smoke, and by nothing else.
   API endpoints, or these tests; all three NEWS-01 files passed in that run. This is
   recorded as incidental baseline evidence, not attributed to NEWS-01 and not
   repaired or rerun within this slice.
+
+### 2026-08-30 - NEWS-02 CoinDesk RSS source decision
+
+**Owner decision**
+
+- The owner approved CoinDesk's official RSS feed as the first concrete News source:
+  `https://www.coindesk.com/arc/outboundfeeds/rss/`. This is an owner source
+  decision, not an agent product-scope or version decision.
+- The adapter must receive its endpoint from configuration. It may consume only RSS
+  title, summary/description, canonical link, and published timestamp. It must not
+  scrape article pages, download articles, or reproduce full article content.
+- The owner accepted `6f387d6 implement(v5): finish NEWS-01` as the NEWS-01
+  baseline as-is, including its known PDF render PNG files. NEWS-02 starts from that
+  commit without rewriting or repeating NEWS-01 review.
+
+**Implementation start**
+
+- `NEWS-02` moved from `BLOCKED` to `IN PROGRESS`. C1 adds the News-owned
+  collection tables and an atomic persistence seam. The source is not yet queried;
+  adapter, collector, scheduler, worker role, and real-source demonstration remain
+  in later NEWS-02 milestones.
+
+### 2026-08-30 - NEWS-02 complete: collection worker and CoinDesk RSS adapter
+
+**Delivered**
+
+- The first real provider adapter, `CoinDeskRssNewsProvider`, reaches the approved
+  feed through configuration and maps RSS-only fields through the unchanged NEWS-01
+  normalization contract. It passes the NEWS-01 provider contract suite unmodified.
+- News Intelligence now owns durable collection state: `news.items` and
+  `news.source_health` in migration `0016_create_news_collection.sql`. The item table
+  encodes the deterministic `source|url` identity as a check constraint, enforces a
+  unique `(source, url)`, and permits only the `pending` analysis state.
+- `NewsCollectionService` fetches through the port, deduplicates, and commits one
+  batch through a single `NewsCollectionStore.storeCollectedBatch` transaction that
+  also writes source health. A V6 outbox row can join that transaction without
+  rewriting the collector; no outbox exists now.
+- `NewsWorkerModule`, `main.news-worker.ts`, and the `news-worker` Compose service add
+  the News worker as its own process role, with manual (`pnpm run news:collect`) and
+  scheduled triggers.
+
+**Durable decisions**
+
+- Collection stays strictly RSS-only. No article page is ever requested, and no full
+  article body is stored; observed stored summaries run 37 to 203 characters.
+- Provider failure is caught inside News, persisted as degraded source health, and
+  never raised outside the News boundary. A failing collection exits successfully.
+- The no-analyzer guarantee is enforced by a static proof that pins the collector's
+  import list, not by observing an uncalled mock. It was mutation-tested: adding an
+  analyzer import turned it red, and the change was reverted.
+
+**Isolation evidence**
+
+- With `api`, `web`, `market-ingest`, `redis`, and `runner` stopped, the news worker
+  collected healthily. With the news worker stopped, the backtest runner started and
+  reported `Runner slot ready`. This is targeted NEWS-02 evidence; `PROOF-ISO-001`
+  still needs its own full-topology run after the remaining V5 slices.
+
+**Validation cadence**
+
+- NEWS-02 used targeted validation only: the News module and config tests (8 files,
+  47 tests), backend typecheck, narrow lint, `git diff --check`, and
+  `docker compose config --quiet`. The repository-wide suite was not run and must not
+  be until the V5 News backend integration gate after `NEWS-07`.
+
+**State**
+
+- `NEWS-02` is `DONE` but deliberately uncommitted, awaiting owner review. `NEWS-03`
+  is now `READY`. `NEWS-04` stays `BLOCKED` until the owner selects a sentiment model
+  or service.

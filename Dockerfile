@@ -3,8 +3,8 @@
 # Full-system integration and demo image for Crypto Strategy Lab.
 #
 # This file builds two runtime images from one pnpm workspace:
-#   - "backend": one Node image that serves three process roles (migrate,
-#     api, runner). The Compose service picks the role through its command.
+#   - "backend": one Node image that serves four process roles (migrate,
+#     api, runner, news-worker). The Compose service picks the role through its command.
 #   - "web": the built React SPA served by Nginx, which also reverse-proxies
 #     the "/api" prefix to the api process (the same prefix the dev proxy uses).
 #

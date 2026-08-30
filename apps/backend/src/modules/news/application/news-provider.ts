@@ -12,7 +12,7 @@ export interface NewsProviderHealth {
   readonly reason?: string;
 }
 
-export type NewsProviderErrorCode = "PROVIDER_UNAVAILABLE";
+export type NewsProviderErrorCode = "PROVIDER_UNAVAILABLE" | "INVALID_PROVIDER_DATA";
 
 export class NewsProviderError extends Error {
   override readonly name = "NewsProviderError";
