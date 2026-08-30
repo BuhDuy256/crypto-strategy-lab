@@ -34,7 +34,8 @@ describe("PostgresNewsCollectionRepository", () => {
   });
 
   beforeEach(async () => {
-    await pool.query("TRUNCATE news.items, news.source_health");
+    // CASCADE also clears the sentiment tables that reference news.items (migration 0017).
+    await pool.query("TRUNCATE news.items, news.source_health CASCADE");
   });
 
   afterAll(async () => {

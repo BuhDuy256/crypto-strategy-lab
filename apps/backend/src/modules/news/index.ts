@@ -19,3 +19,22 @@ export type {
   NewsProviderHealth,
   NewsProviderHealthStatus
 } from "./application/news-provider.js";
+export {
+  MODEL_ALIASES_FORBIDDEN_IN_PROVENANCE,
+  NEWS_SENTIMENT_INPUT_VERSION,
+  SENTIMENT_LABELS,
+  SENTIMENT_RESULT_SCHEMA_VERSION,
+  normalizeSentimentResult,
+  type SentimentLabel,
+  type SentimentModelProvenance,
+  type SentimentResult,
+  type SentimentResultRejectionReason,
+  type SentimentResultStatus
+} from "./domain/sentiment-result.js";
+export {
+  SentimentAnalyzerError,
+  type SentimentAnalysisInput,
+  type SentimentAnalysisOutput,
+  type SentimentAnalyzer,
+  type SentimentAnalyzerErrorCode
+} from "./application/sentiment-analyzer.js";

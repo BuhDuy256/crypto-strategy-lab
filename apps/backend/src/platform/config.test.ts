@@ -37,6 +37,12 @@ describe("loadConfig", () => {
           requestTimeoutMs: 10000,
           retryCount: 2,
           retryDelayMs: 1000
+        },
+        sentimentAnalysis: {
+          leaseSeconds: 60,
+          maxAttempts: 3,
+          batchSize: 10,
+          pollIntervalMs: 60000
         }
       }
     });
@@ -90,6 +96,31 @@ describe("loadConfig", () => {
       .toThrow(/NEWS_COINDESK_RSS_URL/);
     expect(() => loadConfig({ ...VALID_ENV, NEWS_POLL_INTERVAL_MS: "59999" }))
       .toThrow(/NEWS_POLL_INTERVAL_MS/);
+  });
+
+  it("loads and bounds the configurable sentiment analysis lifecycle policy", () => {
+    const config = loadConfig({
+      ...VALID_ENV,
+      NEWS_ANALYSIS_LEASE_SECONDS: "45",
+      NEWS_ANALYSIS_MAX_ATTEMPTS: "4",
+      NEWS_ANALYSIS_BATCH_SIZE: "25",
+      NEWS_ANALYSIS_POLL_INTERVAL_MS: "90000"
+    });
+
+    expect(config.news.sentimentAnalysis).toEqual({
+      leaseSeconds: 45,
+      maxAttempts: 4,
+      batchSize: 25,
+      pollIntervalMs: 90000
+    });
+    expect(() => loadConfig({ ...VALID_ENV, NEWS_ANALYSIS_LEASE_SECONDS: "4" }))
+      .toThrow(/NEWS_ANALYSIS_LEASE_SECONDS/);
+    expect(() => loadConfig({ ...VALID_ENV, NEWS_ANALYSIS_MAX_ATTEMPTS: "0" }))
+      .toThrow(/NEWS_ANALYSIS_MAX_ATTEMPTS/);
+    expect(() => loadConfig({ ...VALID_ENV, NEWS_ANALYSIS_BATCH_SIZE: "0" }))
+      .toThrow(/NEWS_ANALYSIS_BATCH_SIZE/);
+    expect(() => loadConfig({ ...VALID_ENV, NEWS_ANALYSIS_POLL_INTERVAL_MS: "4999" }))
+      .toThrow(/NEWS_ANALYSIS_POLL_INTERVAL_MS/);
   });
 
   it("throws a clear error naming the missing variable", () => {

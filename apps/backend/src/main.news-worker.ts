@@ -8,8 +8,9 @@ import { loadRootEnvFile } from "./platform/root-env.js";
 async function main(): Promise<void> {
   loadRootEnvFile();
   const arguments_ = process.argv.slice(2);
-  if (arguments_.some((argument) => argument !== "--once")) {
-    throw new Error("News worker accepts only the optional --once argument.");
+  const allowed = new Set(["--once", "--analyze-once"]);
+  if (arguments_.some((argument) => !allowed.has(argument))) {
+    throw new Error("News worker accepts only the optional --once or --analyze-once argument.");
   }
   const context = await NestFactory.createApplicationContext(NewsWorkerModule, { logger: false });
   const controller = new AbortController();
@@ -25,6 +26,8 @@ async function main(): Promise<void> {
     const runtime = context.get(NewsWorkerRuntime);
     if (arguments_.includes("--once")) {
       await runtime.collectOnce();
+    } else if (arguments_.includes("--analyze-once")) {
+      await runtime.analyzeOnce();
     } else {
       await runtime.run(controller.signal);
     }

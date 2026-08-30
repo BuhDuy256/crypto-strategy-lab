@@ -2,7 +2,11 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { NewsWorkerRuntime, type NewsWorkerSchedule } from "./news-worker-runtime.js";
+import {
+  NewsWorkerRuntime,
+  type NewsWorkerAnalysisSchedule,
+  type NewsWorkerSchedule
+} from "./news-worker-runtime.js";
 
 class RecordingSchedule implements NewsWorkerSchedule {
   readonly calls: string[] = [];
@@ -21,10 +25,42 @@ class RecordingSchedule implements NewsWorkerSchedule {
   stop(): void { this.calls.push("stop"); }
 }
 
+class RecordingAnalysisSchedule implements NewsWorkerAnalysisSchedule {
+  readonly calls: string[] = [];
+
+  async analyzeManually() {
+    this.calls.push("manual");
+    return {
+      analyzerId: "fake-analyzer",
+      claimedCount: 1,
+      analyzedCount: 1,
+      retryableFailureCount: 0,
+      degradedCount: 0,
+      lostClaimCount: 0
+    };
+  }
+
+  async analyzeOnSchedule() {
+    this.calls.push("scheduled");
+    return {
+      analyzerId: "fake-analyzer",
+      claimedCount: 1,
+      analyzedCount: 1,
+      retryableFailureCount: 0,
+      degradedCount: 0,
+      lostClaimCount: 0
+    };
+  }
+
+  start(): void { this.calls.push("start"); }
+  stop(): void { this.calls.push("stop"); }
+}
+
 describe("NewsWorkerRuntime", () => {
-  it("runs collection without a backtest runner and stops its schedule on abort", async () => {
+  it("runs independent collection and analyzer stages without a backtest runner", async () => {
     const schedule = new RecordingSchedule();
-    const runtime = new NewsWorkerRuntime(schedule, { log: () => undefined });
+    const analysis = new RecordingAnalysisSchedule();
+    const runtime = new NewsWorkerRuntime(schedule, analysis, { log: () => undefined });
     const controller = new AbortController();
     const running = runtime.run(controller.signal);
 
@@ -33,14 +69,18 @@ describe("NewsWorkerRuntime", () => {
     await running;
 
     expect(schedule.calls).toEqual(["scheduled", "start", "stop"]);
+    expect(analysis.calls).toEqual(["scheduled", "start", "stop"]);
   });
 
-  it("uses the same News schedule for the manual operational trigger", async () => {
+  it("keeps manual collection and analysis as separate operational triggers", async () => {
     const schedule = new RecordingSchedule();
-    const runtime = new NewsWorkerRuntime(schedule, { log: () => undefined });
+    const analysis = new RecordingAnalysisSchedule();
+    const runtime = new NewsWorkerRuntime(schedule, analysis, { log: () => undefined });
 
     await expect(runtime.collectOnce()).resolves.toMatchObject({ storedCount: 1 });
+    await expect(runtime.analyzeOnce()).resolves.toMatchObject({ analyzedCount: 1 });
     expect(schedule.calls).toEqual(["manual"]);
+    expect(analysis.calls).toEqual(["manual"]);
   });
 });
 

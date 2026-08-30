@@ -20,13 +20,13 @@ true; keep conversation out of them.
 | Implementation status | `IN PROGRESS - V1-V4 BASELINE CERTIFIED` |
 | Current target version | **V5 - News and Sentiment** |
 | Previous version | **V4 - Realtime Market Data: frozen at `v4.0-demo` on 2026-08-30.** V3 was frozen at `v3.1-demo` on 2026-08-29. |
-| Last verified commit | `93958a9`, the NEWS-02 collection worker and CoinDesk RSS adapter on `v5-news-and-sentiment`. `6f387d6` is the NEWS-01 baseline. |
-| Next allowed action | Review the `NEWS-02` diff in `93958a9`, then start `NEWS-03`, which is now `READY`. `NEWS-04` remains `BLOCKED` on a sentiment model decision; `NEWS-05`, `NEWS-07`, and `UI-07` remain dependency-blocked. |
+| Last verified commit | `0760de7`, the NEWS-02 tracker record on `v5-news-and-sentiment`. `93958a9` is the NEWS-02 implementation and `6f387d6` the NEWS-01 baseline; the verified NEWS-03 worktree remains deliberately uncommitted. |
+| Next allowed action | No V5 slice is `READY`. The NEWS-01..NEWS-03 slice-diff review remains outstanding and deferred by explicit owner decision. `NEWS-04` remains `BLOCKED` until the owner selects a sentiment model or service; `NEWS-05`, `NEWS-07`, and `UI-07` remain dependency-blocked. |
 | Last verified on | 2026-08-30 (V4 final regression, Compose demo, `PROOF-RT-001`, and Definition of Demoable). |
 | Last tag | `v4.0-demo`, the certified V1-V4 baseline, on `v4-realtime-market-data`. `v3.1-demo` remains the certified V1-V3 baseline on `feat/v3-automated-discovery`; `v3.0-demo` deliberately remains on `2b98139`. `v1.0-demo` and `v2.0-demo` do not exist. |
 | V3 slices | 8 (`DONE` 8, `READY` 0, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 0) — V3's own scope and its V1+V2 regression condition pass in the baseline-freeze state. |
 | V4 slices | 5 (`DONE` 5, `READY` 0, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 0) — `WS-03`, `MKT-06`, `MKT-07`, `MKT-09`, and `MKT-11` are done. |
-| V5 slices | 7 required plus 1 optional (`DONE` 2, `READY` 1, `IN_PROGRESS` 0, `BLOCKED` 1, `TODO` 4) — `NEWS-01` and `NEWS-02` are done; `NEWS-02` collects from the owner-approved CoinDesk RSS source in its own worker process and is committed as `93958a9`; `NEWS-03` is ready; `NEWS-04` remains blocked on an owner model decision. |
+| V5 slices | 7 required plus 1 optional (`DONE` 3, `READY` 0, `IN_PROGRESS` 0, `BLOCKED` 1, `TODO` 4) — `NEWS-01` and `NEWS-02` are committed (`6f387d6`, `93958a9`); `NEWS-03` is done but deliberately uncommitted; the owner deferred their combined slice-diff review; `NEWS-04` remains blocked on an owner model decision. |
 | History | [`JOURNAL.md`](JOURNAL.md), sections "V1", "V3", "V1/V2 recovery", "V1-V3 freeze repairs", "Demo data prerequisite", and "V4". The V4 -> V5 transition below records the version handover. The recovery entry records the durable V2 decisions that were missing from the original history. |
 
 ## V4 -> V5 transition (2026-08-30)
@@ -674,7 +674,7 @@ Demo contract: [`VERSIONS.md` V5](VERSIONS.md#v5---news-and-sentiment)
 |---|---|---|---|---|---|---|---|
 | NEWS-01 | REQ | M | News contract, provider port, contract suite | **DONE** | SETUP-05 | | [05](05-news-and-sentiment.md) |
 | NEWS-02 | REQ | M | Collection worker and first provider adapter | **DONE** | NEWS-01, SETUP-04 | | [05](05-news-and-sentiment.md) |
-| NEWS-03 | REQ | M | Analyzer port, result contract, lifecycle | **READY** | NEWS-02 | | [05](05-news-and-sentiment.md) |
+| NEWS-03 | REQ | M | Analyzer port, result contract, lifecycle | **DONE** | NEWS-02 | | [05](05-news-and-sentiment.md) |
 | NEWS-04 | REQ | M | First real sentiment analyzer | **BLOCKED** | NEWS-03 | Sentiment model or service not chosen | [05](05-news-and-sentiment.md) |
 | NEWS-05 | REQ | S | Sentiment feature query and degradation policy | TODO | NEWS-04 | | [05](05-news-and-sentiment.md) |
 | NEWS-07 | REQ | S | News list, health, and sentiment query surface | TODO | NEWS-05 | | [05](05-news-and-sentiment.md) |
@@ -746,6 +746,58 @@ link, `coindesk-rss` attribution, normalized published and collected timestamps,
 summary text between 37 and 203 characters, which is RSS summary length and not
 article bodies. One stray fixture row left in the demo database by an earlier dev run
 was deleted so the demo state holds only real collected items.
+
+### NEWS-03 evidence (2026-08-30)
+
+Acceptance criteria, each with direct evidence:
+
+1. `SentimentAnalyzer` accepts a normalized `NewsItem` and input-version string and
+   returns only label, bounded score, and versioned generic provenance. Its static
+   test pins its two News-domain imports and rejects model/library/vendor/language,
+   transport, process, and framework tokens.
+2. Migration `0017_add_news_sentiment_analysis.sql` widens the forward-only analysis
+   state check from `pending` to `pending | analyzing | analyzed | degraded`, adds
+   lease bookkeeping, and adds News-owned result and attempt tables. Migration tests
+   apply it over existing `pending` rows unchanged and prove it is rerunnable.
+3. The PostgreSQL adapter reuses EXP-04's `FOR UPDATE SKIP LOCKED` durable lease
+   pattern. One transaction commits a result, closes its attempt, and sets `analyzed`;
+   a failure closes its attempt with a reason and returns the intact item to `pending`
+   while retries remain.
+4. Lease seconds, retry maximum, batch size, and schedule interval are validated
+   `NEWS_ANALYSIS_*` configuration. At configured maximum attempt three, the C5 fake
+   failure recorded three durable failure rows and the item became visibly `degraded`.
+5. Lifecycle integration tests prove two analyzer stages claim 12 items only once;
+   an expired claim becomes `lease_expired`, is reclaimed, and produces exactly one
+   result. The collector's unchanged no-analyzer proof remains green.
+6. `normalizeSentimentResult` requires model ID, artefact identity, model version,
+   input version, and preprocessing version and rejects aliases such as `latest` at
+   the boundary. C5 found zero alias-bearing durable results.
+7. `FakeLexiconSentimentAnalyzer` and differently-behaving
+   `FakeConstantSentimentAnalyzer` pass the same reusable contract suite. A Nest
+   composition test binds the second fake through only `SENTIMENT_ANALYZER`, with no
+   lifecycle, repository, or contract edit.
+
+The rebuilt running `news-worker` used only `FakeLexiconSentimentAnalyzer`: its initial
+scheduled batch analyzed 10 of the 25 existing CoinDesk items, then two manual
+`pnpm run news:analyze` invocations analyzed 10 and 5. Database inspection found 25
+real CoinDesk items, 25 analyzed, 25 results, 25 successful attempts, zero missing
+results, and no invalid normalized item shape. Representative provenance was
+`fake-lexicon | sha256:9f2c1a7b4e6d0c85 | 1.0.0 | news-item.v1 |
+lowercase-word.v1`. One deliberately inserted synthetic non-article item proved the
+unavailable-fake path: three `ANALYZER_UNAVAILABLE` attempts, no result, and a
+durable `degraded` state. No article body is recorded here.
+
+Targeted validation only: C1/C3/C4 contract, static, runtime, lifecycle,
+concurrency, lease-recovery, substitutability, config, migration, and repository
+tests pass; the final non-reset suite passed 8 files / 62 tests. Backend typecheck,
+scoped ESLint, `git diff --check`, and `docker compose config --quiet` pass. No
+repository-wide Vitest suite ran or was repeated. No real model, hosted inference API,
+model library, or Python runtime was introduced. `PROOF-ISO-002` remains TODO for its
+later V5 proof scope.
+
+The NEWS-01..NEWS-03 slice-diff review is outstanding but deliberately deferred by
+owner decision. It was not run in this session; NEWS-03 is intentionally uncommitted
+and nothing was pushed.
 
 `NEWS-06` is optional. It is **not** part of V5's exit criteria and V5 is demoable
 without it. Build it only if V5 finishes early.

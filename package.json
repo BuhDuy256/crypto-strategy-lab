@@ -16,6 +16,7 @@
     "start:backtest-runner": "pnpm --filter @crypto-strategy-lab/backend run start:backtest-runner",
     "start:news-worker": "pnpm --filter @crypto-strategy-lab/backend run start:news-worker",
     "news:collect": "pnpm --filter @crypto-strategy-lab/backend run news:collect",
+    "news:analyze": "pnpm --filter @crypto-strategy-lab/backend run news:analyze",
     "start:market-ingest": "pnpm --filter @crypto-strategy-lab/backend run start:market-ingest",
     "market:backfill": "pnpm --filter @crypto-strategy-lab/backend run market:backfill --",
     "demo:seed": "node scripts/seed-demo-data.mjs",

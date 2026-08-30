@@ -42,6 +42,12 @@ export interface AppConfig {
       readonly retryCount: number;
       readonly retryDelayMs: number;
     };
+    readonly sentimentAnalysis: {
+      readonly leaseSeconds: number;
+      readonly maxAttempts: number;
+      readonly batchSize: number;
+      readonly pollIntervalMs: number;
+    };
   };
 }
 
@@ -182,6 +188,30 @@ export function loadConfig(env: EnvSource = process.env): AppConfig {
     100,
     60_000
   );
+  const newsAnalysisLeaseSeconds = parseBoundedInteger(
+    "NEWS_ANALYSIS_LEASE_SECONDS",
+    env.NEWS_ANALYSIS_LEASE_SECONDS ?? "60",
+    5,
+    3_600
+  );
+  const newsAnalysisMaxAttempts = parseBoundedInteger(
+    "NEWS_ANALYSIS_MAX_ATTEMPTS",
+    env.NEWS_ANALYSIS_MAX_ATTEMPTS ?? "3",
+    1,
+    10
+  );
+  const newsAnalysisBatchSize = parseBoundedInteger(
+    "NEWS_ANALYSIS_BATCH_SIZE",
+    env.NEWS_ANALYSIS_BATCH_SIZE ?? "10",
+    1,
+    200
+  );
+  const newsAnalysisPollIntervalMs = parseBoundedInteger(
+    "NEWS_ANALYSIS_POLL_INTERVAL_MS",
+    env.NEWS_ANALYSIS_POLL_INTERVAL_MS ?? "60000",
+    5_000,
+    86_400_000
+  );
 
   return {
     postgres: {
@@ -203,6 +233,12 @@ export function loadConfig(env: EnvSource = process.env): AppConfig {
         requestTimeoutMs: newsRequestTimeoutMs,
         retryCount: newsRetryCount,
         retryDelayMs: newsRetryDelayMs
+      },
+      sentimentAnalysis: {
+        leaseSeconds: newsAnalysisLeaseSeconds,
+        maxAttempts: newsAnalysisMaxAttempts,
+        batchSize: newsAnalysisBatchSize,
+        pollIntervalMs: newsAnalysisPollIntervalMs
       }
     }
   };

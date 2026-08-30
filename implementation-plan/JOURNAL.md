@@ -2257,3 +2257,56 @@ validated by its tests and its browser smoke, and by nothing else.
 - `NEWS-02` is `DONE` but deliberately uncommitted, awaiting owner review. `NEWS-03`
   is now `READY`. `NEWS-04` stays `BLOCKED` until the owner selects a sentiment model
   or service.
+
+### 2026-08-30 - NEWS-03 complete: analyzer lifecycle without a model decision
+
+**Delivered**
+
+- News Intelligence now owns a framework-, library-, vendor-, and language-neutral
+  `SentimentAnalyzer` port plus a versioned `SentimentResult`. The result requires
+  label, bounded score, result schema version, news reference, timestamp, and exact
+  model ID, artefact identity, model version, input version, and preprocessing
+  version. Moving aliases, including `latest`, are rejected at the result boundary.
+- Forward migration `0017_add_news_sentiment_analysis.sql` preserves existing
+  `pending` rows and adds the full state set: `pending` (claimable), `analyzing`
+  (leased and reclaimable), `analyzed` (terminal success), and `degraded` (terminal
+  exhausted retry). It also adds durable News-owned result and immutable attempt
+  history tables.
+- The analyzer stage and its PostgreSQL store reuse the EXP-04 skip-locked lease
+  pattern. A result, attempt closure, and `analyzed` state commit atomically; every
+  failure records its reason and returns the item to `pending` or to visible
+  `degraded` under configured bounded retry policy.
+- Collection and analysis stay independent stages in the news-worker process. They
+  meet only in News-owned durable state. The worker supports scheduled analysis and
+  the manual `pnpm run news:analyze` trigger. The NEWS-02 collector no-analyzer
+  proof remains unchanged and green.
+
+**Validation and live evidence**
+
+- Contract, provenance, migration, repository, lifecycle, retry, lease-recovery,
+  concurrency, binding, runtime, config, and collector-isolation suites pass. The
+  final non-reset focused run passed 8 files and 62 tests; backend typecheck, scoped
+  lint, `git diff --check`, and `docker compose config --quiet` pass. No
+  repository-wide Vitest suite was run or repeated.
+- The rebuilt news-worker processed all 25 existing real CoinDesk items with
+  `FakeLexiconSentimentAnalyzer`: 25 results and 25 successful attempts, all with
+  complete alias-free provenance. One synthetic non-article C5 item exercised the
+  `UnavailableFakeSentimentAnalyzer` three times: two retryable durable failures,
+  then a visible `degraded` state with no result. The 25 real normalized items stayed
+  intact; no article body is reproduced here.
+- No real sentiment model, hosted inference API, model library, or Python runtime
+  was selected, installed, downloaded, or bound. The only worker binding remains a
+  fake. NEWS-04 remains blocked on the owner's model or service decision.
+
+**Durable handoff**
+
+- `NEWS-03` is done but intentionally uncommitted; no push occurred. `NEWS-01`
+  (`6f387d6`), `NEWS-02` (`93958a9`), and NEWS-03 must receive their combined
+  slice-diff review later because the owner explicitly deferred it. Do not run that
+  review or delete `.scratch/checkpoints/NEWS-02.md` before the owner directs it.
+- The existing `resetTestDatabase()` helper resets the database selected by `.env`.
+  In this workspace that is the live Compose database, not a dedicated test database.
+  A first C4 composition test exposed this; its test is now database-free and the
+  exact synthetic row was removed before the real 25-row C5 run. Do not call that
+  helper again in this session. A dedicated test database is an unresolved local
+  environment safeguard, outside NEWS-03 scope.

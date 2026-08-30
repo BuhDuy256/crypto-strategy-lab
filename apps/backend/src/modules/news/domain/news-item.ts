@@ -3,7 +3,11 @@
 
 export const MAX_NEWS_CONTENT_LENGTH = 20_000;
 
-export type NewsAnalysisState = "pending";
+/**
+ * Lifecycle of one collected item. Collection only ever writes `pending`; the
+ * analyzer stage owns the remaining states (see migration 0017).
+ */
+export type NewsAnalysisState = "pending" | "analyzing" | "analyzed" | "degraded";
 
 export interface NewsItem {
   readonly id: string;
