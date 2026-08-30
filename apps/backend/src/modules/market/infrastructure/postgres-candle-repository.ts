@@ -8,14 +8,21 @@ import type {
   MarketDataRangeRequest
 } from "../application/market-data-query.js";
 import type {
+  MarketGapQuery,
+  MarketGapRangeRequest,
+  MarketGapReport
+} from "../application/market-gap-query.js";
+import type {
   MarketSnapshot,
   MarketSnapshotQuery,
   MarketSnapshotRequest
 } from "../application/market-snapshot-query.js";
 import {
   assertHistoricalCandleSeries,
+  timeframeDurationMs,
   type Candle
 } from "../domain/candle.js";
+import { findMissingRanges } from "../domain/dataset-policy.js";
 
 interface CandleRow {
   readonly provider: string;
@@ -81,8 +88,9 @@ const CANDLE_COLUMNS = `
   open, high, low, close, volume, closed, revision, ingest_sequence
 `;
 
-/** Internal SQL adapter; consumers outside Market Data receive only MarketDataQuery. */
-export class PostgresCandleRepository implements MarketDataQuery, MarketSnapshotQuery {
+/** Internal SQL adapter; consumers outside Market Data receive only its read ports. */
+export class PostgresCandleRepository
+implements MarketDataQuery, MarketSnapshotQuery, MarketGapQuery {
   constructor(private readonly pool: Pool) {}
 
   async append(candle: Candle): Promise<Candle> {
@@ -293,6 +301,67 @@ export class PostgresCandleRepository implements MarketDataQuery, MarketSnapshot
       ]
     );
     return result.rows.map((row) => mapRow(row).candle);
+  }
+
+  /**
+   * Reports which aligned intervals the range is still missing.
+   *
+   * It reads the current state, with no revision watermark, because the
+   * question is about the stream as it stands now rather than about what some
+   * snapshot saw. The absent-interval arithmetic is `findMissingRanges`, the
+   * same function dataset creation uses, so the two can never disagree.
+   */
+  async findGaps(request: MarketGapRangeRequest): Promise<MarketGapReport> {
+    const duration = timeframeDurationMs(request.timeframe);
+    if (request.startTime % duration !== 0 || request.endTime % duration !== 0) {
+      throw new Error(
+        `MARKET_GAP_ALIGNMENT: range must align to ${request.timeframe} candle open times`
+      );
+    }
+    assertRangeRequest(request);
+    const candles = await this.getCandles(request);
+    const gaps = findMissingRanges(
+      request.timeframe,
+      { startTime: request.startTime, endTime: request.endTime },
+      candles
+    );
+    const missingCandleCount = gaps.reduce((total, gap) => total + gap.missingCandleCount, 0);
+    return {
+      provider: request.provider,
+      symbol: request.symbol,
+      timeframe: request.timeframe,
+      startTime: request.startTime,
+      endTime: request.endTime,
+      expectedCandleCount: (request.endTime - request.startTime) / duration + 1,
+      presentCandleCount: candles.length,
+      gaps,
+      missingCandleCount,
+      resolved: gaps.length === 0
+    };
+  }
+
+  /**
+   * Newest committed closed-candle open time for one stream, or `undefined`.
+   *
+   * This is the lower boundary gap recovery starts from. It reads open time
+   * rather than ingest sequence on purpose: the gap is a question about market
+   * time, not about storage order.
+   */
+  async getLatestCommittedOpenTime(request: {
+    readonly provider: string;
+    readonly symbol: string;
+    readonly timeframe: Candle["timeframe"];
+  }): Promise<number | undefined> {
+    const result = await this.pool.query<{ open_time: string | null }>(
+      `
+        SELECT MAX(open_time)::text AS open_time
+        FROM market.candles
+        WHERE provider = $1 AND symbol = $2 AND timeframe = $3
+      `,
+      [request.provider, request.symbol, request.timeframe]
+    );
+    const openTime = result.rows[0]?.open_time;
+    return openTime === null || openTime === undefined ? undefined : Number(openTime);
   }
 
   async getLatestSnapshot(request: MarketSnapshotRequest): Promise<MarketSnapshot> {

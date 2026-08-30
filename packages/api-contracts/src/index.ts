@@ -23,6 +23,38 @@ export function isHealthResponse(value: unknown): value is HealthResponse {
   );
 }
 
+/**
+ * Response body for `GET /market/provider-health`.
+ * Must stay in sync with `apps/backend/src/modules/api/provider-health.controller.ts`.
+ *
+ * The status vocabulary is Market Data's, not the user interface's. `degraded`
+ * covers both an outage and the recovery that follows it; `reason` is what
+ * tells them apart, and the client displays it rather than interpreting it.
+ */
+export const PROVIDER_HEALTH_STATUSES = ["healthy", "degraded", "unavailable"] as const;
+export type ProviderHealthStatus = (typeof PROVIDER_HEALTH_STATUSES)[number];
+
+export interface ProviderHealthResponse {
+  readonly provider: string;
+  readonly status: ProviderHealthStatus;
+  /** Unix epoch milliseconds of the last report. Zero when ingest never reported. */
+  readonly checkedAt: number;
+  readonly reason?: string;
+}
+
+/** Runtime type guard for {@link ProviderHealthResponse}. */
+export function isProviderHealthResponse(value: unknown): value is ProviderHealthResponse {
+  if (typeof value !== "object" || value === null) return false;
+  const body = value as Record<string, unknown>;
+  return (
+    typeof body.provider === "string" &&
+    typeof body.status === "string" &&
+    (PROVIDER_HEALTH_STATUSES as readonly string[]).includes(body.status) &&
+    typeof body.checkedAt === "number" &&
+    (body.reason === undefined || typeof body.reason === "string")
+  );
+}
+
 export const API_TIMEFRAMES = ["1m", "5m", "15m", "30m", "1h", "2h", "4h", "1d"] as const;
 export type ApiTimeframe = (typeof API_TIMEFRAMES)[number];
 

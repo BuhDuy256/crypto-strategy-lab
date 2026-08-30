@@ -1773,6 +1773,26 @@ down -v` and a clean volume, then `docker compose up --build` and one
 
 ## V4 - Realtime Market Data
 
+### 2026-08-30 — V4 — MKT-09
+
+**Decisions**
+
+- Socket.IO sends a forming `candle.tick` through its volatile path only when the
+  transport is temporarily busy. Ticks are explicitly ephemeral; snapshots and
+  committed closed candles remain on the existing bounded durable path.
+
+**Validation**
+
+- The focused gateway regression test was red before the change and green after it.
+  Backend typecheck, targeted lint, and `git diff --check` pass. Final
+  `smoke:mkt09` on rebuilt images and default buffer 32 observed healthy, degraded,
+  then healthy again while the original charts retained durable data and resumed live.
+
+**Ending state**
+
+- MKT-09 is `DONE` in the tracker. The MKT-09 work remains uncommitted on base
+  `1eb8f14`; V4 freeze and V5 were not started.
+
 ### 2026-08-29 — V4 — WS-03 completed
 
 WS-03 put Redis into the local topology and gave the API a Socket.IO gateway, a
@@ -2059,4 +2079,3 @@ are `MKT-09`, which is the remaining V4 slice. It was classified and left alone 
 The two-axis review was skipped on the owner's explicit instruction, to conserve budget,
 not overlooked. `WS-03` carries the same gap for the same reason. Read `MKT-11` as
 validated by its tests and its browser smoke, and by nothing else.
-

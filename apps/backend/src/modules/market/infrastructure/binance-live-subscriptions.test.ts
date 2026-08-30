@@ -39,13 +39,19 @@ class ControlledStreamClient {
 
   onClose(): void {}
 
-  open(): Promise<void> {
+  readonly openedWith: string[][] = [];
+  readonly subscribedWith: string[][] = [];
+
+  open(streams: readonly string[]): Promise<void> {
+    this.openedWith.push([...streams]);
     return this.openFailure === undefined
       ? Promise.resolve()
       : Promise.reject(this.openFailure);
   }
 
-  subscribe(): void {}
+  subscribe(streams: readonly string[]): void {
+    this.subscribedWith.push([...streams]);
+  }
 
   close(): void {}
 
@@ -135,5 +141,54 @@ describe("BinanceLiveSubscriptionRegistry", () => {
     } finally {
       registry.close();
     }
+  });
+});
+
+describe("BinanceLiveSubscriptionRegistry connection opening", () => {
+  it("opens one connection carrying every stream requested in the same tick", async () => {
+    // Binance accepts at most five incoming messages per second on a
+    // connection. Opening on the first stream and adding the other seven with
+    // SUBSCRIBE frames exceeded that and the server closed the connection about
+    // 450 ms later, every time. The stream set belongs in the URL instead.
+    let created = 0;
+    const client = new ControlledStreamClient();
+    const registry = new BinanceLiveSubscriptionRegistry(() => {
+      created += 1;
+      return asStreamClient(client);
+    });
+
+    const timeframes = ["1m", "5m", "15m", "30m", "1h", "2h", "4h", "1d"] as const;
+    for (const timeframe of timeframes) {
+      registry.subscribe({ symbol: "BTCUSDT", timeframe });
+    }
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(created).toBe(1);
+    expect(client.openedWith).toStrictEqual([
+      timeframes.map((timeframe) => `btcusdt@kline_${timeframe}`)
+    ]);
+    // Nothing was added with a control frame, so no incoming-message budget was
+    // spent bringing the connection up.
+    expect(client.subscribedWith).toStrictEqual([]);
+
+    registry.close();
+  });
+
+  it("still joins a genuinely later subscriber with a single control frame", async () => {
+    const client = new ControlledStreamClient();
+    const registry = new BinanceLiveSubscriptionRegistry(() => asStreamClient(client));
+
+    registry.subscribe({ symbol: "BTCUSDT", timeframe: "1m" });
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    registry.subscribe({ symbol: "BTCUSDT", timeframe: "5m" });
+
+    expect(client.openedWith).toStrictEqual([["btcusdt@kline_1m"]]);
+    expect(client.subscribedWith).toStrictEqual([["btcusdt@kline_5m"]]);
+
+    registry.close();
   });
 });

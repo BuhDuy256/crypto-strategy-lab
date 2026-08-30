@@ -6,6 +6,11 @@ import { App } from "./App.js";
 
 vi.mock("./api/client.js", () => ({
   getHealth: vi.fn(async () => ({ status: "ok" })),
+  getProviderHealth: vi.fn(async () => ({
+    provider: "binance",
+    status: "healthy",
+    checkedAt: 1_700_000_000_000
+  })),
   getCandleHistory: vi.fn(async () => ({ candles: [] })),
   getStrategies: vi.fn(async () => ({ strategies: [] })),
   listComposites: vi.fn(async () => []),

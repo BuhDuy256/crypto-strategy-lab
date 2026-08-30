@@ -7,7 +7,9 @@ export {
   DATASET_SERVICE,
   MARKET_DATA_PROVIDER,
   MARKET_DATA_QUERY,
-  MARKET_SNAPSHOT_QUERY
+  MARKET_GAP_QUERY,
+  MARKET_SNAPSHOT_QUERY,
+  PROVIDER_HEALTH_QUERY
 } from "./application/tokens.js";
 export { MarketBackfillService } from "./application/market-backfill-service.js";
 export {
@@ -28,6 +30,16 @@ export type {
   MarketDataQuery,
   MarketDataRangeRequest
 } from "./application/market-data-query.js";
+export type {
+  ProviderHealth,
+  ProviderHealthStatus
+} from "./application/market-data-provider.js";
+export type { ProviderHealthQuery } from "./application/provider-health.js";
+export type {
+  MarketGapQuery,
+  MarketGapRangeRequest,
+  MarketGapReport
+} from "./application/market-gap-query.js";
 export type {
   MarketSnapshot,
   MarketSnapshotQuery,

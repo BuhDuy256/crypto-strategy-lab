@@ -82,6 +82,29 @@ body {
   background: #d1242f;
 }
 
+/* Provider health reuses the shell's dot vocabulary so the two indicators read
+   as one status area rather than as two unrelated widgets. */
+.provider-health {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  margin-left: auto;
+}
+
+.provider-health[data-provider-health="healthy"] .health-dot {
+  background: #2ea043;
+}
+
+.provider-health[data-provider-health="degraded"] .health-dot {
+  background: #d4a72c;
+}
+
+.provider-health[data-provider-health="unavailable"] .health-dot,
+.provider-health[data-provider-health="unreachable"] .health-dot {
+  background: #d1242f;
+}
+
 .placeholder-note {
   color: #57606a;
 }

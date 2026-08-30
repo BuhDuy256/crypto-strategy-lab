@@ -13,7 +13,9 @@ import {
   DATASET_SERVICE,
   MARKET_DATA_PROVIDER,
   MARKET_DATA_QUERY,
-  MARKET_SNAPSHOT_QUERY
+  MARKET_GAP_QUERY,
+  MARKET_SNAPSHOT_QUERY,
+  PROVIDER_HEALTH_QUERY
 } from "./application/tokens.js";
 import { MarketDatasetService } from "./application/market-dataset-service.js";
 import { MarketBackfillService } from "./application/market-backfill-service.js";
@@ -21,6 +23,7 @@ import type { MarketDataProvider } from "./application/market-data-provider.js";
 import { BinanceMarketDataProvider } from "./infrastructure/binance-market-data-provider.js";
 import { PostgresCandleRepository } from "./infrastructure/postgres-candle-repository.js";
 import { PostgresDatasetManifestStore } from "./infrastructure/postgres-dataset-manifest-store.js";
+import { PostgresProviderHealthRepository } from "./infrastructure/postgres-provider-health-repository.js";
 
 const MARKET_DATABASE_POOL = Symbol("MARKET_DATABASE_POOL");
 
@@ -52,6 +55,20 @@ class MarketDatabaseLifecycle implements OnApplicationShutdown {
       useExisting: PostgresCandleRepository
     },
     {
+      provide: MARKET_GAP_QUERY,
+      useExisting: PostgresCandleRepository
+    },
+    {
+      provide: PostgresProviderHealthRepository,
+      inject: [MARKET_DATABASE_POOL],
+      useFactory: (pool: Pool): PostgresProviderHealthRepository =>
+        new PostgresProviderHealthRepository(pool)
+    },
+    {
+      provide: PROVIDER_HEALTH_QUERY,
+      useExisting: PostgresProviderHealthRepository
+    },
+    {
       provide: MARKET_DATA_PROVIDER,
       useFactory: (): MarketDataProvider => new BinanceMarketDataProvider()
     },
@@ -79,6 +96,13 @@ class MarketDatabaseLifecycle implements OnApplicationShutdown {
     },
     MarketDatabaseLifecycle
   ],
-  exports: [MARKET_DATA_QUERY, MARKET_SNAPSHOT_QUERY, DATASET_SERVICE, MarketBackfillService]
+  exports: [
+    MARKET_DATA_QUERY,
+    MARKET_SNAPSHOT_QUERY,
+    MARKET_GAP_QUERY,
+    PROVIDER_HEALTH_QUERY,
+    DATASET_SERVICE,
+    MarketBackfillService
+  ]
 })
 export class MarketModule {}

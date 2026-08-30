@@ -21,11 +21,11 @@ true; keep conversation out of them.
 | Current target version | **V4 - Realtime Market Data** |
 | Previous version | **V3 - Automated Discovery: frozen at `v3.1-demo` on 2026-08-29.** |
 | Last verified commit | The commit tagged `v3.1-demo` on `feat/v3-automated-discovery`. |
-| Next allowed action | Start `MKT-09`, the last `READY` V4 slice. `MKT-11` is complete and committed on the current branch. |
+| Next allowed action | `MKT-09` is complete. Stop implementation work here: V4 freeze, `PROOF-RT-001`, a tag, and V5 remain separate owner-directed work. |
 | Last verified on | 2026-08-29 (V1/V2 functional certification, V3 regression, baseline freeze, and the two freeze repairs below) |
 | Last tag | `v3.1-demo`, the certified V1-V3 baseline, on `feat/v3-automated-discovery`. `v3.0-demo` still points at `2b98139` and was deliberately left there: it marks what was *claimed* demoable, on a baseline whose V1 and V2 regressions do not pass. Both tags are on origin. `v1.0-demo` and `v2.0-demo` do not exist. |
 | V3 slices | 8 (`DONE` 8, `READY` 0, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 0) — V3's own scope and its V1+V2 regression condition pass in the baseline-freeze state. |
-| V4 slices | 5 (`DONE` 4, `READY` 1, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 0) — `WS-03`, `MKT-06`, `MKT-07`, and `MKT-11` are done; `MKT-09` is ready. |
+| V4 slices | 5 (`DONE` 5, `READY` 0, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 0) — `WS-03`, `MKT-06`, `MKT-07`, `MKT-09`, and `MKT-11` are done. |
 | History | [`JOURNAL.md`](JOURNAL.md), sections "V1", "V3", "V1/V2 recovery", "V1-V3 freeze repairs", "Demo data prerequisite", and "V4". The recovery entry records the durable V2 decisions that were missing from the original history. |
 
 ## V1/V2 recovery (opened 2026-08-28)
@@ -398,7 +398,150 @@ revision 1 with one row per identity. After Redis restarted, ingest committed op
 scoped lint, Compose config, and `git diff --check` pass. MKT-06 is committed on the current branch.
 | MKT-07 | REQ | M | Chart subscription protocol | **DONE** | MKT-06, MKT-05 | [01](01-market-and-realtime.md) |
 | MKT-11 | REQ | M | Four live chart subscriptions | **DONE** | MKT-07, MKT-08 | [01](01-market-and-realtime.md) |
-| MKT-09 | REQ | L | Gap detection, recovery, provider health | **READY** | MKT-06, MKT-02 | [01](01-market-and-realtime.md) |
+| MKT-09 | REQ | L | Gap detection, recovery, provider health | **DONE** | MKT-06, MKT-02 | [01](01-market-and-realtime.md) |
+
+MKT-09 progress: milestone M1 of 8 is done. A forced provider disconnect is now detected and marks
+provider health degraded, and health is queryable. Provider health is Market Data state stored in
+PostgreSQL (`market.provider_health`, migration `0015`) because ingest and the API are separate
+processes and ADR-008 makes Redis ephemeral; a new `LiveIngestSupervisor` owns connection lifetime so
+`MarketLiveIngestService` still means one connection generation; the API exposes
+`GET /market/provider-health`. Proven against a new controllable fake Binance stream server
+(`src/modules/market/testing/fake-binance-stream-server.ts`): connected plus a live candle gives
+healthy, a terminated socket gives degraded, and a shutdown abort degrades nothing. Targeted suites
+pass: provider health and supervisor (7 tests), the provider health controller (2 tests), and live
+ingest plus architecture boundary (16 tests) with backend typecheck.
+
+MKT-09 progress: milestone M2 of 8 is done. Reconnect now runs on increasing backoff with a
+documented ceiling: base 1 second, factor 2, ceiling 30 seconds, so the schedule is 1s, 2s, 4s, 8s,
+16s, 30s, 30s and never faster than 1 second. The forcing fact is Binance's documented limit of 300
+connection attempts per 5 minutes per address, which a tight retry loop would exhaust in seconds.
+The backoff resets only after a generation that actually delivered candles, so a socket that opens
+and immediately dies cannot spin. The wait is an injected sleep, so tests assert the schedule instead
+of sleeping through it, and the production default cancels its timer on abort. Proven by
+`reconnect-backoff.test.ts` (4 tests) and `live-ingest-supervisor.test.ts` (7 tests): reconnect and
+resumed live flow with a second connection to the fake server, the increasing schedule stopping at
+the ceiling, the reset after a delivering generation, and one real-timer test showing shutdown
+returns well inside the base delay rather than orphaning the timer. Backend typecheck passes.
+
+MKT-09 progress: milestone M3 of 8 is done. `missing-intervals.ts` is a pure calculator with no
+provider call, no database, and no clock of its own, so every boundary case is cheap to check. The
+lower boundary is exclusive because that candle is already stored, and the upper boundary is
+inclusive because that interval closed without being delivered; the forming-interval rule lives in
+exactly one function, `lastClosedOpenTime`, which steps back one interval from the interval
+containing now. An unknown last committed candle returns an empty gap rather than an unbounded
+backfill, because repairing a range that was never subscribed is out of scope. One pass is bounded
+at 1000 intervals, the maximum Binance kline page, and a longer gap is reported as truncated and
+finished by repeating the pass. Proven by `missing-intervals.test.ts` (11 tests): no gap, one missing
+candle, many missing candles with both boundaries asserted, the forming interval excluded, unknown
+lower boundary, an out-of-order resume, the bound with truncation, a non-minute timeframe, and
+misaligned input rejected.
+
+MKT-09 progress: milestone M4 of 8 is done. `MarketGapRecoveryService` fetches and stores the candles
+an outage lost, and it adds no new machinery: which candles are missing comes from the M3 calculator,
+where to get them is the existing `MKT-02` Binance REST adapter through
+`MarketDataProvider.fetchHistorical`, and how to store them is `PostgresCandleRepository.appendMany`,
+the same append-only revision-comparing write historical backfill uses. There is no recovery table and
+no second write path, because either would break the append-only rule dataset snapshots depend on.
+`recover` returns only after the durable write returns, chains at most ten bounded passes while
+recomputing the boundary from storage, and reports a range the provider cannot answer as incomplete
+instead of looping. `PostgresCandleRepository` gained one read, `getLatestCommittedOpenTime`.
+
+Proven against real PostgreSQL with a faked provider by `market-gap-recovery-service.test.ts`
+(6 tests): exactly the missing candles stored in ascending order at revision 1 with the still-forming
+interval excluded; a second recovery pass changing neither row count nor the current revision
+watermark and finding nothing missing; a corrected payload still producing revision 2, which shows
+the ordinary append-only path is used rather than bypassed; no gap meaning no write; a provider that
+returns nothing reported as unresolved; and a never-committed stream recovering nothing.
+`postgres-candle-repository.test.ts` still passes (9 tests), including the guard that no UPDATE or
+DELETE targets the candle table. Backend typecheck passes.
+
+MKT-09 progress: milestone M5 of 8 is done, covering criteria 5 and 7. A Market-owned gap query
+answers whether an unresolved known gap remains in a range, exposed as `GET /market/gaps` and bound
+through the new `MARKET_GAP_QUERY` port. It reuses the arithmetic dataset creation already had:
+`findDatasetGaps` was split so its range-based body is now `findMissingRanges`, and both callers use
+it, so the dataset view and the operational view cannot disagree. The query reads current state with
+no revision watermark, because the question is about the stream as it stands now, and it reports
+only - it never fetches from a provider and never repairs.
+
+The dataset resolver was deliberately not changed. The existing append-only revision plus
+`DatasetRef.revisionWatermark` rule already makes a pre-outage snapshot stable under recovery, so M5
+adds a test that shows it rather than code that enforces it. `market-recovery-invariants.test.ts`
+(5 tests, real PostgreSQL) proves: the outage range reported unresolved with the exact missing run
+and reported resolved after recovery; a complete range resolved with no recovery; a misaligned range
+rejected; a dataset snapshot created before the outage, over a range recovery later writes into,
+still resolving to the same series, the same integrity hash, the same dataset id, and the same
+revision watermark; and a snapshot taken after recovery seeing all six candles with no gaps, so
+recovery is invisible only to snapshots older than it. `market-dataset-service.test.ts` and the
+architecture boundary tests still pass (12 tests), and backend typecheck passes.
+
+MKT-09 progress: milestone M6 of 8 is done, covering criterion 6. Recovery is now wired into the
+connection supervisor, so the whole flow runs without anyone invoking it: healthy live ingest,
+disconnect, degraded, backoff, reconnect, recover the missed closed intervals over REST, healthy.
+Two decisions carry the correctness. The supervisor starts the next connection generation and runs
+recovery concurrently rather than before it, so an interval that closes while recovery is running is
+either delivered live or fetched over REST, and the append-only compare makes that overlap harmless.
+The health tracker gained a recovery hold, so a live tick arriving on a freshly reconnected socket
+cannot report healthy while the outage candles are still missing; an incomplete recovery, or one
+that throws, keeps health degraded with the reason `a known gap remains after recovery` and is
+retried on the next cycle, which works because the recovery boundary is recomputed from storage
+every call. `live-ingest-supervisor.test.ts` proves all four cases against the fake stream server
+(11 tests). The 7 non-PostgreSQL MKT-09 suites plus the architecture boundary tests pass (48 tests);
+backend typecheck, scoped lint, and `git diff --check` pass.
+
+Docker Desktop stopped partway through the session, so the three PostgreSQL-backed suites cannot
+currently run. All three passed earlier in the same session, at M4 and M5, and M6 changes no SQL or
+repository code, so this is an environment block rather than a regression. They must be re-run
+before the slice can close.
+
+MKT-09 progress: milestone M7 of 8 is done, covering criterion 8 at component level. The SPA shell
+now shows Market Data's provider health next to the existing backend indicator, reading it through
+`GET /market/provider-health` with a new `ProviderHealthResponse` contract and guard in
+`api-contracts`. The component only displays: it computes no gap, calls no exchange, repairs
+nothing, and never clears chart data, so candles already on screen survive an outage. An unreachable
+API is a separate state from a degraded provider, so a dead API cannot look like an exchange outage.
+`CandlestickChart.tsx` and `ChartWidget.tsx` are untouched, so the `MKT-11` criterion 6 guard still
+holds. `ProviderHealthIndicator.test.tsx` proves degraded appears with its reason during an outage,
+that recovery has its own reason, and that returning to healthy clears it. The SPA and contracts
+suites pass (11 files, 85 tests), and workspace typecheck, lint, and `git diff --check` pass.
+
+MKT-09 progress: milestone M8 of 8 is done. The manual controlled outage ran on final Compose images
+rebuilt from this code, cutting only the provider connection so PostgreSQL stayed reachable and the
+degraded state was observable. Outage 01:57:28 to 02:00:01 UTC on 2026-08-30. During it the provider
+health endpoint reported `degraded: the provider closed the stream` and backoff held at the
+documented 30 s ceiling. While REST was blocked too, recovery reported `a known gap remains after
+recovery` and refused to report healthy, so the negative path is proven in production and not only in
+tests. After restore, ingest recovered exactly the three missing 1m candles plus one each for 5m, 15m
+and 1h, health returned to healthy, and live flow resumed. Re-running recovery added no duplicate:
+row count moved by one, and that row is a newly closed interval. Across the whole table the
+duplicate-identity count is 0 and the count of rows with revision above 1 is 0. The gap query over
+the affected range reports `resolved: true` with 8 of 8 candles present. The dataset snapshot taken
+before the outage, over the range recovery wrote into, still resolves to the identical integrity hash
+`f5211e8d...`, the same watermark and the same two candles.
+
+One real defect was found by the real environment and fixed inside the slice. With more than five
+configured timeframes the Binance connection died about 450 ms after opening, every time, because the
+subscription registry opened on the first stream and added the rest with SUBSCRIBE control frames,
+exceeding Binance's documented limit of five incoming messages per second. The registry now opens one
+connection carrying every stream requested in the same tick, through the combined-stream URL, which
+costs no control frames. Confirmed by isolating the cause with a single-stream run, by two new tests,
+and on the rebuilt image: one connection with all eight streams, zero disconnects, healthy, pings
+answered.
+
+All eight criteria are proven. AC8 is now browser-proven on the final Compose images by
+`pnpm run smoke:mkt09` (exit 0): the shell observed `healthy -> degraded -> healthy` in 7,832 ms and
+9,969 ms; the API held four subscriptions throughout; 5m and 15m durable counts and identities were
+retained during outage; recovery kept the same page alive, delivered a fresh live update, and left all
+four charts `connected/live`. The smoke's window marker proved no full reload. At final evidence the
+default `WS_OUTBOUND_BUFFER_MAX=32` was verified, so the temporary larger-buffer diagnostic is not
+part of the result.
+
+Browser recovery exposed one API transport defect in the slice: a snapshot refresh temporarily makes
+the Socket.IO transport non-writable, and queuing ephemeral ticks behind it could either strand old
+charts or fill the bounded queue and disconnect them. `market-realtime.gateway.ts` now sends only a
+busy `candle.tick` through Socket.IO volatile delivery; snapshots and closed candles retain the bounded
+durable path. A new gateway regression test was red before the change and green after it. Targeted
+gateway test, backend typecheck, targeted lint, `git diff --check`, and the final browser smoke pass.
+Nothing is committed. The slice is `DONE`; no V4 freeze or later-version work was started.
 MKT-11 evidence: the four `MKT-08` identifiers `chart-1`..`chart-4` are now the subscription identifiers,
 and the per-chart subscribe/retarget/cleanup lifecycle lives in one shared hook,
 `apps/web/src/hooks/use-chart-subscription.ts`, reusing the `MKT-07` protocol unchanged. All six criteria

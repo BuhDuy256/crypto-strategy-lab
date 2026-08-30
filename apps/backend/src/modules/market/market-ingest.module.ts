@@ -12,11 +12,15 @@ import { createDatabasePool } from "../../platform/database.js";
 import { StructuredLogger } from "../../platform/logger.js";
 import { CommittedLivePublisher } from "../../platform/realtime/committed-live-publisher.js";
 import { RedisLiveNotificationPublisher } from "../../platform/realtime/redis-live-notifications.js";
+import { LiveIngestSupervisor } from "./application/live-ingest-supervisor.js";
 import { MarketIngestRuntime } from "./application/market-ingest-runtime.js";
+import { MarketGapRecoveryService } from "./application/market-gap-recovery-service.js";
 import { MarketLiveIngestService } from "./application/market-live-ingest-service.js";
+import { ProviderHealthTracker } from "./application/provider-health.js";
 import { SUPPORTED_TIMEFRAMES, type Timeframe } from "./domain/candle.js";
 import { BinanceMarketDataProvider } from "./infrastructure/binance-market-data-provider.js";
 import { PostgresCandleRepository } from "./infrastructure/postgres-candle-repository.js";
+import { PostgresProviderHealthRepository } from "./infrastructure/postgres-provider-health-repository.js";
 import type { LiveCandlesRequest } from "./application/market-data-provider.js";
 
 export const MARKET_INGEST_POOL = Symbol("MARKET_INGEST_POOL");
@@ -24,6 +28,9 @@ export const MARKET_INGEST_STREAMS = Symbol("MARKET_INGEST_STREAMS");
 export const MARKET_INGEST_LOGGER = Symbol("MARKET_INGEST_LOGGER");
 
 const PROCESS_ROLE = "market-ingest";
+
+/** The one provider this version connects to. Matches `BinanceMarketDataProvider`. */
+const PROVIDER_ID = "binance";
 
 /** Reads the configured stream set and rejects a timeframe the domain does not know. */
 export function readIngestStreams(
@@ -77,6 +84,20 @@ class MarketIngestLifecycle implements OnApplicationShutdown {
       useFactory: (pool: Pool): PostgresCandleRepository => new PostgresCandleRepository(pool)
     },
     {
+      provide: PostgresProviderHealthRepository,
+      inject: [MARKET_INGEST_POOL],
+      useFactory: (pool: Pool): PostgresProviderHealthRepository =>
+        new PostgresProviderHealthRepository(pool)
+    },
+    {
+      provide: ProviderHealthTracker,
+      inject: [PostgresProviderHealthRepository, MARKET_INGEST_LOGGER],
+      useFactory: (
+        health: PostgresProviderHealthRepository,
+        logger: StructuredLogger
+      ): ProviderHealthTracker => new ProviderHealthTracker(PROVIDER_ID, health, logger)
+    },
+    {
       provide: BinanceMarketDataProvider,
       inject: [MARKET_INGEST_LOGGER],
       useFactory: (logger: StructuredLogger): BinanceMarketDataProvider =>
@@ -101,23 +122,65 @@ class MarketIngestLifecycle implements OnApplicationShutdown {
     },
     {
       provide: MarketLiveIngestService,
-      inject: [BinanceMarketDataProvider, PostgresCandleRepository, CommittedLivePublisher, MARKET_INGEST_LOGGER],
+      inject: [
+        BinanceMarketDataProvider,
+        PostgresCandleRepository,
+        CommittedLivePublisher,
+        MARKET_INGEST_LOGGER,
+        ProviderHealthTracker
+      ],
       useFactory: (
         provider: BinanceMarketDataProvider,
         candles: PostgresCandleRepository,
         publisher: CommittedLivePublisher,
-        logger: StructuredLogger
+        logger: StructuredLogger,
+        health: ProviderHealthTracker
       ): MarketLiveIngestService =>
-        new MarketLiveIngestService(provider, candles, publisher, logger)
+        new MarketLiveIngestService(provider, candles, publisher, logger, { observer: health })
+    },
+    {
+      provide: MarketGapRecoveryService,
+      inject: [BinanceMarketDataProvider, PostgresCandleRepository, MARKET_INGEST_LOGGER],
+      useFactory: (
+        provider: BinanceMarketDataProvider,
+        candles: PostgresCandleRepository,
+        logger: StructuredLogger
+      ): MarketGapRecoveryService =>
+        // The boundary reader and the writer are the same repository on purpose:
+        // recovery must append through the path live ingest and backfill already
+        // use, so a recovered candle is indistinguishable from any other.
+        new MarketGapRecoveryService(provider, candles, candles, logger)
+    },
+    {
+      provide: LiveIngestSupervisor,
+      inject: [
+        MarketLiveIngestService,
+        ProviderHealthTracker,
+        MARKET_INGEST_STREAMS,
+        MARKET_INGEST_LOGGER,
+        MarketGapRecoveryService
+      ],
+      useFactory: (
+        ingest: MarketLiveIngestService,
+        health: ProviderHealthTracker,
+        streams: readonly LiveCandlesRequest[],
+        logger: StructuredLogger,
+        recovery: MarketGapRecoveryService
+      ): LiveIngestSupervisor =>
+        new LiveIngestSupervisor(ingest, health, streams, logger, {
+          // The provider id is bound here, where the adapter is chosen, so the
+          // supervisor never has to know which provider it is supervising.
+          recover: async (stream) => recovery.recover({ provider: PROVIDER_ID, ...stream })
+        })
     },
     {
       provide: MarketIngestRuntime,
-      inject: [MarketLiveIngestService, MARKET_INGEST_STREAMS, MARKET_INGEST_LOGGER],
+      inject: [LiveIngestSupervisor, MarketLiveIngestService, MARKET_INGEST_LOGGER],
       useFactory: (
+        supervisor: LiveIngestSupervisor,
         ingest: MarketLiveIngestService,
-        streams: readonly LiveCandlesRequest[],
         logger: StructuredLogger
-      ): MarketIngestRuntime => new MarketIngestRuntime(ingest, streams, logger)
+      ): MarketIngestRuntime => new MarketIngestRuntime(supervisor, ingest, logger)
     },
     MarketIngestLifecycle
   ],

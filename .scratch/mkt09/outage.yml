@@ -1,0 +1,8 @@
+# MKT-09 M8 only: blackhole the Binance stream host for the ingest container.
+# PostgreSQL and Redis stay reachable on purpose, so the degraded health write
+# still lands and the outage is observable through the API.
+services:
+  market-ingest:
+    extra_hosts:
+      - "data-stream.binance.vision:127.0.0.1"
+      - "data-api.binance.vision:127.0.0.1"
