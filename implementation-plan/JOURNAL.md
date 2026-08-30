@@ -2300,7 +2300,7 @@ validated by its tests and its browser smoke, and by nothing else.
 
 **Durable handoff**
 
-- `NEWS-03` is done but intentionally uncommitted; no push occurred. `NEWS-01`
+- At handoff, `NEWS-03` was intentionally uncommitted; no push occurred. `NEWS-01`
   (`6f387d6`), `NEWS-02` (`93958a9`), and NEWS-03 must receive their combined
   slice-diff review later because the owner explicitly deferred it. Do not run that
   review or delete `.scratch/checkpoints/NEWS-02.md` before the owner directs it.
@@ -2310,3 +2310,9 @@ validated by its tests and its browser smoke, and by nothing else.
   exact synthetic row was removed before the real 25-row C5 run. Do not call that
   helper again in this session. A dedicated test database is an unresolved local
   environment safeguard, outside NEWS-03 scope.
+
+**Commit boundary**
+
+- After separate owner authorization, NEWS-03 was committed as `c46c2e1`
+  (`feat(news): add analyzer inference lifecycle (NEWS-03)`). It remains unpushed;
+  the owner-deferred combined NEWS-01..NEWS-03 slice-diff review is still outstanding.
