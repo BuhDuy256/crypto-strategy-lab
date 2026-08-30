@@ -2140,3 +2140,50 @@ validated by its tests and its browser smoke, and by nothing else.
 **Ending state**
 
 - No V5 code exists. `NEWS-01` is the only `READY` slice.
+
+### 2026-08-30 - V5 validation cadence
+
+**Decision**
+
+- Each required backend News slice (`NEWS-01`, `NEWS-02`, `NEWS-03`, `NEWS-04`,
+  `NEWS-05`, and `NEWS-07`) is accepted from its targeted unit, contract,
+  integration, narrow typecheck/lint, relevant architecture-boundary, and
+  `git diff --check` evidence. A repository-wide Vitest run is not a per-slice
+  requirement during the V5 implementation chain.
+- After all required backend News slices through `NEWS-07` pass their targeted
+  validation, run the repository-wide suite once as the News backend integration
+  gate. If it fails, diagnose and repair through targeted tests before one ready
+  re-run; do not repeat full suites while diagnosing.
+- `UI-07` uses focused News UI/API/degraded-path validation. The final
+  repository-wide V5 certification runs only after `UI-07` and the required V5
+  proof and demo work are complete.
+
+**Current run**
+
+- A repository-wide Vitest run began before this decision while NEWS-01 was stable.
+  Its outcome is incidental V5 baseline evidence only. Do not restart it or use it
+  as a reason to run another full suite at NEWS-01 completion.
+
+### 2026-08-30 - NEWS-01 targeted completion and incidental baseline
+
+**Result**
+
+- NEWS-01 delivered the normalized NewsItem domain contract, UTC timestamp rule,
+  deterministic source-plus-URL identity, first-item-wins deduplication, explicit
+  malformed-content rejection, and 20,000-character content truncation.
+- The reusable NewsProvider contract suite passes with FakeNewsProvider and rejects
+  BrokenFakeNewsProvider duplicate output. NEWS-01 targeted tests, News boundary
+  check, narrow lint/typecheck, and diff check pass.
+- No model, real provider, persistence, collector, scheduling, API, or worker was
+  added. NEWS-02 and NEWS-04 remain blocked on their existing owner decisions.
+
+**Incidental V5 baseline**
+
+- The full Vitest run started before the V5 validation-cadence decision finished
+  with 95/97 files and 555/558 tests passing. It failed only in backtest
+  result-query and backtest-runner-lifecycle integration tests: one queued-result
+  HTTP status mismatch, one hard-kill reclaim timeout, and one graceful-shutdown
+  status mismatch. NEWS-01 does not touch the Experiment module, runner, database,
+  API endpoints, or these tests; all three NEWS-01 files passed in that run. This is
+  recorded as incidental baseline evidence, not attributed to NEWS-01 and not
+  repaired or rerun within this slice.

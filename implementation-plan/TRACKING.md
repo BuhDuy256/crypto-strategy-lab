@@ -21,12 +21,12 @@ true; keep conversation out of them.
 | Current target version | **V5 - News and Sentiment** |
 | Previous version | **V4 - Realtime Market Data: frozen at `v4.0-demo` on 2026-08-30.** V3 was frozen at `v3.1-demo` on 2026-08-29. |
 | Last verified commit | `5f2f7af`, the V4 release commit tagged `v4.0-demo`. `v5-news-and-sentiment` starts from it; no V5 code exists yet. |
-| Next allowed action | Take `NEWS-01`, the only `READY` V5 slice. `NEWS-02` and `NEWS-04` are `BLOCKED` on owner decisions (news sources, sentiment model) that can be resolved in parallel. |
+| Next allowed action | No V5 slice is `READY`. `NEWS-02` and `NEWS-04` remain `BLOCKED` on owner decisions (news sources, sentiment model); `NEWS-03`, `NEWS-05`, `NEWS-07`, and `UI-07` remain dependency-blocked. |
 | Last verified on | 2026-08-30 (V4 final regression, Compose demo, `PROOF-RT-001`, and Definition of Demoable). |
 | Last tag | `v4.0-demo`, the certified V1-V4 baseline, on `v4-realtime-market-data`. `v3.1-demo` remains the certified V1-V3 baseline on `feat/v3-automated-discovery`; `v3.0-demo` deliberately remains on `2b98139`. `v1.0-demo` and `v2.0-demo` do not exist. |
 | V3 slices | 8 (`DONE` 8, `READY` 0, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 0) — V3's own scope and its V1+V2 regression condition pass in the baseline-freeze state. |
 | V4 slices | 5 (`DONE` 5, `READY` 0, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 0) — `WS-03`, `MKT-06`, `MKT-07`, `MKT-09`, and `MKT-11` are done. |
-| V5 slices | 7 required plus 1 optional (`DONE` 0, `READY` 1, `IN_PROGRESS` 0, `BLOCKED` 2, `TODO` 5) — `NEWS-01` is ready; `NEWS-02` and `NEWS-04` are blocked on owner decisions. |
+| V5 slices | 7 required plus 1 optional (`DONE` 1, `READY` 0, `IN_PROGRESS` 0, `BLOCKED` 2, `TODO` 5) — `NEWS-01` is done; `NEWS-02` and `NEWS-04` remain blocked on owner decisions. |
 | History | [`JOURNAL.md`](JOURNAL.md), sections "V1", "V3", "V1/V2 recovery", "V1-V3 freeze repairs", "Demo data prerequisite", and "V4". The V4 -> V5 transition below records the version handover. The recovery entry records the durable V2 decisions that were missing from the original history. |
 
 ## V4 -> V5 transition (2026-08-30)
@@ -671,7 +671,7 @@ Demo contract: [`VERSIONS.md` V5](VERSIONS.md#v5---news-and-sentiment)
 
 | ID | Priority | Effort | Slice | Status | Depends on | Blocker | Plan |
 |---|---|---|---|---|---|---|---|
-| NEWS-01 | REQ | M | News contract, provider port, contract suite | **READY** | SETUP-05 | | [05](05-news-and-sentiment.md) |
+| NEWS-01 | REQ | M | News contract, provider port, contract suite | **DONE** | SETUP-05 | | [05](05-news-and-sentiment.md) |
 | NEWS-02 | REQ | M | Collection worker and first provider adapter | **BLOCKED** | NEWS-01, SETUP-04 | Concrete news sources not approved | [05](05-news-and-sentiment.md) |
 | NEWS-03 | REQ | M | Analyzer port, result contract, lifecycle | TODO | NEWS-02 | | [05](05-news-and-sentiment.md) |
 | NEWS-04 | REQ | M | First real sentiment analyzer | **BLOCKED** | NEWS-03 | Sentiment model or service not chosen | [05](05-news-and-sentiment.md) |
@@ -679,6 +679,20 @@ Demo contract: [`VERSIONS.md` V5](VERSIONS.md#v5---news-and-sentiment)
 | NEWS-07 | REQ | S | News list, health, and sentiment query surface | TODO | NEWS-05 | | [05](05-news-and-sentiment.md) |
 | UI-07 | REQ | M | News page | TODO | NEWS-07, SETUP-06 | | [06](06-ui-and-demo-integration.md) |
 | NEWS-06 | **OPT** | M | Sentiment as a strategy | TODO | NEWS-05, STRAT-04 | | [05](05-news-and-sentiment.md) |
+
+### NEWS-01 evidence (2026-08-30)
+
+- Focused News normalization, provider-contract, and fake-provider tests pass:
+  3 files, 14 tests.
+- Backend typecheck and lint limited to NEWS sources pass; the architecture boundary
+  test passes (7 tests); `git diff --check` passes.
+- The valid fake passes the unchanged reusable contract suite. The deliberately
+  broken fake is rejected for a duplicate deterministic identity.
+- The repository-wide Vitest run that was already in progress when V5 policy changed
+  is incidental baseline evidence only: 95/97 files and 555/558 tests passed. Its
+  three unrelated failures are in backtest result-query/runner lifecycle integration
+  tests. It is not NEWS-01 acceptance evidence and must not be repeated until the
+  V5 News backend integration gate.
 
 `NEWS-06` is optional. It is **not** part of V5's exit criteria and V5 is demoable
 without it. Build it only if V5 finishes early.
