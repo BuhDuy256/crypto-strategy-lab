@@ -6,6 +6,9 @@ import {
   isHealthResponse,
   isMarketLiveNotification,
   isMarketRealtimeMessage,
+  isNewsHealthResponse,
+  isNewsItemListResponse,
+  isNewsSentimentDistributionResponse,
   type HealthResponse
 } from "./index.js";
 
@@ -171,6 +174,69 @@ describe("EXP-10 runtime contracts", () => {
     expect(isBacktestTradesResponse({ ...base, page: {} })).toBe(false);
     expect(isBacktestTradesResponse({
       ...base, page: { pageNumber: Number.MAX_SAFE_INTEGER + 1, pageSize: 10, totalCount: 0 }
+    })).toBe(false);
+  });
+});
+
+describe("News query contracts (NEWS-07)", () => {
+  it("accepts a well-formed paginated item list", () => {
+    expect(isNewsItemListResponse({
+      items: [{
+        id: "coindesk-rss|https://example.com/a",
+        title: "Fixture headline",
+        source: "coindesk-rss",
+        publishedAt: 1_788_177_600_000,
+        relatedCoins: ["BTC"],
+        analysisState: "analyzed"
+      }],
+      page: { pageNumber: 1, pageSize: 10, totalCount: 1 }
+    })).toBe(true);
+  });
+
+  it("rejects a malformed item or missing paging metadata", () => {
+    expect(isNewsItemListResponse({ items: [{ title: "no other fields" }], page: { pageNumber: 1, pageSize: 10, totalCount: 1 } })).toBe(false);
+    expect(isNewsItemListResponse({ items: [], page: {} })).toBe(false);
+    expect(isNewsItemListResponse(null)).toBe(false);
+  });
+
+  it("accepts a well-formed sentiment distribution", () => {
+    expect(isNewsSentimentDistributionResponse({
+      window: { startAt: 1_000, endAt: 2_000 },
+      itemCount: 4,
+      positive: 0.75,
+      neutral: 0.25,
+      negative: 0
+    })).toBe(true);
+  });
+
+  it("rejects a distribution with a non-finite proportion or an inverted window", () => {
+    expect(isNewsSentimentDistributionResponse({
+      window: { startAt: 1_000, endAt: 2_000 }, itemCount: 1, positive: Number.NaN, neutral: 0, negative: 0
+    })).toBe(false);
+    expect(isNewsSentimentDistributionResponse({ itemCount: 0, positive: 0, neutral: 0, negative: 0 })).toBe(false);
+  });
+
+  it("accepts a well-formed health snapshot, including an unavailable analysis state", () => {
+    expect(isNewsHealthResponse({
+      collection: [{ provider: "coindesk-rss", status: "healthy", checkedAt: 1_788_177_600_000 }],
+      analysis: {
+        status: "unavailable",
+        reason: "analysis has not completed any item yet",
+        pendingCount: 0,
+        degradedCount: 0,
+        checkedAt: 0
+      }
+    })).toBe(true);
+  });
+
+  it("rejects an unknown status or a non-array collection list", () => {
+    expect(isNewsHealthResponse({
+      collection: [{ provider: "coindesk-rss", status: "offline", checkedAt: 0 }],
+      analysis: { status: "healthy", pendingCount: 0, degradedCount: 0, checkedAt: 0 }
+    })).toBe(false);
+    expect(isNewsHealthResponse({
+      collection: {},
+      analysis: { status: "healthy", pendingCount: 0, degradedCount: 0, checkedAt: 0 }
     })).toBe(false);
   });
 });

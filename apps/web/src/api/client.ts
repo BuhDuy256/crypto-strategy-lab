@@ -42,11 +42,17 @@ import {
   isSearchProgressResponse,
   isProvenanceResponse,
   isBacktestAnnotationsResponse,
+  isNewsItemListResponse,
+  isNewsSentimentDistributionResponse,
+  isNewsHealthResponse,
   type LeaderboardResponse,
   type LeaderboardSort,
   type SearchProgressResponse,
   type ProvenanceResponse,
-  type BacktestAnnotationsResponse
+  type BacktestAnnotationsResponse,
+  type NewsItemListResponse,
+  type NewsSentimentDistributionResponse,
+  type NewsHealthResponse
 } from "@crypto-strategy-lab/api-contracts";
 
 // In dev, Vite proxies "/api/*" to the backend (see vite.config.ts).
@@ -221,6 +227,26 @@ export function getBacktestProvenance(runId: string): Promise<ProvenanceResponse
 /** Reads a result's visualization annotations, recomputed on demand. */
 export function getBacktestAnnotations(runId: string): Promise<BacktestAnnotationsResponse> {
   return getJson(`/backtests/${encodeURIComponent(runId)}/annotations`, isBacktestAnnotationsResponse);
+}
+
+/** Reads a page of collected News items, newest published first. */
+export function getNewsItems(pageNumber = 1, pageSize = 10): Promise<NewsItemListResponse> {
+  const query = new URLSearchParams({ page: String(pageNumber), pageSize: String(pageSize) });
+  return getJson(`/news/items?${query.toString()}`, isNewsItemListResponse);
+}
+
+/** Reads the sentiment distribution over one explicit time window. */
+export function getNewsSentimentDistribution(
+  startAt: number,
+  endAt: number
+): Promise<NewsSentimentDistributionResponse> {
+  const query = new URLSearchParams({ startAt: String(startAt), endAt: String(endAt) });
+  return getJson(`/news/sentiment?${query.toString()}`, isNewsSentimentDistributionResponse);
+}
+
+/** Reads News' own view of collection and analysis health. */
+export function getNewsHealth(): Promise<NewsHealthResponse> {
+  return getJson("/news/health", isNewsHealthResponse);
 }
 
 export async function createComposite(req: CreateCompositeRequest): Promise<CreateCompositeResponse> {

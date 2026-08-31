@@ -1,0 +1,153 @@
+// Deterministic adapter test for the News-owned item list read. Mirrors the mocked-pool
+// style of postgres-sentiment-feature-store.test.ts: assert the SQL/params shape and the
+// mapped result, without a live database.
+
+import type { Pool } from "pg";
+import { describe, expect, it, vi } from "vitest";
+import { PostgresNewsQueryRepository } from "./postgres-news-query-repository.js";
+
+describe("PostgresNewsQueryRepository.list", () => {
+  it("pages through news.items newest-published-first and maps the transport-safe fields", async () => {
+    const query = vi.fn(async () => ({
+      rows: [
+        {
+          id: "coindesk-rss|https://example.com/a",
+          title: "Fixture headline",
+          source: "coindesk-rss",
+          published_at: "1788177600000",
+          related_coins: ["BTC"],
+          analysis_state: "analyzed",
+          total_count: 3
+        }
+      ]
+    }));
+    const repository = new PostgresNewsQueryRepository({ query } as unknown as Pool);
+
+    const page = await repository.list({ pageNumber: 2, pageSize: 1 });
+
+    expect(query).toHaveBeenCalledOnce();
+    const [sql, params] = query.mock.calls[0] as unknown as [string, readonly unknown[]];
+    expect(sql).toContain("ORDER BY published_at DESC");
+    expect(sql).toContain("LIMIT $1 OFFSET $2");
+    expect(params).toEqual([1, 1]);
+    expect(page).toEqual({
+      items: [
+        {
+          id: "coindesk-rss|https://example.com/a",
+          title: "Fixture headline",
+          source: "coindesk-rss",
+          publishedAt: 1_788_177_600_000,
+          relatedCoins: ["BTC"],
+          analysisState: "analyzed"
+        }
+      ],
+      page: { pageNumber: 2, pageSize: 1, totalCount: 3 }
+    });
+  });
+
+  it("reports zero total count when the table has no rows, without a second round trip erroring", async () => {
+    const query = vi.fn(async () => ({ rows: [] }));
+    const repository = new PostgresNewsQueryRepository({ query } as unknown as Pool);
+
+    const page = await repository.list({ pageNumber: 1, pageSize: 10 });
+
+    expect(page).toEqual({ items: [], page: { pageNumber: 1, pageSize: 10, totalCount: 0 } });
+  });
+});
+
+describe("PostgresNewsQueryRepository.getDistribution", () => {
+  it("counts analyzed, succeeded items published in the window and derives proportions", async () => {
+    const query = vi.fn(async () => ({ rows: [{ positive: 3, neutral: 1, negative: 0 }] }));
+    const repository = new PostgresNewsQueryRepository({ query } as unknown as Pool);
+
+    const distribution = await repository.getDistribution({ startAt: 1_000, endAt: 2_000 });
+
+    expect(query).toHaveBeenCalledOnce();
+    const [sql, params] = query.mock.calls[0] as unknown as [string, readonly unknown[]];
+    expect(sql).toContain("i.analysis_state = 'analyzed'");
+    expect(sql).toContain("r.status = 'succeeded'");
+    expect(sql).toContain("i.published_at >= $1 AND i.published_at <= $2");
+    expect(params).toEqual([1_000, 2_000]);
+    expect(distribution).toEqual({
+      window: { startAt: 1_000, endAt: 2_000 },
+      itemCount: 4,
+      positive: 0.75,
+      neutral: 0.25,
+      negative: 0
+    });
+  });
+
+  it("reports zero proportions for an empty window without dividing by zero", async () => {
+    const query = vi.fn(async () => ({ rows: [{ positive: 0, neutral: 0, negative: 0 }] }));
+    const repository = new PostgresNewsQueryRepository({ query } as unknown as Pool);
+
+    const distribution = await repository.getDistribution({ startAt: 1_000, endAt: 2_000 });
+
+    expect(distribution).toEqual({
+      window: { startAt: 1_000, endAt: 2_000 },
+      itemCount: 0,
+      positive: 0,
+      neutral: 0,
+      negative: 0
+    });
+  });
+});
+
+describe("PostgresNewsQueryRepository.getHealth", () => {
+  it("reads per-provider collection health and derives analysis health from item state counts", async () => {
+    const lastCompletedAt = new Date("2026-08-30T00:15:00Z");
+    const query = vi.fn(async (sql: string) => {
+      if (sql.includes("news.source_health")) {
+        return {
+          rows: [{ provider: "coindesk-rss", status: "healthy", reason: null, checked_at: "1788177600000" }]
+        };
+      }
+      if (sql.includes("GROUP BY analysis_state")) {
+        return {
+          rows: [
+            { analysis_state: "pending", count: 2 },
+            { analysis_state: "analyzed", count: 10 },
+            { analysis_state: "degraded", count: 1 }
+          ]
+        };
+      }
+      return { rows: [{ last_completed_at: lastCompletedAt }] };
+    });
+    const repository = new PostgresNewsQueryRepository({ query } as unknown as Pool);
+
+    const health = await repository.getHealth();
+
+    expect(health).toEqual({
+      collection: [{ provider: "coindesk-rss", status: "healthy", checkedAt: 1_788_177_600_000 }],
+      analysis: {
+        status: "degraded",
+        reason: "1 item(s) exhausted retries and could not be analyzed",
+        pendingCount: 2,
+        degradedCount: 1,
+        checkedAt: lastCompletedAt.getTime()
+      }
+    });
+  });
+
+  it("reports unavailable analysis health and an empty collection list against a fresh schema", async () => {
+    const query = vi.fn(async (sql: string) => {
+      if (sql.includes("news.source_health")) return { rows: [] };
+      if (sql.includes("GROUP BY analysis_state")) return { rows: [] };
+      return { rows: [{ last_completed_at: null }] };
+    });
+    const repository = new PostgresNewsQueryRepository({ query } as unknown as Pool);
+
+    const health = await repository.getHealth();
+
+    expect(health).toEqual({
+      collection: [],
+      analysis: {
+        status: "unavailable",
+        reason: "analysis has not completed any item yet",
+        pendingCount: 0,
+        degradedCount: 0,
+        checkedAt: 0
+      }
+    });
+  });
+});

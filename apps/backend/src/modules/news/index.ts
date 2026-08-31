@@ -61,3 +61,28 @@ export type {
   SentimentFeatureWindow,
   SentimentWindowIdentityInput
 } from "./application/sentiment-feature.js";
+export { NEWS_HEALTH_QUERY, NEWS_ITEM_QUERY, SENTIMENT_DISTRIBUTION_QUERY } from "./application/tokens.js";
+export type {
+  NewsItemListRequest,
+  NewsItemPage,
+  NewsItemQuery,
+  NewsItemSummary
+} from "./application/news-item-query.js";
+export {
+  computeSentimentProportions
+} from "./application/sentiment-distribution-query.js";
+export type {
+  SentimentDistribution,
+  SentimentDistributionQuery,
+  SentimentDistributionWindow,
+  SentimentLabelCounts
+} from "./application/sentiment-distribution-query.js";
+export { deriveAnalysisHealth } from "./application/news-health-query.js";
+export type {
+  NewsAnalysisHealth,
+  NewsAnalysisStateCounts,
+  NewsHealthQuery,
+  NewsHealthSnapshot,
+  NewsHealthStatus,
+  NewsSourceHealth
+} from "./application/news-health-query.js";

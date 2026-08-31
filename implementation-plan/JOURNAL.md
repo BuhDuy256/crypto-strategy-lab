@@ -2750,3 +2750,111 @@ WHERE news_item_id = 'coindesk-rss|https://www.coindesk.com/business/2026/08/30/
   policy (NEWS-05)`, 18 files (9 new, 9 modified), matching exactly the file set
   described above. A follow-up edit to this file and `TRACKING.md` then replaced the
   "uncommitted" language with the real commit hash.
+
+### 2026-08-31 - NEWS-07 implementation complete (uncommitted)
+
+**What was built**
+
+- Three new News-owned read ports in `news/application/`: `NewsItemQuery` (paginated
+  item list), `SentimentDistributionQuery` (windowed positive/neutral/negative
+  proportions, asset-agnostic - the whole feed, unlike NEWS-05's per-asset
+  `SentimentFeature`), and `NewsHealthQuery` (collection health plus analysis health).
+  Collection health reads the existing `news.source_health` table, one entry per
+  configured provider, shaped as an array so a second source needs no response-shape
+  change later. Analysis has no equivalent table, so `deriveAnalysisHealth` is a pure
+  function computed from `news.items` state counts plus the latest completed attempt
+  in `news.sentiment_analysis_attempts`: `unavailable` when no attempt has ever
+  completed, `degraded` with a count-bearing reason when any item exhausted its
+  retries, otherwise `healthy`.
+- `news/infrastructure/postgres-news-query-repository.ts`: one adapter implementing
+  all three read ports against the existing schema (no new migration - `NEWS-01`'s
+  `news.items`/`news.source_health` and `NEWS-03`'s `0017` lease/result/attempt
+  tables already carry everything these reads need), mirroring how
+  `PostgresCandleRepository` backs three Market query ports from one class.
+- `news.module.ts` (previously the empty composition-boundary stub from `SETUP-03`)
+  now wires a database pool and the three query tokens, following `MarketModule`'s
+  exact DI pattern (`useFactory` pool, `useExisting` port bindings, an
+  `OnApplicationShutdown` pool-close lifecycle). `ApiModule` imports `NewsModule` and
+  a new `NewsController` (`GET /news/items`, `GET /news/sentiment`, `GET
+  /news/health`), each backed by a `class-validator` DTO at the transport edge
+  (`news.dto.ts`), matching `CandleHistoryController`'s pattern.
+- `packages/api-contracts`: `NewsItemListResponse`, `NewsSentimentDistributionResponse`,
+  `NewsHealthResponse` and their runtime type guards, next to
+  `BacktestAnnotationsResponse`. `apps/web/src/api/client.ts` gained `getNewsItems`,
+  `getNewsSentimentDistribution`, and `getNewsHealth`, following the existing
+  `getJson`/guard pattern used by every other read endpoint; per the established
+  convention in this file, they were not given their own dedicated tests (the generic
+  `getJson` wrapper they call is already covered by `getHealth`'s tests, the same way
+  `getProviderHealth`/`getCandleHistory`/`getLeaderboard` are not separately tested).
+
+**Design decisions surfaced during implementation, not obvious from the acceptance
+criteria alone**
+
+- The sample News-page mockup (via a research pass over the official source and
+  `docs/requirements/sample-ui`) shows a single stacked sentiment bar for one chosen
+  window (24h in the mockup), an analyzed-item count, and a "source coverage" ratio
+  (healthy/total sources). The 24h window is the page's choice, not a backend
+  default - `GET /news/sentiment` takes explicit `startAt`/`endAt`, like
+  `CandleHistoryController`. The analyzed count needs no separate endpoint: it is the
+  distribution response's `itemCount`. "Source coverage" is why collection health is
+  an array rather than one aggregate value - the ratio is a `UI-07` computation over
+  that array, not something this slice computes for it.
+- AC1 lists five item fields (title, source, publishedAt, relatedCoins,
+  analysisState); the response adds `id` on top of that literal list because a
+  paginated list has no stable per-row key without one. No other field (url,
+  content/summary) was added - `UI-07` can extend the port later if the page needs
+  them.
+- AC4 ("degrade gracefully... rather than an error") is proven as: none of the three
+  reads throw against an empty `news` schema (equivalent to a news worker that has
+  never run), and each returns a well-formed zero/`unavailable` payload instead - not
+  that every field always literally reads `"degraded"`. This is a judgment call, not
+  a certainty; it is recorded here so it can be revisited if `UI-07` disagrees with
+  what "graceful" should look like on screen.
+
+**NEWS-07 acceptance-criteria mapping**
+
+1. Paginated item list with the five required fields: `PostgresNewsQueryRepository
+   .list()` + `NewsController.listItems()`, `count(*) OVER ()` windowed pagination
+   mirroring `PostgresBacktestResultQuery.getTrades()`.
+2. Windowed distribution with proportions, item count, and window bounds:
+   `computeSentimentProportions` (pure, unit-tested for the zero-item case
+   separately from the SQL) plus the adapter's `getDistribution()`.
+3. Collection and analysis health with degraded states and reasons:
+   `deriveAnalysisHealth` (pure, three states unit-tested independently of SQL) plus
+   the adapter's `getHealth()`.
+4. Graceful degradation with no worker running: two of the six
+   `postgres-news-query-repository.test.ts` cases and one of the three
+   `news-health-query.test.ts` cases exercise the empty-schema path directly.
+5. No model/provider internal detail: the three response shapes carry only
+   transport-safe fields (item summary fields, proportions, provider name and health
+   status/reason strings) - no model id, artifact id, or analyzer identity anywhere,
+   matching NEWS-05's precedent.
+6. Isolation: `news-endpoint-isolation.test.ts` composes `NewsController` and
+   `CandleHistoryController` into one real NestJS module instance (as `ApiModule`
+   does), makes every News port reject, and proves the Market controller still
+   resolves normally in the same instance.
+
+**Validation and process state**
+
+- Targeted only, per this session's owner instruction (no repository-wide Vitest
+  run): `pnpm run typecheck` passes for all three workspace packages (`api-contracts`,
+  `backend`, `web`). Scoped ESLint over every file touched this slice passes clean.
+  `pnpm exec vitest run` across the News module, the API module (all controllers,
+  not just News, to catch cross-controller regressions), the architecture boundary
+  test, `api-contracts`, and the web API client -> 40 test files, 234 tests, all
+  passing. `git diff --check` shows only pre-existing CRLF warnings. The
+  architecture boundary test (`apps/backend/src/architecture/boundary.test.ts`)
+  passing confirms the new `NewsModule`/`ApiModule` wiring introduces no forbidden
+  edge. Per the 2026-08-30 "V5 validation cadence" decision above, the
+  repository-wide suite is the News backend integration gate that runs once now that
+  every required backend News slice through `NEWS-07` is done - that full run has
+  not happened yet and is deliberately left for a session the owner directs to it.
+- `.scratch/checkpoints/NEWS-07.md` was written and kept current through the session
+  as the owner-requested continuous checkpoint, then deleted once this entry and the
+  `TRACKING.md` update landed, per the normal end-of-slice checkpoint rule.
+
+**State**
+
+- `NEWS-07` is `DONE` but deliberately uncommitted - no commit request was made this
+  session. `UI-07` is now `READY` (`SETUP-06` and `NEWS-07` are both `DONE` in code).
+  `NEWS-06` (optional) remains `TODO` and out of V5's exit criteria.
