@@ -2983,6 +2983,8 @@ criteria alone**
 
 **State**
 
-- `UI-07` is `DONE` but deliberately uncommitted. `NEWS-06` remains optional and out
-  of V5 exit criteria. V5 is not declared demoable: its separate owner-deferred News
-  backend integration/full-suite, final Compose, and proof gates remain unchanged.
+- `UI-07` is `DONE` and committed as `65110ec` (`feat(ui): add News page and worker
+  liveness (UI-07)`) after the owner explicitly requested a commit. `NEWS-06` remains
+  optional and out of V5 exit criteria. V5 is not declared demoable: its separate
+  owner-deferred News backend integration/full-suite, final Compose, and proof gates
+  remain unchanged.
