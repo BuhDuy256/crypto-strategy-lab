@@ -1,5 +1,9 @@
 // Public surface of the News Intelligence module.
 export { NewsModule } from "./news.module.js";
+export {
+  NewsCollectionWorkerModule,
+  NewsCollectionWorkerRuntime
+} from "./news-collection-worker.module.js";
 export { NewsWorkerModule } from "./news-worker.module.js";
 export { NewsWorkerRuntime } from "./application/news-worker-runtime.js";
 export {

@@ -2316,3 +2316,310 @@ validated by its tests and its browser smoke, and by nothing else.
 - After separate owner authorization, NEWS-03 was committed as `c46c2e1`
   (`feat(news): add analyzer inference lifecycle (NEWS-03)`). It remains unpushed;
   the owner-deferred combined NEWS-01..NEWS-03 slice-diff review is still outstanding.
+
+### 2026-08-30 - NEWS-04 owner decision: OpenAI Responses adapter
+
+**Owner decision**
+
+- Bind only the OpenAI Responses API to the existing `SentimentAnalyzer` port, using
+  strict structured output and the exact snapshot `gpt-4.1-mini-2025-04-14` at
+  `https://api.openai.com/v1/responses`.
+- The adapter runs only in the Node.js News worker. Python, local models, Transformers.js,
+  ONNX, other providers, and automatic fallback are not authorized.
+- The hosted adapter directly classifies normalized English crypto-news text and avoids a
+  Python runtime, local model, and another container, keeping NEWS-04 inside the existing
+  News adapter boundary.
+- The exact snapshot is the immutable model identity available to this repository.
+  Results are explicitly **not fully reproducible**: the snapshot, prompt, request schema,
+  input/preprocessing versions, SDK version, and application code can be pinned, while the
+  hosted model binary and inference runtime remain vendor-controlled.
+- Prompt version is `openai-crypto-news-sentiment-v1`. The existing port input version
+  remains `news-item.v1`; `news-sentiment-input-v1` identifies deterministic title-plus-
+  content preprocessing. Scores are confidence values in `[0,1]`, not calibrated
+  probabilities.
+
+**Implementation start**
+
+- NEWS-04 moves from `BLOCKED` to `IN PROGRESS`. No API key has been read or used, and no
+  real OpenAI request has been made. The owner will fill the local ignored `.env` only after
+  offline C1-C4 validation is complete.
+
+### 2026-08-30 - NEWS-04 C1-C4 offline adapter and credential gate
+
+**Delivered offline**
+
+- `OpenAiResponsesSentimentAnalyzer` binds the exact selected snapshot only, uses strict
+  two-field structured output, independently validates that output, and has no model or
+  provider fallback. Its client is injected for deterministic no-network tests.
+- The existing `SentimentResult` remains unchanged. Its required five-field provenance
+  records OpenAI model, immutable hosted artefact identity, snapshot, existing input version,
+  and deterministic preprocessing version. Adapter metadata records prompt, SDK, endpoint,
+  and the explicit not-fully-reproducible classification without adding optional data to the
+  frozen result contract.
+- The production News-worker binding now uses the adapter and reads the credential only in
+  that composition root. An absent credential follows the existing retryable failure path;
+  collection, API, Strategy, and Experiment remain isolated.
+
+**Validation and gate**
+
+- Targeted adapter, contract, missing-credential lifecycle, composition, boundary, existing
+  result-provenance, and News isolation tests pass: 10 files, 74 tests. Backend typecheck,
+  scoped lint, Compose configuration, and `git diff --check` pass. No live request or credit
+  was used.
+- The governance validator still reports only three pre-existing obsolete-process findings.
+  They are outside NEWS-04 and were not changed here.
+- C5 is intentionally not run. The local ignored `.env` has an empty `OPENAI_API_KEY` line
+  added by the agent without displaying the file. The owner must fill it locally, then request
+  C5 explicitly; do not inspect or print the credential.
+
+### 2026-08-30 - NEWS-04 C5 partial live validation
+
+**Safe service state**
+
+- The local credential was checked only as a non-empty boolean and `.env` remained ignored.
+  It was never printed, copied, persisted, or inspected through Compose configuration or
+  container inspection.
+- Only `news-worker` was rebuilt and recreated, and it was verified running with batch size
+  one. It was then deliberately paused to prevent an unobserved paid attempt while C5 is
+  blocked. `postgres` stayed healthy and `runner` stayed running; `api`, `web`,
+  `market-ingest`, and `redis` stayed stopped. Compose now passes the existing
+  `NEWS_ANALYSIS_BATCH_SIZE` configuration only to `news-worker` so a proof cannot claim a
+  backlog.
+- Worker-log output was not displayed. A non-disclosing marker scan found no credential marker.
+
+**Hosted labelled sample**
+
+- The three fixed examples from official source section 29 were run through the production
+  `NewsWorkerModule` binding and its `SENTIMENT_ANALYZER` port. The endpoint was
+  `https://api.openai.com/v1/responses`; the model snapshot was
+  `gpt-4.1-mini-2025-04-14`; prompt version was `openai-crypto-news-sentiment-v1`; input and
+  preprocessing versions were `news-item.v1` and `news-sentiment-input-v1`.
+- Three requests were made, once each: positive -> positive (0.90), negative -> negative
+  (0.95), neutral -> neutral (0.50). Accuracy is 3/3 (100%) and is informational only. The
+  score is application-level model confidence, not a calibrated probability.
+
+**Remaining C5 blocker**
+
+- The recreated worker and one explicit collection-only run each found no new CoinDesk item:
+  zero stored and 25 skipped. The protected database therefore remains at 25 analyzed items,
+  one existing degraded fixture, 25 results, and 28 attempts (25 succeeded and 3 failed).
+- No real pending item exists for the worker to claim. The real-item result/provenance proof
+  and the controlled durable-unavailability proof remain incomplete; the existing degraded
+  fixture was inspected only and not altered. No fake result was overwritten, no database was
+  reset, and no fallback was used.
+
+**Targeted checks**
+
+- `docker compose config --quiet` and `git diff --check` pass after the narrow Compose mapping.
+  No full suite, backend integration gate, code review, migration, commit, or push was run.
+
+### 2026-08-31 - NEWS-04 collection-only composition correction
+
+**Root cause and correction**
+
+- `news:collect --once` previously selected `collectOnce()` after creating the full
+  `NewsWorkerModule`, whose graph includes `SENTIMENT_ANALYZER`. Although the method
+  did not invoke analysis, collection-only bootstrap could still resolve the
+  production adapter.
+- `NewsCollectionWorkerModule` is now a separate composition root. It owns only the
+  existing provider, collection repository, collection service, scheduler, logger,
+  database pool lifecycle, and `NewsCollectionWorkerRuntime`. It contains no
+  analyzer token, analyzer adapter, sentiment scheduler, sentiment service, or
+  sentiment repository. `main.news-worker.ts --once` selects this root before
+  Nest bootstraps. The normal worker continues to import the collection root and
+  binds the OpenAI adapter through `SENTIMENT_ANALYZER` unchanged.
+
+**Evidence**
+
+- The new composition test compiles the collection-only root, obtains its collection
+  runtime, and proves both `SENTIMENT_ANALYZER` and `SentimentAnalysisService` are
+  absent. Its static check also proves `--once` selects the collection-only root and
+  that root contains no analyzer implementation or sentiment lifecycle type.
+- The targeted collection-root, full-worker-binding, and worker-topology tests pass:
+  3 files, 8 tests. Backend typecheck, `docker compose config --quiet`, and
+  `git diff --check` pass. No repository-wide suite or review ran.
+- After the authorized `docker compose run --rm news-worker pnpm run news:collect`,
+  collection stored 2 items and skipped 23. The database moved from 26 items
+  (25 analyzed CoinDesk, 1 degraded fixture) to 28 items (27 CoinDesk: 25 analyzed,
+  2 pending; the same 1 degraded fixture). Results remain 25 and attempts remain 28
+  (25 succeeded, 3 failed). The API and normal News worker remained stopped; runner
+  remained running. The collection-only graph cannot issue a hosted request, and
+  the cumulative hosted-request count remains 3.
+
+**Next action**
+
+- Do not analyze either pending item in this continuation. In the next authorized
+  C5 continuation, select exactly one newly collected pending CoinDesk item, run the
+  controlled durable unavailability proof, then perform at most one successful
+  retry through the normal News worker.
+
+### 2026-08-31 - NEWS-04 C5 controlled failure and real-item recovery
+
+**Reconciliation and deterministic boundary**
+
+- Before starting a worker, the live `news` schema matched the protected baseline:
+  28 items; 25 CoinDesk `analyzed`; two CoinDesk `pending`; one unchanged `c5-fake`
+  `degraded` fixture; 25 `sentiment_results`; and 28 attempts (25 `succeeded`, three
+  `failed`). PostgreSQL was healthy and runner was running; API and the persistent
+  normal News worker were stopped.
+- The normal worker claims with `ORDER BY collected_at, id`. Both pending CoinDesk
+  rows had `collected_at` `1788142079381`, so the bounded batch selected the lexically
+  first immutable ID:
+  `coindesk-rss|https://www.coindesk.com/business/2026/08/30/from-hawala-to-swift-inside-the-1-000-year-battle-to-move-money-safely`.
+  The protected control was
+  `coindesk-rss|https://www.coindesk.com/markets/2026/08/30/bitcoin-nears-usd79-000-as-michael-saylor-hints-at-first-bitcoin-purchase-in-two-months`.
+  Both began `pending`, with attempt count 0 and no result.
+- `news:analyze` maps to `--analyze-once`, which invokes only the normal worker's
+  analysis stage. `NEWS_ANALYSIS_BATCH_SIZE=1` and the repository `LIMIT $2` made
+  each authorized run claim at most one item. No collection command was run.
+
+**Controlled unavailability**
+
+- Ran exactly once:
+  `docker compose run --no-deps --rm -e OPENAI_API_KEY= -e NEWS_ANALYSIS_BATCH_SIZE=1 news-worker pnpm run news:analyze`.
+  The empty credential was scoped to that one container; `.env` was not displayed or
+  changed. The normal worker reported one claim, zero analyzed, one retryable failure,
+  zero degraded, and zero lost claims.
+- The selected item kept its immutable ID, returned to `pending`, and recorded attempt
+  1 by `news-worker-47` as `failed` with
+  `ANALYZER_UNAVAILABLE: OpenAI credential is missing` at
+  `2026-08-31 02:19:48.278139+00` through `2026-08-31 02:19:48.308297+00`. It had no
+  result. This is the adapter branch that has no client and throws before
+  `client.create`; therefore no hosted request occurred in this phase.
+- The cumulative hosted-request execution evidence stayed at 3. The control remained
+  `pending` with no attempt or result. The `c5-fake` fixture stayed `degraded` with its
+  original three failed attempts and no result. The intermediate shape was 28 items,
+  25 CoinDesk analyzed, two CoinDesk pending, 25 results, and 29 attempts (25
+  succeeded, four failed).
+
+**Recovery and durable result**
+
+- Ran exactly one recovery retry, with the Compose service's real analyzer configuration
+  restored by omitting the empty-key override:
+  `docker compose run --no-deps --rm -e NEWS_ANALYSIS_BATCH_SIZE=1 news-worker pnpm run news:analyze`.
+  It reported one claim, one analyzed, zero retryable/degraded/lost claims, then exited.
+- The same selected item recorded attempt 2 by `news-worker-47` as `succeeded`, claimed
+  at `2026-08-31 02:21:00.150549+00` and completed at
+  `2026-08-31 02:21:04.628113+00`. Its final state is `analyzed`, attempt count 2, no
+  open lease or failure reason, and exactly one durable result: `neutral`, score `0.6`,
+  `openai-responses`, artifact `openai://responses/gpt-4.1-mini-2025-04-14`, model
+  version `gpt-4.1-mini-2025-04-14`, input `news-item.v1`, preprocessing
+  `news-sentiment-input-v1`, schema version 1, status `succeeded`.
+- This bounded recovery can issue exactly one hosted request: the single-item stage made
+  one successful analyzer call and the SDK client has `maxRetries: 0`. Therefore the
+  cumulative execution evidence is 3 -> 3 -> 4 (labelled sample -> unavailable ->
+  recovery). This is execution evidence rather than an external billing-ledger query.
+- Final shape: 28 items; 26 CoinDesk `analyzed`; one CoinDesk `pending` (the untouched
+  control); one unchanged `c5-fake` `degraded`; 26 results; and 30 attempts (26
+  `succeeded`, four `failed`).
+
+**Exact read-only database queries**
+
+- Each statement below ran against the `news` schema through
+  `docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U crypto_strategy_lab -d crypto_strategy_lab -P pager=off -c`.
+  Before the worker, the aggregate query returned 28 items, 25 results, and attempts
+  of 25 `succeeded` plus three `failed`; the grouped item query returned 25 CoinDesk
+  `analyzed`, two CoinDesk `pending`, and one `c5-fake` `degraded`.
+
+```sql
+SELECT count(*) AS total_items FROM news.items;
+SELECT source, analysis_state, count(*) AS item_count
+FROM news.items GROUP BY source, analysis_state ORDER BY source, analysis_state;
+SELECT count(*) AS total_results FROM news.sentiment_results;
+SELECT outcome, count(*) AS attempt_count
+FROM news.sentiment_analysis_attempts GROUP BY outcome ORDER BY outcome;
+SELECT i.id, i.url, i.collected_at, i.analysis_state, i.analysis_attempt_count,
+       count(DISTINCT a.attempt_number) AS durable_attempts,
+       count(DISTINCT r.news_item_id) AS durable_results
+FROM news.items i
+LEFT JOIN news.sentiment_analysis_attempts a ON a.news_item_id = i.id
+LEFT JOIN news.sentiment_results r ON r.news_item_id = i.id
+WHERE i.source = 'coindesk-rss' AND i.analysis_state = 'pending'
+GROUP BY i.id, i.url, i.collected_at, i.analysis_state, i.analysis_attempt_count
+ORDER BY i.collected_at, i.id;
+```
+
+- During unavailable mode, the selected query returned state `pending`, count 1,
+  zero results, and its single `failed` attempt with the exact missing-credential
+  reason. The control query returned state `pending`, count 0, zero attempts, and
+  zero results. Aggregates became 25 results and 29 attempts (25 succeeded, four
+  failed).
+
+```sql
+SELECT i.id, i.analysis_state, i.analysis_attempt_count, i.analysis_failure_reason,
+       count(DISTINCT r.news_item_id) AS result_count, a.attempt_number,
+       a.analyzer_id, a.outcome, a.failure_reason, a.claimed_at, a.completed_at
+FROM news.items i
+LEFT JOIN news.sentiment_results r ON r.news_item_id = i.id
+LEFT JOIN news.sentiment_analysis_attempts a ON a.news_item_id = i.id
+WHERE i.id = 'coindesk-rss|https://www.coindesk.com/business/2026/08/30/from-hawala-to-swift-inside-the-1-000-year-battle-to-move-money-safely'
+GROUP BY i.id, i.analysis_state, i.analysis_attempt_count, i.analysis_failure_reason,
+         a.attempt_number, a.analyzer_id, a.outcome, a.failure_reason, a.claimed_at,
+         a.completed_at
+ORDER BY a.attempt_number;
+SELECT i.id, i.analysis_state, i.analysis_attempt_count, i.analysis_failure_reason,
+       count(DISTINCT a.attempt_number) AS attempt_count,
+       count(DISTINCT r.news_item_id) AS result_count
+FROM news.items i
+LEFT JOIN news.sentiment_analysis_attempts a ON a.news_item_id = i.id
+LEFT JOIN news.sentiment_results r ON r.news_item_id = i.id
+WHERE i.id = 'coindesk-rss|https://www.coindesk.com/markets/2026/08/30/bitcoin-nears-usd79-000-as-michael-saylor-hints-at-first-bitcoin-purchase-in-two-months'
+GROUP BY i.id, i.analysis_state, i.analysis_attempt_count, i.analysis_failure_reason;
+```
+
+- After recovery, the query below returned selected state `analyzed`, attempt count
+  2, null lease/failure fields, attempt 1 `failed`, attempt 2 `succeeded`, and the
+  one result described above. The aggregate query returned 28 items, 26 results,
+  26 CoinDesk `analyzed`, one CoinDesk `pending`, one `c5-fake` `degraded`, and 30
+  attempts (26 succeeded, four failed).
+
+```sql
+SELECT id, analysis_state, analysis_attempt_count, analysis_failure_reason,
+       analysis_claimed_by, analysis_lease_expires_at
+FROM news.items
+WHERE id = 'coindesk-rss|https://www.coindesk.com/business/2026/08/30/from-hawala-to-swift-inside-the-1-000-year-battle-to-move-money-safely';
+SELECT news_item_id, attempt_number, analyzer_id, outcome, failure_reason,
+       claimed_at, completed_at
+FROM news.sentiment_analysis_attempts
+WHERE news_item_id = 'coindesk-rss|https://www.coindesk.com/business/2026/08/30/from-hawala-to-swift-inside-the-1-000-year-battle-to-move-money-safely'
+ORDER BY attempt_number;
+SELECT news_item_id, schema_version, label, score, model_id, model_artifact_id,
+       model_version, input_version, preprocessing_version, analyzed_at, status
+FROM news.sentiment_results
+WHERE news_item_id = 'coindesk-rss|https://www.coindesk.com/business/2026/08/30/from-hawala-to-swift-inside-the-1-000-year-battle-to-move-money-safely';
+```
+
+**Validation and process state**
+
+- The focused NEWS-04 and bounded-worker suite passed: 12 files, 83 tests. Backend
+  typecheck, scoped ESLint over every changed News TypeScript file, `docker compose
+  config --quiet`, and `git diff --check` passed. No full suite was run.
+- The one-off containers were removed. `docker compose ps -a` confirms persistent
+  `news-worker` and API are stopped; PostgreSQL is healthy; runner remains running;
+  web, market ingest, Redis, and migrate are stopped. No collection, unrelated service,
+  full-suite test, migration, commit, or push ran during this continuation.
+
+**Final diff review**
+
+- Two-axis review of the full working diff against
+  `f8ed5bfc93808604024db6477cf38b8dc017f709` passed after correcting worker-topology
+  comments and wrapping three long lines. The Standards axis found no documented
+  breach or Fowler baseline smell. The Spec axis found no missing C5 evidence, scope
+  creep, or incorrect behavior. The final targeted suite and narrow checks were then
+  rerun successfully.
+
+**NEWS-04 acceptance mapping**
+
+1. Real item classification: the selected durable CoinDesk item is `neutral` with score
+   `0.6`.
+2. Provenance: its one result stores exact model, artifact, model version, input, and
+   preprocessing versions.
+3. Hosted reproducibility: the existing static metadata/test declares the selected
+   hosted snapshot not fully reproducible; the persisted result identifies its exact
+   configured snapshot.
+4. Narrow change surface: the full working diff remains limited to News adapter and
+   worker composition, configuration, tests, the pinned SDK lock, and NEWS-04 records.
+5. Unavailability: the selected real item has one durable failed attempt, stays
+   retryable rather than lost, and has no result during the unavailable phase.
+6. Worker-only execution: both live stages ran through the normal News worker while
+   API remained stopped.

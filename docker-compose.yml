@@ -161,9 +161,9 @@ services:
     command: ["pnpm", "run", "start:market-ingest"]
     restart: unless-stopped
 
-  # The News collection worker owns RSS collection and News table writes. It has no
-  # dependency on API, market ingest, Redis, or the backtest runner, so a provider
-  # outage stays inside this process role (NEWS-02).
+  # The News worker owns RSS collection, sentiment analysis, and News table writes.
+  # It has no dependency on API, market ingest, Redis, or the backtest runner, so a
+  # provider or analyzer outage stays inside this process role (NEWS-02, NEWS-04).
   news-worker:
     build:
       context: .
@@ -181,6 +181,8 @@ services:
       NEWS_REQUEST_TIMEOUT_MS: ${NEWS_REQUEST_TIMEOUT_MS:-10000}
       NEWS_RETRY_COUNT: ${NEWS_RETRY_COUNT:-2}
       NEWS_RETRY_DELAY_MS: ${NEWS_RETRY_DELAY_MS:-1000}
+      NEWS_ANALYSIS_BATCH_SIZE: ${NEWS_ANALYSIS_BATCH_SIZE:-10}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     command: ["pnpm", "run", "start:news-worker"]
     restart: unless-stopped
 

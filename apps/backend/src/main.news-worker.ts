@@ -1,8 +1,14 @@
-// Entry command for the isolated News collection worker process role.
+// Entry command for the isolated News worker process role.
+// `--once` uses the collection-only graph; analysis and normal mode use the full worker.
 
 import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
-import { NewsWorkerModule, NewsWorkerRuntime } from "./modules/news/index.js";
+import {
+  NewsCollectionWorkerModule,
+  NewsCollectionWorkerRuntime,
+  NewsWorkerModule,
+  NewsWorkerRuntime
+} from "./modules/news/index.js";
 import { loadRootEnvFile } from "./platform/root-env.js";
 
 async function main(): Promise<void> {
@@ -12,7 +18,11 @@ async function main(): Promise<void> {
   if (arguments_.some((argument) => !allowed.has(argument))) {
     throw new Error("News worker accepts only the optional --once or --analyze-once argument.");
   }
-  const context = await NestFactory.createApplicationContext(NewsWorkerModule, { logger: false });
+  const collectionOnly = arguments_.includes("--once");
+  const context = await NestFactory.createApplicationContext(
+    collectionOnly ? NewsCollectionWorkerModule : NewsWorkerModule,
+    { logger: false }
+  );
   const controller = new AbortController();
   const stop = (): void => controller.abort();
   process.once("SIGTERM", stop);
@@ -23,13 +33,12 @@ async function main(): Promise<void> {
   process.on("message", stopFromParent);
 
   try {
-    const runtime = context.get(NewsWorkerRuntime);
-    if (arguments_.includes("--once")) {
-      await runtime.collectOnce();
+    if (collectionOnly) {
+      await context.get(NewsCollectionWorkerRuntime).collectOnce();
     } else if (arguments_.includes("--analyze-once")) {
-      await runtime.analyzeOnce();
+      await context.get(NewsWorkerRuntime).analyzeOnce();
     } else {
-      await runtime.run(controller.signal);
+      await context.get(NewsWorkerRuntime).run(controller.signal);
     }
   } finally {
     process.off("message", stopFromParent);

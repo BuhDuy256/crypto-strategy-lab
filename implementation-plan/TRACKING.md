@@ -21,12 +21,12 @@ true; keep conversation out of them.
 | Current target version | **V5 - News and Sentiment** |
 | Previous version | **V4 - Realtime Market Data: frozen at `v4.0-demo` on 2026-08-30.** V3 was frozen at `v3.1-demo` on 2026-08-29. |
 | Last verified commit | `c46c2e1`, the NEWS-03 implementation on `v5-news-and-sentiment`. `93958a9` is the NEWS-02 implementation and `6f387d6` the NEWS-01 baseline. |
-| Next allowed action | No V5 slice is `READY`. The NEWS-01..NEWS-03 slice-diff review remains outstanding and deferred by explicit owner decision. `NEWS-04` remains `BLOCKED` until the owner selects a sentiment model or service; `NEWS-05`, `NEWS-07`, and `UI-07` remain dependency-blocked. |
-| Last verified on | 2026-08-30 (V4 final regression, Compose demo, `PROOF-RT-001`, and Definition of Demoable). |
+| Next allowed action | `NEWS-04` is complete: its collection-only root cannot resolve the analyzer, and C5 recorded one real CoinDesk item through a durable unavailable attempt then one successful normal-worker retry. `NEWS-05` is the next `READY` V5 slice; do not start it without separate authorization. The NEWS-01..NEWS-03 slice-diff review remains owner-deferred; `NEWS-07` and `UI-07` remain dependency-blocked. |
+| Last verified on | 2026-08-31 (NEWS-04 C5 real-item proof and targeted validation; V4 certification remains unchanged). |
 | Last tag | `v4.0-demo`, the certified V1-V4 baseline, on `v4-realtime-market-data`. `v3.1-demo` remains the certified V1-V3 baseline on `feat/v3-automated-discovery`; `v3.0-demo` deliberately remains on `2b98139`. `v1.0-demo` and `v2.0-demo` do not exist. |
 | V3 slices | 8 (`DONE` 8, `READY` 0, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 0) — V3's own scope and its V1+V2 regression condition pass in the baseline-freeze state. |
 | V4 slices | 5 (`DONE` 5, `READY` 0, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 0) — `WS-03`, `MKT-06`, `MKT-07`, `MKT-09`, and `MKT-11` are done. |
-| V5 slices | 7 required plus 1 optional (`DONE` 3, `READY` 0, `IN_PROGRESS` 0, `BLOCKED` 1, `TODO` 4) — `NEWS-01`, `NEWS-02`, and `NEWS-03` are committed (`6f387d6`, `93958a9`, `c46c2e1`); the owner deferred their combined slice-diff review; `NEWS-04` remains blocked on an owner model decision. |
+| V5 slices | 7 required plus 1 optional (`DONE` 4, `READY` 1, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 3) — `NEWS-01`, `NEWS-02`, and `NEWS-03` are committed (`6f387d6`, `93958a9`, `c46c2e1`); the owner deferred their combined slice-diff review; `NEWS-04` is complete and promotes `NEWS-05` to `READY`. |
 | History | [`JOURNAL.md`](JOURNAL.md), sections "V1", "V3", "V1/V2 recovery", "V1-V3 freeze repairs", "Demo data prerequisite", and "V4". The V4 -> V5 transition below records the version handover. The recovery entry records the durable V2 decisions that were missing from the original history. |
 
 ## V4 -> V5 transition (2026-08-30)
@@ -675,8 +675,8 @@ Demo contract: [`VERSIONS.md` V5](VERSIONS.md#v5---news-and-sentiment)
 | NEWS-01 | REQ | M | News contract, provider port, contract suite | **DONE** | SETUP-05 | | [05](05-news-and-sentiment.md) |
 | NEWS-02 | REQ | M | Collection worker and first provider adapter | **DONE** | NEWS-01, SETUP-04 | | [05](05-news-and-sentiment.md) |
 | NEWS-03 | REQ | M | Analyzer port, result contract, lifecycle | **DONE** | NEWS-02 | | [05](05-news-and-sentiment.md) |
-| NEWS-04 | REQ | M | First real sentiment analyzer | **BLOCKED** | NEWS-03 | Sentiment model or service not chosen | [05](05-news-and-sentiment.md) |
-| NEWS-05 | REQ | S | Sentiment feature query and degradation policy | TODO | NEWS-04 | | [05](05-news-and-sentiment.md) |
+| NEWS-04 | REQ | M | First real sentiment analyzer | **DONE** | NEWS-03 | C5: one selected CoinDesk item recorded a retryable unavailable attempt, then one successful normal-worker retry with exact OpenAI provenance; the second item remains untouched. See JOURNAL.md. | [05](05-news-and-sentiment.md) |
+| NEWS-05 | REQ | S | Sentiment feature query and degradation policy | **READY** | NEWS-04 | | [05](05-news-and-sentiment.md) |
 | NEWS-07 | REQ | S | News list, health, and sentiment query surface | TODO | NEWS-05 | | [05](05-news-and-sentiment.md) |
 | UI-07 | REQ | M | News page | TODO | NEWS-07, SETUP-06 | | [06](06-ui-and-demo-integration.md) |
 | NEWS-06 | **OPT** | M | Sentiment as a strategy | TODO | NEWS-05, STRAT-04 | | [05](05-news-and-sentiment.md) |

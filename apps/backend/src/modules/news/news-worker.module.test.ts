@@ -7,9 +7,22 @@ import {
   SENTIMENT_ANALYZER
 } from "./news-worker.module.js";
 import type { SentimentAnalyzer } from "./application/sentiment-analyzer.js";
+import { OpenAiResponsesSentimentAnalyzer } from "./infrastructure/openai-responses-sentiment-analyzer.js";
 import { FakeConstantSentimentAnalyzer } from "./testing/fake-sentiment-analyzer.js";
 
 describe("NewsWorkerModule analyzer binding", () => {
+  it("binds the OpenAI adapter through only the analyzer token", async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [NewsWorkerModule]
+    }).compile();
+    try {
+      expect(moduleRef.get<SentimentAnalyzer>(SENTIMENT_ANALYZER))
+        .toBeInstanceOf(OpenAiResponsesSentimentAnalyzer);
+    } finally {
+      await moduleRef.close();
+    }
+  });
+
   it("binds the second fake through only the analyzer token", async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [NewsWorkerModule]
