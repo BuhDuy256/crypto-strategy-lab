@@ -2739,6 +2739,14 @@ WHERE news_item_id = 'coindesk-rss|https://www.coindesk.com/business/2026/08/30/
   database-backed test, migration, hosted request, collection, analysis, container
   lifecycle operation, full suite, commit, or push ran this session.
 - The owner explicitly deferred the usual `implement`-skill code-review, full-suite,
-  and commit steps for NEWS-05 in this session. The complete NEWS-05 diff therefore
-  remains uncommitted working-tree state; a future session must run the normal
-  two-axis diff review and the full suite before committing it at the slice boundary.
+  and commit steps for NEWS-05 in this session. At this point the complete NEWS-05
+  diff remained uncommitted working-tree state.
+
+**Commit**
+
+- The owner then explicitly asked for the slice to be committed as-is, without the
+  deferred code-review or full-suite run. Committed as `9a44b10` on
+  `v5-news-and-sentiment`: `feat(news): add sentiment feature query and degradation
+  policy (NEWS-05)`, 18 files (9 new, 9 modified), matching exactly the file set
+  described above. A follow-up edit to this file and `TRACKING.md` then replaced the
+  "uncommitted" language with the real commit hash.
