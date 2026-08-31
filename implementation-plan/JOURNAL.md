@@ -2858,3 +2858,14 @@ criteria alone**
 - `NEWS-07` is `DONE` but deliberately uncommitted - no commit request was made this
   session. `UI-07` is now `READY` (`SETUP-06` and `NEWS-07` are both `DONE` in code).
   `NEWS-06` (optional) remains `TODO` and out of V5's exit criteria.
+
+**Commit**
+
+- The owner then explicitly asked for the slice to be committed as-is, without the
+  deferred code-review or full-suite run - the same pattern as `NEWS-05`. Committed
+  as `b5e5f12` on `v5-news-and-sentiment`: `feat(news): add news list, health, and
+  sentiment query surface (NEWS-07)`, 20 files (12 new, 8 modified), matching exactly
+  the file set described above. Correction to the line above this one: the checkpoint
+  was kept, not deleted, while the diff was still uncommitted (see its own "kept only
+  because commit and code-review are still owner-gated" note); it is deleted now that
+  the commit has landed, per the normal end-of-slice checkpoint rule.
