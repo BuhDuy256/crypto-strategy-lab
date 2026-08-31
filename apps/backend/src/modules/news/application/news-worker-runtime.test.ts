@@ -7,6 +7,7 @@ import {
   type NewsWorkerAnalysisSchedule,
   type NewsWorkerSchedule
 } from "./news-worker-runtime.js";
+import type { NewsWorkerHeartbeat } from "./news-worker-heartbeat.js";
 
 class RecordingSchedule implements NewsWorkerSchedule {
   readonly calls: string[] = [];
@@ -56,11 +57,19 @@ class RecordingAnalysisSchedule implements NewsWorkerAnalysisSchedule {
   stop(): void { this.calls.push("stop"); }
 }
 
+class RecordingHeartbeat implements NewsWorkerHeartbeat {
+  readonly calls: string[] = [];
+
+  async start(): Promise<void> { this.calls.push("start"); }
+  stop(): void { this.calls.push("stop"); }
+}
+
 describe("NewsWorkerRuntime", () => {
   it("runs independent collection and analyzer stages without a backtest runner", async () => {
     const schedule = new RecordingSchedule();
     const analysis = new RecordingAnalysisSchedule();
-    const runtime = new NewsWorkerRuntime(schedule, analysis, { log: () => undefined });
+    const heartbeat = new RecordingHeartbeat();
+    const runtime = new NewsWorkerRuntime(schedule, analysis, heartbeat, { log: () => undefined });
     const controller = new AbortController();
     const running = runtime.run(controller.signal);
 
@@ -70,17 +79,20 @@ describe("NewsWorkerRuntime", () => {
 
     expect(schedule.calls).toEqual(["scheduled", "start", "stop"]);
     expect(analysis.calls).toEqual(["scheduled", "start", "stop"]);
+    expect(heartbeat.calls).toEqual(["start", "stop"]);
   });
 
   it("keeps manual collection and analysis as separate operational triggers", async () => {
     const schedule = new RecordingSchedule();
     const analysis = new RecordingAnalysisSchedule();
-    const runtime = new NewsWorkerRuntime(schedule, analysis, { log: () => undefined });
+    const heartbeat = new RecordingHeartbeat();
+    const runtime = new NewsWorkerRuntime(schedule, analysis, heartbeat, { log: () => undefined });
 
     await expect(runtime.collectOnce()).resolves.toMatchObject({ storedCount: 1 });
     await expect(runtime.analyzeOnce()).resolves.toMatchObject({ analyzedCount: 1 });
     expect(schedule.calls).toEqual(["manual"]);
     expect(analysis.calls).toEqual(["manual"]);
+    expect(heartbeat.calls).toEqual([]);
   });
 });
 

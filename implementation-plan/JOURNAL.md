@@ -2869,3 +2869,120 @@ criteria alone**
   was kept, not deleted, while the diff was still uncommitted (see its own "kept only
   because commit and code-review are still owner-gated" note); it is deleted now that
   the commit has landed, per the normal end-of-slice checkpoint rule.
+
+### 2026-08-31 - UI-07 browser validation blocked by News worker liveness
+
+**What is implemented and validated**
+
+- UI-07 replaces the News placeholder with independently loaded item, sentiment, and
+  health panels. It uses only the existing NEWS-07 web client calls, displays a fixed
+  explicit 24-hour sentiment window, pages only the item list, and never exposes a
+  health provider identifier, health reason, model, artifact, or analyzer detail.
+- Component coverage passes for healthy, collection-degraded, analysis-degraded, and
+  page-two item states. The route test passes with the News client isolated from the
+  application shell. Web typecheck and scoped lint pass.
+- A real Vite browser run against the rebuilt Compose API showed the healthy state:
+  collected items, 24-hour distribution, analyzed count, and healthy collection and
+  analysis statuses all rendered without page errors.
+- With the real `news-worker` stopped, a browser Realtime run still showed `Backend:
+  ok`, `Market data: live`, and four live chart subscriptions. This is the required
+  failure-domain behavior outside News.
+
+**Blocking evidence**
+
+- Immediately after stopping the real `news-worker`, `GET /news/health` still
+  returned `collection[0].status = "healthy"`, and the browser News page displayed
+  `Collection: healthy`. The endpoint records source collection health, not worker
+  liveness or expiry of the last healthy report.
+- UI-07 cannot turn that stale response into `degraded` itself: deciding a maximum
+  report age or inferring a stopped worker would be a News health aggregation and a
+  new frontend business rule, directly conflicting with UI-07's endpoint-only,
+  no-aggregation constraint and ADR-007's isolation ownership.
+- The real model-unavailable browser state is also not provable from the current
+  healthy data without first choosing how News reports liveness/degradation. The
+  component test proves the page renders an API-provided analysis-degraded response;
+  it is not substituted for the required real browser proof.
+
+**Required owner decision**
+
+- Decide whether to extend NEWS-07 with a News-owned worker heartbeat/freshness policy
+  and a transport-safe expired/degraded collection status, then add the corresponding
+  contract, migration if needed, tests, and browser proof; or revise UI-07's AC4/AC5
+  evidence expectation to the existing source/model health semantics. No frontend
+  workaround was added.
+
+**Local environment repair during proof setup**
+
+- The existing local database had `strategy.composites` matching migration 0009 but
+  its `public._migrations` ledger stopped at 0008, so Compose could not start its
+  migration gate. After a read-only schema comparison, only the matching 0009 ledger
+  ID was recorded. The standard migration runner then applied 0010 through 0017
+  successfully. No schema reset or data deletion occurred.
+
+### 2026-08-31 - UI-07 complete: endpoint-only page and News worker liveness
+
+**Resolution of the liveness block**
+
+- The owner selected the News-owned heartbeat direction rather than weakening the
+  UI acceptance criteria or placing a liveness rule in the frontend. The previously
+  considered `news.source_health.checked_at` is written only after an RSS request,
+  retry, parsing, and persistence complete. It therefore cannot distinguish a
+  stopped worker from a live worker with its next collection request in flight.
+- Migration `0018_create_news_collection_worker_heartbeat.sql` adds one
+  News-owned, single-row `news.collection_worker_heartbeat` record. The normal
+  News worker writes it once at start and every half of the existing configured
+  collection interval. The health query keeps provider source state intact, but
+  changes a healthy collection entry to generic `degraded` once no heartbeat has
+  arrived for one full configured collection interval. This leaves enough time for
+  an in-flight provider request without inventing an arbitrary threshold or adding
+  a general observability system.
+- Analysis health also now notices the existing durable retryable state: a `pending`
+  item with `analysis_failure_reason` makes it generic `degraded`; a successful retry
+  clears that state and returns health to `healthy`. Neither the API presentation nor
+  the page exposes the stored failure reason, model identity, artefact, analyzer, or
+  provider-health detail.
+
+**UI and tests**
+
+- `NewsPage` replaces the placeholder with three route-local, independently fetched
+  NEWS-07 client reads: paginated collected items, an explicit 24-hour sentiment
+  distribution and item count, and collection/analysis health. It does no data
+  aggregation and no liveness inference. A failure in any News read stays local to
+  this route; paging refetches only the item list.
+- TDD covered each seam red then green: page rendering and paging, heartbeat expiry
+  versus an in-flight heartbeat, heartbeat persistence/runtime lifecycle, and
+  retryable-analysis degradation/recovery. The final targeted runs passed 21 backend
+  tests and 7 web tests; backend and web typechecks, scoped ESLint, and `git diff
+  --check` pass. No repository-wide Vitest run was started, per the owner-deferred
+  News backend integration gate.
+- Final two-axis review of the uncommitted diff against `3e04567` found no spec
+  issue. Standards review requested only moving the page purpose comment to the
+  top of the file and making two new PostgreSQL row fields `readonly`; both fixes
+  were rechecked with focused tests and ESLint, and the reviewer found no remaining
+  standards issue.
+
+**Browser proof**
+
+- With the normal worker running at the existing 60-second collection interval, the
+  real News page showed `Collection: healthy`, `Analysis: healthy`, and ten collected
+  rows. After the worker stopped, the page was still healthy before the full interval
+  elapsed, then the API and page correctly became `Collection: degraded` after the
+  heartbeat expired while the same ten rows remained visible. Restarting the normal
+  worker restored `Collection: healthy` in both API and browser.
+- During the collection-degraded state, Realtime still showed `Backend: ok`, `Market
+  data: live`, and four live chart subscriptions. This is the UI-visible News failure
+  isolation required by AC4.
+- In isolated temporary database `ui07_news_proof`, genuine collected RSS items were
+  retained while the normal worker ran with an explicit whitespace OpenAI credential.
+  The real adapter treated it as missing, recorded a retryable unavailable failure,
+  and the browser showed `Collection: healthy`, `Analysis: degraded`, and ten item
+  rows without a reason. Restarting the worker with the normal credential retried
+  successfully, cleared the retryable state, and returned both API and browser health
+  to healthy. This did not reset the main database; the temporary database is removed
+  during the completion cleanup.
+
+**State**
+
+- `UI-07` is `DONE` but deliberately uncommitted. `NEWS-06` remains optional and out
+  of V5 exit criteria. V5 is not declared demoable: its separate owner-deferred News
+  backend integration/full-suite, final Compose, and proof gates remain unchanged.

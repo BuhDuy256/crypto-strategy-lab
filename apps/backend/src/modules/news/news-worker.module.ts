@@ -22,6 +22,7 @@ import {
   OpenAiResponsesSentimentAnalyzer
 } from "./infrastructure/openai-responses-sentiment-analyzer.js";
 import { PostgresSentimentAnalysisRepository } from "./infrastructure/postgres-sentiment-analysis-repository.js";
+import { PostgresNewsWorkerHeartbeat } from "./infrastructure/postgres-news-worker-heartbeat.js";
 
 export { NEWS_WORKER_DATABASE_POOL, NEWS_WORKER_LOGGER };
 /** The one binding NEWS-04 changes when a real analyzer is chosen. */
@@ -49,6 +50,16 @@ const PROCESS_ROLE = "news-worker";
         const apiKey = process.env.OPENAI_API_KEY ?? "";
         const client = apiKey.trim() === "" ? undefined : createOpenAiResponsesClient(apiKey);
         return new OpenAiResponsesSentimentAnalyzer(client);
+      }
+    },
+    {
+      provide: PostgresNewsWorkerHeartbeat,
+      inject: [NEWS_WORKER_DATABASE_POOL, NEWS_WORKER_LOGGER],
+      useFactory: (pool: Pool, logger: StructuredLogger): PostgresNewsWorkerHeartbeat => {
+        const collectionPollIntervalMs = loadConfig().news.coinDeskRss.pollIntervalMs;
+        // Reporting halfway through a collection interval keeps liveness independent
+        // from a provider request that may still be running at the next poll tick.
+        return new PostgresNewsWorkerHeartbeat(pool, collectionPollIntervalMs / 2, logger);
       }
     },
     {
@@ -80,12 +91,18 @@ const PROCESS_ROLE = "news-worker";
     },
     {
       provide: NewsWorkerRuntime,
-      inject: [NewsCollectionScheduler, SentimentAnalysisScheduler, NEWS_WORKER_LOGGER],
+      inject: [
+        NewsCollectionScheduler,
+        SentimentAnalysisScheduler,
+        PostgresNewsWorkerHeartbeat,
+        NEWS_WORKER_LOGGER
+      ],
       useFactory: (
         schedule: NewsCollectionScheduler,
         analysis: SentimentAnalysisScheduler,
+        heartbeat: PostgresNewsWorkerHeartbeat,
         logger: StructuredLogger
-      ): NewsWorkerRuntime => new NewsWorkerRuntime(schedule, analysis, logger)
+      ): NewsWorkerRuntime => new NewsWorkerRuntime(schedule, analysis, heartbeat, logger)
     }
   ],
   exports: [NewsWorkerRuntime]

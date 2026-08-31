@@ -3,7 +3,57 @@
 // this status is derived from news.items state counts plus the last completed attempt.
 
 import { describe, expect, it } from "vitest";
-import { deriveAnalysisHealth } from "./news-health-query.js";
+import { deriveAnalysisHealth, deriveCollectionHealth } from "./news-health-query.js";
+
+describe("deriveCollectionHealth", () => {
+  const checkedAt = 1_788_177_600_000;
+  const pollIntervalMs = 60_000;
+
+  it("reports a healthy source as degraded after the worker misses a heartbeat interval", () => {
+    const collection = deriveCollectionHealth(
+      [{ provider: "coindesk-rss", status: "healthy", checkedAt }],
+      checkedAt,
+      pollIntervalMs,
+      checkedAt + pollIntervalMs
+    );
+
+    expect(collection).toEqual([
+      {
+        provider: "coindesk-rss",
+        status: "degraded",
+        checkedAt,
+        reason: "collection worker has not reported within the configured poll interval"
+      }
+    ]);
+  });
+
+  it("keeps a source healthy while a fresh worker heartbeat reports an in-flight collection", () => {
+    const collection = deriveCollectionHealth(
+      [
+        { provider: "coindesk-rss", status: "healthy", checkedAt },
+        {
+          provider: "other-source",
+          status: "unavailable",
+          checkedAt: checkedAt - pollIntervalMs,
+          reason: "source request failed"
+        }
+      ],
+      checkedAt + pollIntervalMs,
+      pollIntervalMs,
+      checkedAt + (pollIntervalMs * 2) - 1
+    );
+
+    expect(collection).toEqual([
+      { provider: "coindesk-rss", status: "healthy", checkedAt },
+      {
+        provider: "other-source",
+        status: "unavailable",
+        checkedAt: checkedAt - pollIntervalMs,
+        reason: "source request failed"
+      }
+    ]);
+  });
+});
 
 describe("deriveAnalysisHealth", () => {
   it("reports unavailable when no analysis attempt has ever completed", () => {
@@ -28,6 +78,25 @@ describe("deriveAnalysisHealth", () => {
       pendingCount: 1,
       degradedCount: 2,
       checkedAt: 1_788_177_600_000
+    });
+  });
+
+  it("reports degraded for a retryable analyzer failure and recovers after the failure is cleared", () => {
+    const counts = { pending: 1, analyzing: 0, analyzed: 10, degraded: 0 };
+    const checkedAt = 1_788_177_600_000;
+
+    expect(deriveAnalysisHealth(counts, checkedAt, 1)).toEqual({
+      status: "degraded",
+      reason: "analysis has retryable failures",
+      pendingCount: 1,
+      degradedCount: 0,
+      checkedAt
+    });
+    expect(deriveAnalysisHealth({ ...counts, pending: 0, analyzed: 11 }, checkedAt, 0)).toEqual({
+      status: "healthy",
+      pendingCount: 0,
+      degradedCount: 0,
+      checkedAt
     });
   });
 

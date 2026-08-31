@@ -34,7 +34,8 @@ class NewsDatabaseLifecycle implements OnApplicationShutdown {
     {
       provide: PostgresNewsQueryRepository,
       inject: [NEWS_DATABASE_POOL],
-      useFactory: (pool: Pool): PostgresNewsQueryRepository => new PostgresNewsQueryRepository(pool)
+      useFactory: (pool: Pool): PostgresNewsQueryRepository =>
+        new PostgresNewsQueryRepository(pool, loadConfig().news.coinDeskRss.pollIntervalMs)
     },
     { provide: NEWS_ITEM_QUERY, useExisting: PostgresNewsQueryRepository },
     { provide: SENTIMENT_DISTRIBUTION_QUERY, useExisting: PostgresNewsQueryRepository },

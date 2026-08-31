@@ -1,9 +1,8 @@
 // News-owned collection and analysis health read for the NEWS-07 query surface.
 //
-// Collection health is stored state (news.source_health, one row per configured
-// provider). Analysis has no equivalent table: its health is derived here from
-// news.items state counts plus the most recent completed attempt, so a fresh or
-// stopped worker reads as "unavailable" rather than throwing.
+// Collection status comes from provider-owned source state plus the normal worker's
+// independent heartbeat. Analysis has no equivalent table: its health is derived
+// here from item state, retryable failures, and the most recent completed attempt.
 
 export type NewsHealthStatus = "healthy" | "degraded" | "unavailable";
 
@@ -38,27 +37,59 @@ export interface NewsHealthQuery {
   getHealth(): Promise<NewsHealthSnapshot>;
 }
 
+const STALE_COLLECTION_REASON = "collection worker has not reported within the configured poll interval";
+
+/**
+ * `workerHeartbeatAt` is recorded independently of provider collection. A healthy
+ * source without a heartbeat in one configured interval means the worker missed its
+ * next opportunity to report, while a provider-reported failure keeps its own state.
+ */
+export function deriveCollectionHealth(
+  collection: readonly NewsSourceHealth[],
+  workerHeartbeatAt: number | null,
+  pollIntervalMs: number,
+  now: number
+): NewsSourceHealth[] {
+  return collection.map((source) => {
+    if (
+      source.status !== "healthy" ||
+      (workerHeartbeatAt !== null && now - workerHeartbeatAt < pollIntervalMs)
+    ) return source;
+    return { ...source, status: "degraded", reason: STALE_COLLECTION_REASON };
+  });
+}
+
 /** Pure so the status rules are cheap to verify without a database. */
 export function deriveAnalysisHealth(
   counts: NewsAnalysisStateCounts,
-  lastCompletedAt: number | null
+  lastCompletedAt: number | null,
+  retryableFailureCount: number = 0
 ): NewsAnalysisHealth {
   const pendingCount = counts.pending + counts.analyzing;
   const checkedAt = lastCompletedAt ?? 0;
 
-  if (lastCompletedAt === null) {
+  if (counts.degraded > 0) {
     return {
-      status: "unavailable",
-      reason: "analysis has not completed any item yet",
+      status: "degraded",
+      reason: `${counts.degraded} item(s) exhausted retries and could not be analyzed`,
       pendingCount,
       degradedCount: counts.degraded,
       checkedAt
     };
   }
-  if (counts.degraded > 0) {
+  if (retryableFailureCount > 0) {
     return {
       status: "degraded",
-      reason: `${counts.degraded} item(s) exhausted retries and could not be analyzed`,
+      reason: "analysis has retryable failures",
+      pendingCount,
+      degradedCount: counts.degraded,
+      checkedAt
+    };
+  }
+  if (lastCompletedAt === null) {
+    return {
+      status: "unavailable",
+      reason: "analysis has not completed any item yet",
       pendingCount,
       degradedCount: counts.degraded,
       checkedAt

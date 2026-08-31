@@ -21,7 +21,7 @@ describe("PostgresNewsQueryRepository.list", () => {
         }
       ]
     }));
-    const repository = new PostgresNewsQueryRepository({ query } as unknown as Pool);
+    const repository = new PostgresNewsQueryRepository({ query } as unknown as Pool, 60_000);
 
     const page = await repository.list({ pageNumber: 2, pageSize: 1 });
 
@@ -47,7 +47,7 @@ describe("PostgresNewsQueryRepository.list", () => {
 
   it("reports zero total count when the table has no rows, without a second round trip erroring", async () => {
     const query = vi.fn(async () => ({ rows: [] }));
-    const repository = new PostgresNewsQueryRepository({ query } as unknown as Pool);
+    const repository = new PostgresNewsQueryRepository({ query } as unknown as Pool, 60_000);
 
     const page = await repository.list({ pageNumber: 1, pageSize: 10 });
 
@@ -58,7 +58,7 @@ describe("PostgresNewsQueryRepository.list", () => {
 describe("PostgresNewsQueryRepository.getDistribution", () => {
   it("counts analyzed, succeeded items published in the window and derives proportions", async () => {
     const query = vi.fn(async () => ({ rows: [{ positive: 3, neutral: 1, negative: 0 }] }));
-    const repository = new PostgresNewsQueryRepository({ query } as unknown as Pool);
+    const repository = new PostgresNewsQueryRepository({ query } as unknown as Pool, 60_000);
 
     const distribution = await repository.getDistribution({ startAt: 1_000, endAt: 2_000 });
 
@@ -79,7 +79,7 @@ describe("PostgresNewsQueryRepository.getDistribution", () => {
 
   it("reports zero proportions for an empty window without dividing by zero", async () => {
     const query = vi.fn(async () => ({ rows: [{ positive: 0, neutral: 0, negative: 0 }] }));
-    const repository = new PostgresNewsQueryRepository({ query } as unknown as Pool);
+    const repository = new PostgresNewsQueryRepository({ query } as unknown as Pool, 60_000);
 
     const distribution = await repository.getDistribution({ startAt: 1_000, endAt: 2_000 });
 
@@ -102,6 +102,7 @@ describe("PostgresNewsQueryRepository.getHealth", () => {
           rows: [{ provider: "coindesk-rss", status: "healthy", reason: null, checked_at: "1788177600000" }]
         };
       }
+      if (sql.includes("collection_worker_heartbeat")) return { rows: [{ checked_at: "1788177600000" }] };
       if (sql.includes("GROUP BY analysis_state")) {
         return {
           rows: [
@@ -113,7 +114,11 @@ describe("PostgresNewsQueryRepository.getHealth", () => {
       }
       return { rows: [{ last_completed_at: lastCompletedAt }] };
     });
-    const repository = new PostgresNewsQueryRepository({ query } as unknown as Pool);
+    const repository = new PostgresNewsQueryRepository(
+      { query } as unknown as Pool,
+      60_000,
+      () => 1_788_177_659_999
+    );
 
     const health = await repository.getHealth();
 
@@ -135,7 +140,7 @@ describe("PostgresNewsQueryRepository.getHealth", () => {
       if (sql.includes("GROUP BY analysis_state")) return { rows: [] };
       return { rows: [{ last_completed_at: null }] };
     });
-    const repository = new PostgresNewsQueryRepository({ query } as unknown as Pool);
+    const repository = new PostgresNewsQueryRepository({ query } as unknown as Pool, 60_000);
 
     const health = await repository.getHealth();
 
@@ -149,5 +154,66 @@ describe("PostgresNewsQueryRepository.getHealth", () => {
         checkedAt: 0
       }
     });
+  });
+
+  it("surfaces a retryable persisted analyzer failure as degraded without exposing its internal reason", async () => {
+    const query = vi.fn(async (sql: string) => {
+      if (sql.includes("news.source_health")) {
+        return {
+          rows: [{ provider: "coindesk-rss", status: "healthy", reason: null, checked_at: "1788177600000" }]
+        };
+      }
+      if (sql.includes("collection_worker_heartbeat")) return { rows: [{ checked_at: "1788177600000" }] };
+      if (sql.includes("GROUP BY analysis_state")) {
+        return { rows: [{ analysis_state: "pending", count: 1 }, { analysis_state: "analyzed", count: 10 }] };
+      }
+      if (sql.includes("analysis_failure_reason")) return { rows: [{ retryable_failure_count: 1 }] };
+      return { rows: [{ last_completed_at: new Date("2026-08-30T00:15:00Z") }] };
+    });
+    const repository = new PostgresNewsQueryRepository(
+      { query } as unknown as Pool,
+      60_000,
+      () => 1_788_177_600_001
+    );
+
+    const health = await repository.getHealth();
+
+    expect(health.analysis).toEqual({
+      status: "degraded",
+      reason: "analysis has retryable failures",
+      pendingCount: 1,
+      degradedCount: 0,
+      checkedAt: Date.parse("2026-08-30T00:15:00Z")
+    });
+    expect(query.mock.calls.some(([sql]) => String(sql).includes("analysis_failure_reason"))).toBe(true);
+  });
+
+  it("reports collection degraded from a stale worker heartbeat even when source health was healthy", async () => {
+    const checkedAt = 1_788_177_600_000;
+    const query = vi.fn(async (sql: string) => {
+      if (sql.includes("news.source_health")) {
+        return { rows: [{ provider: "coindesk-rss", status: "healthy", reason: null, checked_at: String(checkedAt) }] };
+      }
+      if (sql.includes("collection_worker_heartbeat")) return { rows: [{ checked_at: String(checkedAt) }] };
+      if (sql.includes("GROUP BY analysis_state")) return { rows: [] };
+      if (sql.includes("analysis_failure_reason")) return { rows: [{ retryable_failure_count: 0 }] };
+      return { rows: [{ last_completed_at: null }] };
+    });
+    const repository = new PostgresNewsQueryRepository(
+      { query } as unknown as Pool,
+      60_000,
+      () => checkedAt + 60_000
+    );
+
+    const health = await repository.getHealth();
+
+    expect(health.collection).toEqual([
+      {
+        provider: "coindesk-rss",
+        status: "degraded",
+        checkedAt,
+        reason: "collection worker has not reported within the configured poll interval"
+      }
+    ]);
   });
 });

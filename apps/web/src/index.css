@@ -179,6 +179,133 @@ body {
   color: #cf222e;
 }
 
+.news-page {
+  max-width: 76rem;
+}
+
+.news-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.news-card {
+  padding: 1rem;
+  border: 1px solid #d8dee4;
+  border-radius: 0.5rem;
+  background: #ffffff;
+  box-shadow: 0 1px 2px #1f23280a;
+}
+
+.news-card h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.news-card h2 + p {
+  margin: 0.35rem 0 0;
+  color: #57606a;
+}
+
+.sentiment-bar {
+  display: flex;
+  height: 0.8rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #d8dee4;
+}
+
+.sentiment-bar span {
+  min-width: 0;
+}
+
+.sentiment-positive {
+  background: #2ea043;
+}
+
+.sentiment-neutral {
+  background: #8c959f;
+}
+
+.sentiment-negative {
+  background: #cf222e;
+}
+
+.sentiment-labels,
+.news-health-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin: 0.75rem 0 0;
+  padding: 0;
+}
+
+.sentiment-labels {
+  list-style: none;
+  color: #57606a;
+}
+
+.news-health-list p {
+  margin: 0;
+  font-weight: 600;
+}
+
+.news-health-healthy {
+  color: #1a7f37;
+}
+
+.news-health-degraded {
+  color: #9a6700;
+}
+
+.news-health-unavailable {
+  color: #cf222e;
+}
+
+.news-items-card {
+  overflow-x: auto;
+}
+
+.news-items-card table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.news-items-card th,
+.news-items-card td {
+  padding: 0.7rem 0.5rem;
+  border-bottom: 1px solid #d8dee4;
+  text-align: left;
+  vertical-align: top;
+}
+
+.news-items-card th {
+  color: #57606a;
+  font-size: 0.8rem;
+}
+
+.news-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.news-pagination button {
+  padding: 0.4rem 0.65rem;
+  border: 1px solid #afb8c1;
+  border-radius: 0.375rem;
+  background: #ffffff;
+  color: #24292f;
+}
+
+.news-pagination button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .candlestick-chart {
   width: 100%;
   min-height: 26.25rem;
@@ -189,5 +316,9 @@ body {
   .chart-title {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .news-summary-grid {
+    grid-template-columns: 1fr;
   }
 }

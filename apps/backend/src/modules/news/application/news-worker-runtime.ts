@@ -2,6 +2,7 @@
 
 import type { NewsCollectionResult } from "./news-collection-service.js";
 import type { SentimentAnalysisRunResult } from "./sentiment-analysis-service.js";
+import type { NewsWorkerHeartbeat } from "./news-worker-heartbeat.js";
 
 export interface NewsWorkerSchedule {
   collectManually(): Promise<NewsCollectionResult>;
@@ -35,6 +36,7 @@ export class NewsWorkerRuntime {
   constructor(
     private readonly schedule: NewsWorkerSchedule,
     private readonly analysis: NewsWorkerAnalysisSchedule,
+    private readonly heartbeat: NewsWorkerHeartbeat,
     private readonly logger: NewsWorkerLogger
   ) {}
 
@@ -58,24 +60,26 @@ export class NewsWorkerRuntime {
   }
 
   async run(signal: AbortSignal): Promise<void> {
-    const initial = await this.schedule.collectOnSchedule();
-    this.logger.log(
-      `News worker initial collection is ${initial.status}: ${initial.storedCount} stored, ${initial.skippedCount} skipped.`,
-      "NewsWorker"
-    );
-    const analyzed = await this.analysis.analyzeOnSchedule();
-    this.logger.log(
-      `News worker initial analysis claimed ${analyzed.claimedCount}, analyzed ${analyzed.analyzedCount}, ` +
-        `degraded ${analyzed.degradedCount}.`,
-      "NewsWorker"
-    );
-    this.schedule.start();
-    this.analysis.start();
+    await this.heartbeat.start();
     try {
+      const initial = await this.schedule.collectOnSchedule();
+      this.logger.log(
+        `News worker initial collection is ${initial.status}: ${initial.storedCount} stored, ${initial.skippedCount} skipped.`,
+        "NewsWorker"
+      );
+      const analyzed = await this.analysis.analyzeOnSchedule();
+      this.logger.log(
+        `News worker initial analysis claimed ${analyzed.claimedCount}, analyzed ${analyzed.analyzedCount}, ` +
+          `degraded ${analyzed.degradedCount}.`,
+        "NewsWorker"
+      );
+      this.schedule.start();
+      this.analysis.start();
       await waitForAbort(signal);
     } finally {
       this.schedule.stop();
       this.analysis.stop();
+      this.heartbeat.stop();
       this.logger.log("News worker stopped gracefully.", "NewsWorker");
     }
   }

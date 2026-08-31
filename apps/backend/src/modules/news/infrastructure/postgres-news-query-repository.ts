@@ -12,12 +12,14 @@ import {
 } from "../application/sentiment-distribution-query.js";
 import {
   deriveAnalysisHealth,
+  deriveCollectionHealth,
   type NewsAnalysisStateCounts,
   type NewsHealthQuery,
   type NewsHealthSnapshot,
   type NewsHealthStatus,
   type NewsSourceHealth
 } from "../application/news-health-query.js";
+import { NEWS_COLLECTION_WORKER_ID } from "../application/news-worker-heartbeat.js";
 import type { NewsAnalysisState } from "../domain/news-item.js";
 
 interface ItemListRow {
@@ -48,11 +50,23 @@ interface StateCountRow {
   count: number;
 }
 
+interface RetryableFailureCountRow {
+  readonly retryable_failure_count: number;
+}
+
+interface CollectionWorkerHeartbeatRow {
+  readonly checked_at: string;
+}
+
 const EMPTY_STATE_COUNTS: NewsAnalysisStateCounts = { pending: 0, analyzing: 0, analyzed: 0, degraded: 0 };
 
 export class PostgresNewsQueryRepository
   implements NewsItemQuery, SentimentDistributionQuery, NewsHealthQuery {
-  constructor(private readonly pool: Pool) {}
+  constructor(
+    private readonly pool: Pool,
+    private readonly collectionPollIntervalMs: number,
+    private readonly now: () => number = Date.now
+  ) {}
 
   async list(request: NewsItemListRequest): Promise<NewsItemPage> {
     const offset = (request.pageNumber - 1) * request.pageSize;
@@ -108,31 +122,52 @@ export class PostgresNewsQueryRepository
   }
 
   async getHealth(): Promise<NewsHealthSnapshot> {
-    const [sourceHealth, stateCounts, lastCompleted] = await Promise.all([
+    const [sourceHealth, workerHeartbeat, stateCounts, retryableFailures, lastCompleted] = await Promise.all([
       this.pool.query<SourceHealthRow>(
         "SELECT provider, status, reason, checked_at FROM news.source_health ORDER BY provider"
       ),
+      this.pool.query<CollectionWorkerHeartbeatRow>(
+        "SELECT checked_at FROM news.collection_worker_heartbeat WHERE worker_id = $1",
+        [NEWS_COLLECTION_WORKER_ID]
+      ),
       this.pool.query<StateCountRow>(
         "SELECT analysis_state, count(*)::int AS count FROM news.items GROUP BY analysis_state"
+      ),
+      this.pool.query<RetryableFailureCountRow>(
+        `SELECT count(*) FILTER (
+           WHERE analysis_state = 'pending' AND analysis_failure_reason IS NOT NULL
+         )::int AS retryable_failure_count
+         FROM news.items`
       ),
       this.pool.query<{ last_completed_at: Date | null }>(
         "SELECT max(completed_at) AS last_completed_at FROM news.sentiment_analysis_attempts"
       )
     ]);
 
-    const collection: NewsSourceHealth[] = sourceHealth.rows.map((row) => ({
+    const storedCollection: NewsSourceHealth[] = sourceHealth.rows.map((row) => ({
       provider: row.provider,
       status: row.status,
       checkedAt: Number(row.checked_at),
       ...(row.reason === null ? {} : { reason: row.reason })
     }));
+    const heartbeatCheckedAt = workerHeartbeat.rows[0]?.checked_at;
+    const collection = deriveCollectionHealth(
+      storedCollection,
+      heartbeatCheckedAt === undefined ? null : Number(heartbeatCheckedAt),
+      this.collectionPollIntervalMs,
+      this.now()
+    );
 
     const counts = stateCounts.rows.reduce<NewsAnalysisStateCounts>(
       (accumulated, row) => ({ ...accumulated, [row.analysis_state]: row.count }),
       EMPTY_STATE_COUNTS
     );
     const lastCompletedAt = lastCompleted.rows[0]?.last_completed_at ?? null;
-    const analysis = deriveAnalysisHealth(counts, lastCompletedAt === null ? null : lastCompletedAt.getTime());
+    const analysis = deriveAnalysisHealth(
+      counts,
+      lastCompletedAt === null ? null : lastCompletedAt.getTime(),
+      retryableFailures.rows[0]?.retryable_failure_count ?? 0
+    );
 
     return { collection, analysis };
   }
