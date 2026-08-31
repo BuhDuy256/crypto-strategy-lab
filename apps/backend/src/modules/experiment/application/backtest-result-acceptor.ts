@@ -3,6 +3,7 @@
 import type { BacktestRunnerOutcome, BacktestResultAcceptor } from "./backtest-runner-service.js";
 import type { EvaluatedResultRef } from "./leaderboard-projector.js";
 import { BACKTEST_ENGINE } from "../domain/backtester.js";
+import type { SentimentUsageManifest } from "./sentiment-usage-manifest.js";
 
 // The leaderboard projection, seen from the acceptance path. In V3 acceptance
 // calls it directly and synchronously; in V6 an event consumer will call the same
@@ -24,8 +25,12 @@ export interface ProvenanceChecklist {
   readonly metricSet: { readonly status: "recorded"; readonly value: unknown };
   readonly engine: { readonly status: "recorded"; readonly value: unknown };
   readonly runtimeAndBuild: { readonly status: "recorded"; readonly value: unknown };
-  readonly newsInput: { readonly status: "not-applicable" };
-  readonly sentimentModel: { readonly status: "not-applicable" };
+  readonly newsInput:
+    | { readonly status: "not-applicable" }
+    | { readonly status: "recorded"; readonly value: SentimentUsageManifest };
+  readonly sentimentModel:
+    | { readonly status: "not-applicable" }
+    | { readonly status: "recorded"; readonly value: readonly string[] };
   readonly randomSeed: { readonly status: "not-applicable" };
   readonly pythonRuntime: { readonly status: "not-applicable" };
   readonly combinationPolicy: { readonly status: "not-applicable" };
@@ -78,6 +83,7 @@ export class DurableBacktestResultAcceptor implements BacktestResultAcceptor {
       provenance.engine.version !== BACKTEST_ENGINE.version) {
       throw new Error("BACKTEST_PROVENANCE_MISMATCH: engine");
     }
+    const sentimentUsage = outcome.sentimentUsage;
     const checklist: ProvenanceChecklist = {
       specification: { status: "recorded", id: outcome.specification.specId, hash: outcome.specification.contentHash },
       dataset: {
@@ -89,7 +95,15 @@ export class DurableBacktestResultAcceptor implements BacktestResultAcceptor {
       metricSet: { status: "recorded", value: outcome.evaluation.metricSet },
       engine: { status: "recorded", value: provenance.engine },
       runtimeAndBuild: { status: "recorded", value: outcome.runtimeIdentity },
-      newsInput: { status: "not-applicable" }, sentimentModel: { status: "not-applicable" },
+      newsInput: sentimentUsage === undefined
+        ? { status: "not-applicable" }
+        : { status: "recorded", value: sentimentUsage },
+      sentimentModel: sentimentUsage === undefined
+        ? { status: "not-applicable" }
+        : {
+          status: "recorded",
+          value: [...new Set(sentimentUsage.snapshots.flatMap((snapshot) => snapshot.modelVersions))].sort()
+        },
       randomSeed: { status: "not-applicable" }, pythonRuntime: { status: "not-applicable" },
       combinationPolicy: { status: "not-applicable" },
       generatorAndSearch: { status: "not-applicable" },

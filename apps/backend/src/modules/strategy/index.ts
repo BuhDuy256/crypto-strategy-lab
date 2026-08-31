@@ -23,6 +23,7 @@ export type {
   AnalysisInput,
   AnalysisInputKind,
   PriceBar,
+  SentimentSeriesInput,
   Signal,
   SignalAction,
   Strategy,

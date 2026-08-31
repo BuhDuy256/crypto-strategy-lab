@@ -3,6 +3,7 @@
 import type { DatasetRef } from "../../market/index.js";
 import type { StrategyParameters, StrategyRef } from "../../strategy/index.js";
 import type { SearchConfiguration } from "./search-specification.js";
+import type { SentimentInputConfiguration } from "./sentiment-input.js";
 
 export interface VersionedRef {
   readonly id: string;
@@ -47,6 +48,8 @@ export interface ExperimentDraftContent {
   readonly strategy: StrategyConfiguration;
   readonly execution: ExecutionModelConfiguration;
   readonly metricSet: VersionedRef;
+  /** Required exactly when the selected descriptor requires `sentiment-series`. */
+  readonly sentimentInput?: SentimentInputConfiguration;
   // Present only for a search experiment. When present, `strategy` is a valid
   // template that each generated candidate replaces in its derived specification.
   readonly search?: SearchConfiguration;

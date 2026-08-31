@@ -2623,3 +2623,122 @@ WHERE news_item_id = 'coindesk-rss|https://www.coindesk.com/business/2026/08/30/
    retryable rather than lost, and has no result during the unavailable phase.
 6. Worker-only execution: both live stages ran through the normal News worker while
    API remained stopped.
+
+### 2026-08-31 - NEWS-05 Product Owner feature-contract decisions
+
+**Decisions**
+
+- The News sentiment-feature interface accepts a canonical uppercase base-asset code
+  such as `BTC`, `ETH`, or `SOL`. News owns these codes and queries
+  `NewsItem.relatedCoins`; Market/Experiment maps a market pair before crossing the
+  News port. News does not parse Market symbols or depend on Market types.
+- Every sentiment-dependent candidate or experiment declares its own positive
+  `maxAge`, missing-data action, stale-data action, and an explicit signed substitute
+  in `[-1, 1]` whenever either action is `substitute`. `block` returns an explicit
+  blocked decision and no value; `degrade` retains a real stale aggregate but returns
+  no value for missing data; `substitute` returns only the configured value and is
+  always visibly substituted/degraded. Exact freshness equality is current.
+- A query is evaluated at caller-supplied `asOf` over the inclusive rolling interval
+  `[asOf - windowDuration, asOf]`. It includes only published items in that interval;
+  ingestion and analysis completion times cannot admit future news. Each snapshot has
+  a deterministic identity over the canonical asset, bounds, `signed-mean-v1`, and
+  the included sentiment-result identities. A sentiment-dependent durable result
+  records a deduplicated manifest of the actual rolling snapshots used, including
+  bounds, contributing result identities, exact stored model-version sets, and
+  policy/quality state.
+- Normalized sentiment is `positive -> +score`, `neutral -> 0`, and
+  `negative -> -score`. Every included result contributes once to the unweighted
+  arithmetic mean; an empty set is missing, not neutral. Freshness is the age of the
+  latest included item publication relative to `asOf`; model versions come only from
+  included stored results.
+
+**Scope and data-quality limit**
+
+- CoinDesk's present collector intentionally persists an empty `relatedCoins` array.
+  This means its current stored data cannot yield asset-specific feature values until
+  a later provider/data-quality slice supplies canonical codes. NEWS-05 uses explicit
+  deterministic fixtures and does not add title parsing, NLP, backfill, or a NEWS-02
+  rewrite.
+
+### 2026-08-31 - NEWS-05 implementation complete (seam level, uncommitted)
+
+**What was built, across 14 TDD cycles from the Product Owner decisions above**
+
+- `news/application/sentiment-feature.ts`: `SentimentFeatureService`, the only News
+  query seam Experiment may use. It normalizes a canonical asset code, filters the
+  inclusive caller-timed rolling window, validates every included stored result,
+  computes the unweighted `signed-mean-v1` aggregate, and evaluates the missing/stale
+  policy (`block`, `degrade`, `substitute`) before returning a response that carries
+  window, item count, freshness, and quality but never a model, artifact, or provider
+  detail. A separately carried `SentimentFeatureProvenance` (result IDs, model
+  versions) exists only for Experiment's durable result boundary.
+- `news/infrastructure/postgres-sentiment-feature-store.ts`: the read-only adapter
+  behind that seam, joining analyzed/succeeded results to items inside the requested
+  asset and window.
+- `news/index.ts`: exports the feature, its request/response/policy types, and the
+  window-identity helper as the module's public surface.
+- `experiment/domain/sentiment-input.ts` and `experiment-specification.ts`/
+  `experiment-specification-service.ts`: `SentimentInputConfiguration` is now a typed,
+  validated, optional field of frozen experiment content. Freezing a descriptor that
+  requires `sentiment-series` requires and validates it (positive window duration, a
+  valid News policy); freezing a technical-only descriptor forbids it.
+- `experiment/application/sentiment-feature-context-assembler.ts` and
+  `sentiment-usage-manifest.ts`: `ExperimentSentimentContextAssembler` returns
+  immediately for a technical-only descriptor without ever touching the News port; for
+  a sentiment-required descriptor it resolves one rolling snapshot per evaluation time,
+  builds cumulative `sentiment-series` inputs, and produces a deduplicated
+  `sentiment-feature-usage.v1` manifest of the actual snapshots used (window, result
+  IDs, model versions, quality, applied policy). An unusable snapshot returns a typed
+  `blocked` assembly result rather than throwing.
+- `experiment/application/backtest-result-acceptor.ts` and `backtest-runner-service.ts`:
+  `BacktestRunnerOutcome` gained an optional `sentimentUsage` field; when supplied, the
+  provenance checklist's `newsInput` records the manifest itself and `sentimentModel`
+  records the deduplicated, sorted model-version set, replacing the previous
+  unconditional `not-applicable` for both. No migration was needed - the checklist is
+  stored as JSONB and the API contract's `isProvenanceResponse` already accepts any
+  `recorded` value for any checklist key.
+- Fixed two pre-existing defects surfaced by a full backend typecheck (not run since an
+  earlier cycle): `strategy/index.ts` was missing the `SentimentSeriesInput` export
+  that the context assembler already depended on, and a Postgres adapter test's
+  zero-argument mock made TypeScript infer an empty-tuple call signature.
+
+**NEWS-05 acceptance-criteria mapping**
+
+1. Windowed query: `SentimentFeatureService.resolve()` returns aggregate sentiment,
+   item count, window bounds, and freshness together.
+2. No model/artifact/provider leakage: a dedicated response-shape test enumerates the
+   response's fields and asserts none of them exist; provenance is a separately
+   carried, never-merged structure.
+3. Missing sentiment: `block`, `degrade`, and `substitute` each have an independent
+   test and each is visibly the applied policy in the response.
+4. Stale sentiment: the same three actions have independent stale-path tests; a stale
+   value is never reported as current.
+5. Result provenance: the multi-window usage-manifest test and the provenance-checklist
+   test together prove that a sentiment-dependent result records window identity and
+   the exact contributing model versions.
+6. Technical-only isolation: a spy/failing-fake resolver test proves zero News calls
+   for a descriptor without `sentiment-series`.
+
+**Deliberately deferred, not a gap**
+
+- `ExperimentSentimentContextAssembler` and `BacktestRunnerOutcome.sentimentUsage` are
+  fully tested seams but are not yet wired into `backtest-computation.ts` or any
+  NestJS module. No strategy today declares `requiredInputs: ["sentiment-series"]` -
+  NEWS-06 (sentiment as a strategy) is optional and out of scope for this slice - so
+  wiring them into the live composition root now would be unreachable code. The wiring
+  becomes live work for whichever slice first adds a sentiment-dependent candidate.
+
+**Validation and process state**
+
+- `pnpm --filter @crypto-strategy-lab/backend run typecheck` passes for the whole
+  backend. `pnpm exec eslint` passes for every file touched across the 14 cycles.
+  `pnpm exec vitest run` across the six deterministic NEWS-05 test files (sentiment
+  feature, its Postgres adapter, the context assembler, the frozen sentiment-input
+  configuration, the provenance checklist mapping, and the specification service) ->
+  37 tests passed. `git diff --check` shows only pre-existing CRLF warnings. No
+  database-backed test, migration, hosted request, collection, analysis, container
+  lifecycle operation, full suite, commit, or push ran this session.
+- The owner explicitly deferred the usual `implement`-skill code-review, full-suite,
+  and commit steps for NEWS-05 in this session. The complete NEWS-05 diff therefore
+  remains uncommitted working-tree state; a future session must run the normal
+  two-axis diff review and the full suite before committing it at the slice boundary.

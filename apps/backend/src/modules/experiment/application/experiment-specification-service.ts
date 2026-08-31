@@ -12,6 +12,7 @@ import type {
   FrozenExperimentContent,
   FrozenExperimentSpecification
 } from "../domain/experiment-specification.js";
+import { assertSentimentInputConfiguration } from "../domain/sentiment-input.js";
 
 export interface ExperimentSpecificationStore {
   create(specId: string, content: ExperimentDraftContent): Promise<DraftExperimentSpecification>;
@@ -227,7 +228,12 @@ export class ExperimentSpecificationService {
       )).descriptor.requiredInputs;
     }
     if (requiredInputs.includes("sentiment-series")) {
-      throw new Error("EXPERIMENT_FIELD_REQUIRED: sentimentInputRef");
+      if (current.content.sentimentInput === undefined) {
+        throw new Error("EXPERIMENT_FIELD_REQUIRED: sentimentInput");
+      }
+      assertSentimentInputConfiguration(current.content.sentimentInput);
+    } else if (current.content.sentimentInput !== undefined) {
+      throw new Error("EXPERIMENT_FIELD_FORBIDDEN: sentimentInput");
     }
     const content: FrozenExperimentContent = { ...current.content, provenance };
     return this.store.freeze(specId, content, canonicalSha256(content));

@@ -3,6 +3,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { BacktestRunnerOutcome } from "./backtest-runner-service.js";
 import { DurableBacktestResultAcceptor } from "./backtest-result-acceptor.js";
+import type { SentimentUsageManifest } from "./sentiment-usage-manifest.js";
 
 const identity = {
   nodeRuntimeVersion: "22.0.0", dependencyLockHash: "a".repeat(64),
@@ -82,5 +83,39 @@ describe("DurableBacktestResultAcceptor", () => {
       new DurableBacktestResultAcceptor(store as never, projection, logger).accept(projectable)
     ).resolves.toBeUndefined();
     expect(logger.error).toHaveBeenCalledOnce();
+  });
+
+  it("records a supplied multi-window sentiment usage manifest in the provenance checklist", async () => {
+    const sentimentUsage: SentimentUsageManifest = {
+      schemaVersion: "sentiment-feature-usage.v1",
+      snapshots: [
+        {
+          window: { id: "window-first", startAt: 1_000, endAt: 61_000, aggregationVersion: "signed-mean-v1" },
+          resultIds: ["result-a"],
+          modelVersions: ["model-v1"],
+          quality: "current",
+          appliedPolicy: { state: "not-applied" }
+        },
+        {
+          window: { id: "window-second", startAt: 61_000, endAt: 121_000, aggregationVersion: "signed-mean-v1" },
+          resultIds: ["result-b", "result-c"],
+          modelVersions: ["model-v2", "model-v1"],
+          quality: "degraded",
+          appliedPolicy: { state: "applied", reason: "stale", action: "degrade" }
+        }
+      ]
+    };
+    const withSentiment = { ...outcome, sentimentUsage } as unknown as BacktestRunnerOutcome;
+    const store = { accept: vi.fn(async () => ({ resultId: "result" })) };
+
+    await new DurableBacktestResultAcceptor(store as never).accept(withSentiment);
+
+    expect(store.accept).toHaveBeenCalledWith(
+      withSentiment,
+      expect.objectContaining({
+        newsInput: { status: "recorded", value: sentimentUsage },
+        sentimentModel: { status: "recorded", value: ["model-v1", "model-v2"] }
+      })
+    );
   });
 });

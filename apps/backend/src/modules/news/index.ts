@@ -42,3 +42,22 @@ export {
   type SentimentAnalyzer,
   type SentimentAnalyzerErrorCode
 } from "./application/sentiment-analyzer.js";
+export {
+  assertSentimentFeaturePolicy,
+  createSentimentWindowIdentity,
+  SentimentFeatureService,
+  SIGNED_MEAN_V1
+} from "./application/sentiment-feature.js";
+export type {
+  SentimentFeature,
+  SentimentFeaturePolicy,
+  SentimentFeaturePolicyAction,
+  SentimentFeatureProvenance,
+  SentimentFeatureRequest,
+  SentimentFeatureResponse,
+  SentimentFeatureSnapshot,
+  SentimentFeatureStore,
+  SentimentFeatureStoredResult,
+  SentimentFeatureWindow,
+  SentimentWindowIdentityInput
+} from "./application/sentiment-feature.js";

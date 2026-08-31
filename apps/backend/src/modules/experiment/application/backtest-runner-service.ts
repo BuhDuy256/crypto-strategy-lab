@@ -6,6 +6,7 @@ import type { EvaluationResult } from "../domain/evaluator.js";
 import type { FrozenExperimentSpecification } from "../domain/experiment-specification.js";
 import { BACKTEST_CANCELLED_REASON, type ClaimedBacktestJob } from "./backtest-run-service.js";
 import type { BacktestComputation } from "./backtest-computation.js";
+import type { SentimentUsageManifest } from "./sentiment-usage-manifest.js";
 
 export interface BacktestWorkQueue {
   claimNext(runnerId: string): Promise<ClaimedBacktestJob | undefined>;
@@ -27,6 +28,8 @@ export interface BacktestRunnerOutcome {
   readonly evaluation: EvaluationResult;
   readonly runtimeIdentity: RunnerRuntimeIdentity;
   readonly datasetManifest: Awaited<ReturnType<DatasetService["resolveDataset"]>>["manifest"];
+  /** Present only when the strategy required `sentiment-series`. */
+  readonly sentimentUsage?: SentimentUsageManifest;
 }
 
 export interface RunnerRuntimeIdentity {
