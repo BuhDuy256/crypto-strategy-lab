@@ -55,7 +55,7 @@ function sentimentResponse(
 
 function healthResponse(overrides: Partial<NewsHealthResponse> = {}): NewsHealthResponse {
   return {
-    collection: [{ provider: "coindesk-rss", status: "healthy", checkedAt: NOW }],
+    collection: [{ status: "healthy", checkedAt: NOW }],
     analysis: { status: "healthy", pendingCount: 0, degradedCount: 0, checkedAt: NOW },
     ...overrides
   };
@@ -101,7 +101,7 @@ describe("NewsPage", () => {
 
   it("shows collection degradation without hiding collected items", async () => {
     vi.mocked(getNewsHealth).mockResolvedValue(healthResponse({
-      collection: [{ provider: "coindesk-rss", status: "degraded", checkedAt: NOW, reason: "Feed unavailable" }]
+      collection: [{ status: "degraded", checkedAt: NOW, message: "source-degraded" }]
     }));
 
     render(<NewsPage />);
@@ -115,7 +115,7 @@ describe("NewsPage", () => {
     vi.mocked(getNewsHealth).mockResolvedValue(healthResponse({
       analysis: {
         status: "degraded",
-        reason: "1 item reached the retry limit",
+        message: "retry-limit-reached",
         pendingCount: 0,
         degradedCount: 1,
         checkedAt: NOW

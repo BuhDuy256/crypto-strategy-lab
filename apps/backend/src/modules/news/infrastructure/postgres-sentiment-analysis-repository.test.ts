@@ -1,7 +1,9 @@
 // PostgreSQL integration tests for News-owned claiming, results, and attempt history.
 
 import type { Pool } from "pg";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { loadConfig } from "../../../platform/config.js";
+import { createDatabasePool } from "../../../platform/database.js";
 import { resetTestDatabase } from "../../../platform/test-database.js";
 import {
   NEWS_SENTIMENT_INPUT_VERSION,
@@ -57,7 +59,12 @@ describe("PostgresSentimentAnalysisRepository", () => {
     });
   });
 
+  afterEach(async () => {
+    await analysis.close();
+  });
+
   afterAll(async () => {
+    await analysis?.close();
     await pool?.end();
   });
 
@@ -77,6 +84,22 @@ describe("PostgresSentimentAnalysisRepository", () => {
     expect(rows.rows.every((row) => row.analysis_claimed_by === "analyzer-a")).toBe(true);
     expect(attempts.rows).toHaveLength(2);
     expect(attempts.rows.every((row) => row.outcome === null)).toBe(true);
+  });
+
+  it("releases an active claim session before its worker pool closes", async () => {
+    const workerPool = createDatabasePool(loadConfig().postgres);
+    const worker = new PostgresSentimentAnalysisRepository(workerPool, { leaseSeconds: 30 });
+    let poolClosed = false;
+    try {
+      await expect(worker.claimPendingItems("analyzer-shutdown", 1)).resolves.toHaveLength(1);
+
+      await worker.close();
+      await expect(workerPool.end()).resolves.toBeUndefined();
+      poolClosed = true;
+    } finally {
+      await worker.close();
+      if (!poolClosed) await workerPool.end();
+    }
   });
 
   it("commits a result and the analyzed transition together", async () => {
@@ -196,11 +219,14 @@ describe("PostgresSentimentAnalysisRepository", () => {
     expect(claimable.map((next) => next.item.id)).not.toContain(claim.item.id);
   });
 
-  it("refuses to finish a claim that another analyzer has taken over", async () => {
-    const expiring = new PostgresSentimentAnalysisRepository(pool, { leaseSeconds: 0 });
-    const [stale] = await expiring.claimPendingItems("analyzer-dead", 1);
+  it("refuses to finish a claim after the worker session died and another analyzer recovered it", async () => {
+    const deadWorkerPool = createDatabasePool(loadConfig().postgres);
+    const deadWorker = new PostgresSentimentAnalysisRepository(deadWorkerPool, { leaseSeconds: 0 });
+    const [stale] = await deadWorker.claimPendingItems("analyzer-dead", 1);
     if (stale === undefined) throw new Error("expected one claim");
-    const [fresh] = await expiring.claimPendingItems("analyzer-b", 1);
+    await deadWorker.close();
+    await deadWorkerPool.end();
+    const [fresh] = await analysis.claimPendingItems("analyzer-b", 1);
     if (fresh === undefined) throw new Error("expected a reclaim");
 
     await expect(analysis.commitResult(stale, resultFor(stale))).rejects.toThrow(
@@ -208,5 +234,17 @@ describe("PostgresSentimentAnalysisRepository", () => {
     );
     expect(fresh.item.id).toBe(stale.item.id);
     expect(fresh.attempt).toBe(2);
+    await analysis.commitResult(fresh, resultFor(fresh));
+  });
+
+  it("keeps a live execution lock authoritative when its nominal lease has elapsed", async () => {
+    const expiring = new PostgresSentimentAnalysisRepository(pool, { leaseSeconds: 0 });
+    const [expired] = await expiring.claimPendingItems("analyzer-a", 1);
+    if (expired === undefined) throw new Error("expected one claim");
+
+    await expect(expiring.renewLease(expired)).resolves.toMatchObject({
+      item: { id: expired.item.id }, attempt: expired.attempt
+    });
+    await expect(expiring.commitResult(expired, resultFor(expired))).resolves.toBeUndefined();
   });
 });

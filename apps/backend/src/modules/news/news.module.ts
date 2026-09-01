@@ -12,8 +12,15 @@ import { Inject, Module, type OnApplicationShutdown } from "@nestjs/common";
 import type { Pool } from "pg";
 import { loadConfig } from "../../platform/config.js";
 import { createDatabasePool } from "../../platform/database.js";
-import { NEWS_HEALTH_QUERY, NEWS_ITEM_QUERY, SENTIMENT_DISTRIBUTION_QUERY } from "./application/tokens.js";
+import {
+  NEWS_HEALTH_QUERY,
+  NEWS_ITEM_QUERY,
+  SENTIMENT_DISTRIBUTION_QUERY,
+  SENTIMENT_FEATURE
+} from "./application/tokens.js";
+import { SentimentFeatureService } from "./application/sentiment-feature.js";
 import { PostgresNewsQueryRepository } from "./infrastructure/postgres-news-query-repository.js";
+import { PostgresSentimentFeatureStore } from "./infrastructure/postgres-sentiment-feature-store.js";
 
 const NEWS_DATABASE_POOL = Symbol("NEWS_DATABASE_POOL");
 
@@ -40,8 +47,19 @@ class NewsDatabaseLifecycle implements OnApplicationShutdown {
     { provide: NEWS_ITEM_QUERY, useExisting: PostgresNewsQueryRepository },
     { provide: SENTIMENT_DISTRIBUTION_QUERY, useExisting: PostgresNewsQueryRepository },
     { provide: NEWS_HEALTH_QUERY, useExisting: PostgresNewsQueryRepository },
+    {
+      provide: PostgresSentimentFeatureStore,
+      inject: [NEWS_DATABASE_POOL],
+      useFactory: (pool: Pool): PostgresSentimentFeatureStore => new PostgresSentimentFeatureStore(pool)
+    },
+    {
+      provide: SENTIMENT_FEATURE,
+      inject: [PostgresSentimentFeatureStore],
+      useFactory: (store: PostgresSentimentFeatureStore): SentimentFeatureService =>
+        new SentimentFeatureService(store)
+    },
     NewsDatabaseLifecycle
   ],
-  exports: [NEWS_ITEM_QUERY, SENTIMENT_DISTRIBUTION_QUERY, NEWS_HEALTH_QUERY]
+  exports: [NEWS_ITEM_QUERY, SENTIMENT_DISTRIBUTION_QUERY, NEWS_HEALTH_QUERY, SENTIMENT_FEATURE]
 })
 export class NewsModule {}

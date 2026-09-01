@@ -29,6 +29,10 @@ class RecordingStore implements SentimentAnalysisStore {
     return this.claims;
   }
 
+  async renewLease(claim: ClaimedNewsItem): Promise<ClaimedNewsItem | undefined> {
+    return claim;
+  }
+
   async commitResult(_claim: ClaimedNewsItem, result: SentimentResult): Promise<void> {
     this.committed.push(result);
   }

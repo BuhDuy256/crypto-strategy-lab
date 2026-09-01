@@ -45,12 +45,16 @@ describe("PostgresNewsQueryRepository.list", () => {
     });
   });
 
-  it("reports zero total count when the table has no rows, without a second round trip erroring", async () => {
-    const query = vi.fn(async () => ({ rows: [] }));
+  it("falls back to a count query when an empty page has no window total", async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ count: 0 }] });
     const repository = new PostgresNewsQueryRepository({ query } as unknown as Pool, 60_000);
 
     const page = await repository.list({ pageNumber: 1, pageSize: 10 });
 
+    expect(query).toHaveBeenCalledTimes(2);
+    expect(query.mock.calls[1]?.[0]).toContain("count(*)::int AS count");
     expect(page).toEqual({ items: [], page: { pageNumber: 1, pageSize: 10, totalCount: 0 } });
   });
 });
@@ -94,12 +98,12 @@ describe("PostgresNewsQueryRepository.getDistribution", () => {
 });
 
 describe("PostgresNewsQueryRepository.getHealth", () => {
-  it("reads per-provider collection health and derives analysis health from item state counts", async () => {
+  it("maps stored provider and failure internals to generic collection and analysis health", async () => {
     const lastCompletedAt = new Date("2026-08-30T00:15:00Z");
     const query = vi.fn(async (sql: string) => {
       if (sql.includes("news.source_health")) {
         return {
-          rows: [{ provider: "coindesk-rss", status: "healthy", reason: null, checked_at: "1788177600000" }]
+          rows: [{ provider: "coindesk-rss", status: "healthy", reason: "provider-private", checked_at: "1788177600000" }]
         };
       }
       if (sql.includes("collection_worker_heartbeat")) return { rows: [{ checked_at: "1788177600000" }] };
@@ -123,10 +127,10 @@ describe("PostgresNewsQueryRepository.getHealth", () => {
     const health = await repository.getHealth();
 
     expect(health).toEqual({
-      collection: [{ provider: "coindesk-rss", status: "healthy", checkedAt: 1_788_177_600_000 }],
+      collection: [{ status: "healthy", checkedAt: 1_788_177_600_000 }],
       analysis: {
         status: "degraded",
-        reason: "1 item(s) exhausted retries and could not be analyzed",
+        message: "retry-limit-reached",
         pendingCount: 2,
         degradedCount: 1,
         checkedAt: lastCompletedAt.getTime()
@@ -148,7 +152,7 @@ describe("PostgresNewsQueryRepository.getHealth", () => {
       collection: [],
       analysis: {
         status: "unavailable",
-        reason: "analysis has not completed any item yet",
+        message: "no-completed-analysis",
         pendingCount: 0,
         degradedCount: 0,
         checkedAt: 0
@@ -180,7 +184,7 @@ describe("PostgresNewsQueryRepository.getHealth", () => {
 
     expect(health.analysis).toEqual({
       status: "degraded",
-      reason: "analysis has retryable failures",
+      message: "retryable-failures",
       pendingCount: 1,
       degradedCount: 0,
       checkedAt: Date.parse("2026-08-30T00:15:00Z")
@@ -208,12 +212,7 @@ describe("PostgresNewsQueryRepository.getHealth", () => {
     const health = await repository.getHealth();
 
     expect(health.collection).toEqual([
-      {
-        provider: "coindesk-rss",
-        status: "degraded",
-        checkedAt,
-        reason: "collection worker has not reported within the configured poll interval"
-      }
+      { status: "degraded", checkedAt, message: "worker-stale" }
     ]);
   });
 });

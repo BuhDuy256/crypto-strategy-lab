@@ -391,6 +391,21 @@ export function isApiAnnotation(value: unknown): value is ApiAnnotation {
 export type ApiStrategyParameterValue = string | number | boolean;
 export type ApiStrategyParameters = Readonly<Record<string, ApiStrategyParameterValue>>;
 
+export type ApiSentimentPolicyAction =
+  | { readonly action: "block" }
+  | { readonly action: "degrade" }
+  | { readonly action: "substitute"; readonly substituteValue: number };
+
+/** Explicit immutable News feature policy for a sentiment-dependent candidate only. */
+export interface ApiSentimentInputConfiguration {
+  readonly windowDurationMs: number;
+  readonly policy: {
+    readonly maxAgeMs: number;
+    readonly onMissing: ApiSentimentPolicyAction;
+    readonly onStale: ApiSentimentPolicyAction;
+  };
+}
+
 /**
  * Request body for `POST /specifications`. Configures and freezes the
  * specification of one single-strategy backtest: the dataset window and the
@@ -414,6 +429,8 @@ export interface CreateSpecificationRequest {
     readonly version: string;
     readonly parameters: ApiStrategyParameters;
   };
+  /** Required by the backend only when the chosen descriptor declares sentiment-series. */
+  readonly sentimentInput?: ApiSentimentInputConfiguration;
 }
 
 export interface CreateSpecificationResponse {
@@ -984,6 +1001,7 @@ export function isNewsSentimentDistributionResponse(
 ): value is NewsSentimentDistributionResponse {
   if (!isRecord(value)) return false;
   return isRecord(value.window) && isFiniteNumber(value.window.startAt) && isFiniteNumber(value.window.endAt) &&
+    value.window.startAt <= value.window.endAt &&
     Number.isSafeInteger(value.itemCount) &&
     isFiniteNumber(value.positive) && isFiniteNumber(value.neutral) && isFiniteNumber(value.negative);
 }
@@ -992,15 +1010,14 @@ export const NEWS_HEALTH_STATUSES = ["healthy", "degraded", "unavailable"] as co
 export type NewsHealthStatus = (typeof NEWS_HEALTH_STATUSES)[number];
 
 export interface NewsSourceHealthEntry {
-  readonly provider: string;
   readonly status: NewsHealthStatus;
   readonly checkedAt: number;
-  readonly reason?: string;
+  readonly message?: "worker-stale" | "source-degraded" | "source-unavailable";
 }
 
 export interface NewsAnalysisHealthEntry {
   readonly status: NewsHealthStatus;
-  readonly reason?: string;
+  readonly message?: "retry-limit-reached" | "retryable-failures" | "no-completed-analysis";
   readonly pendingCount: number;
   readonly degradedCount: number;
   readonly checkedAt: number;
@@ -1016,16 +1033,24 @@ function isNewsHealthStatus(value: unknown): value is NewsHealthStatus {
   return typeof value === "string" && (NEWS_HEALTH_STATUSES as readonly string[]).includes(value);
 }
 
+function hasOnlyKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
+  return Object.keys(value).every((key) => keys.includes(key));
+}
+
 function isNewsSourceHealthEntry(value: unknown): value is NewsSourceHealthEntry {
   if (!isRecord(value)) return false;
-  return typeof value.provider === "string" && isNewsHealthStatus(value.status) &&
-    isFiniteNumber(value.checkedAt) && (value.reason === undefined || typeof value.reason === "string");
+  return hasOnlyKeys(value, ["status", "checkedAt", "message"]) &&
+    isNewsHealthStatus(value.status) && isFiniteNumber(value.checkedAt) &&
+    (value.message === undefined || value.message === "worker-stale" ||
+      value.message === "source-degraded" || value.message === "source-unavailable");
 }
 
 function isNewsAnalysisHealthEntry(value: unknown): value is NewsAnalysisHealthEntry {
   if (!isRecord(value)) return false;
-  return isNewsHealthStatus(value.status) &&
-    (value.reason === undefined || typeof value.reason === "string") &&
+  return hasOnlyKeys(value, ["status", "checkedAt", "message", "pendingCount", "degradedCount"]) &&
+    isNewsHealthStatus(value.status) &&
+    (value.message === undefined || value.message === "retry-limit-reached" ||
+      value.message === "retryable-failures" || value.message === "no-completed-analysis") &&
     Number.isSafeInteger(value.pendingCount) && Number.isSafeInteger(value.degradedCount) &&
     isFiniteNumber(value.checkedAt);
 }

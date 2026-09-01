@@ -94,14 +94,26 @@ const systemTimer: NewsCollectionTimer = {
   clearInterval: (handle) => clearInterval(handle as NodeJS.Timeout)
 };
 
+const silentSchedulerLogger: NewsCollectionLogger = {
+  log: () => undefined,
+  warn: () => undefined,
+  error: () => undefined
+};
+
+function schedulerErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "unknown scheduled collection failure";
+}
+
 /** Offers explicit manual collection and a single non-overlapping timer registration. */
 export class NewsCollectionScheduler {
   private handle: unknown | undefined;
+  private scheduledRun: Promise<void> | undefined;
 
   constructor(
     private readonly collector: NewsCollectionService,
     private readonly pollIntervalMs: number,
-    private readonly timer: NewsCollectionTimer = systemTimer
+    private readonly timer: NewsCollectionTimer = systemTimer,
+    private readonly logger: NewsCollectionLogger = silentSchedulerLogger
   ) {}
 
   async collectManually(): Promise<NewsCollectionResult> {
@@ -114,12 +126,24 @@ export class NewsCollectionScheduler {
 
   start(): void {
     if (this.handle !== undefined) return;
-    this.handle = this.timer.setInterval(() => { void this.collectOnSchedule(); }, this.pollIntervalMs);
+    this.handle = this.timer.setInterval(() => this.triggerScheduledCollection(), this.pollIntervalMs);
   }
 
   stop(): void {
     if (this.handle === undefined) return;
     this.timer.clearInterval(this.handle);
     this.handle = undefined;
+  }
+
+  private triggerScheduledCollection(): void {
+    if (this.handle === undefined || this.scheduledRun !== undefined) return;
+    this.scheduledRun = this.collectOnSchedule()
+      .then(() => undefined)
+      .catch((error: unknown) => {
+        this.logger.error(`Scheduled collection failed: ${schedulerErrorMessage(error)}`, CONTEXT);
+      })
+      .finally(() => {
+        this.scheduledRun = undefined;
+      });
   }
 }

@@ -25,6 +25,8 @@ export interface SentimentAnalysisFailure {
 export interface SentimentAnalysisStore {
   /** Claims up to `batchSize` claimable items under a lease, opening one attempt each. */
   claimPendingItems(analyzerId: string, batchSize: number): Promise<readonly ClaimedNewsItem[]>;
+  /** Extends a still-owned lease, or reports that a newer claimant fenced this stage out. */
+  renewLease(claim: ClaimedNewsItem): Promise<ClaimedNewsItem | undefined>;
   /** Commits one result, its attempt outcome, and the analyzed transition atomically. */
   commitResult(claim: ClaimedNewsItem, result: SentimentResult): Promise<void>;
   /** Records one durable failed attempt and the resulting item state atomically. */

@@ -2,7 +2,11 @@
 
 import { randomUUID } from "node:crypto";
 import type { DatasetService } from "../../market/index.js";
-import { CompositeStrategyService, StrategyRegistry } from "../../strategy/index.js";
+import {
+  compositeExecutionDescriptor,
+  CompositeStrategyService,
+  StrategyRegistry
+} from "../../strategy/index.js";
 import { canonicalSha256 } from "../../../platform/canonical-json.js";
 import type {
   DraftExperimentSpecification,
@@ -222,16 +226,29 @@ export class ExperimentSpecificationService {
       if (Object.keys(current.content.strategy.parameters).length !== 0) {
         throw new Error("STRATEGY_PARAMETER_UNKNOWN: composite strategies accept no run-time parameters");
       }
-      requiredInputs = (await this.composites.resolve(
+      const composite = await this.composites.resolve(
         current.content.strategy.id,
         current.content.strategy.version
-      )).descriptor.requiredInputs;
+      );
+      requiredInputs = compositeExecutionDescriptor(
+        composite.descriptor,
+        composite.definition.components.map((reference) => this.strategies.resolve(reference).descriptor)
+      ).requiredInputs;
     }
     if (requiredInputs.includes("sentiment-series")) {
       if (current.content.sentimentInput === undefined) {
         throw new Error("EXPERIMENT_FIELD_REQUIRED: sentimentInput");
       }
       assertSentimentInputConfiguration(current.content.sentimentInput);
+      // NEWS-06 names this parameter in the registered descriptor. Parameter
+      // validation above already proves its schema; freezing also ties the
+      // feature window to that selected descriptor rather than accepting two
+      // independent windows in the immutable input.
+      const declaredWindow = current.content.strategy.parameters.windowDurationMs;
+      if (typeof declaredWindow === "number" &&
+        declaredWindow !== current.content.sentimentInput.windowDurationMs) {
+        throw new Error("EXPERIMENT_SENTIMENT_WINDOW_MISMATCH: strategy and sentiment input windows differ");
+      }
     } else if (current.content.sentimentInput !== undefined) {
       throw new Error("EXPERIMENT_FIELD_FORBIDDEN: sentimentInput");
     }

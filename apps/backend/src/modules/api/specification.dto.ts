@@ -3,13 +3,16 @@
 import { Type } from "class-transformer";
 import {
   Equals,
+  IsDefined,
   IsIn,
   IsInt,
+  IsNumber,
   IsNotEmpty,
   IsObject,
   IsString,
   Max,
   Min,
+  ValidateIf,
   ValidateNested
 } from "class-validator";
 import type {
@@ -52,6 +55,44 @@ class SpecificationStrategyDto {
   parameters!: ApiStrategyParameters;
 }
 
+export class SentimentPolicyActionDto {
+  @IsIn(["block", "degrade", "substitute"])
+  action!: "block" | "degrade" | "substitute";
+
+  @ValidateIf((value: SentimentPolicyActionDto) => value.action === "substitute")
+  @IsNumber()
+  @Min(-1)
+  @Max(1)
+  substituteValue?: number;
+}
+
+class SentimentPolicyDto {
+  @IsInt()
+  @Min(1)
+  maxAgeMs!: number;
+
+  @IsDefined()
+  @ValidateNested()
+  @Type(() => SentimentPolicyActionDto)
+  onMissing!: SentimentPolicyActionDto;
+
+  @IsDefined()
+  @ValidateNested()
+  @Type(() => SentimentPolicyActionDto)
+  onStale!: SentimentPolicyActionDto;
+}
+
+class SentimentInputDto {
+  @IsInt()
+  @Min(1)
+  windowDurationMs!: number;
+
+  @IsDefined()
+  @ValidateNested()
+  @Type(() => SentimentPolicyDto)
+  policy!: SentimentPolicyDto;
+}
+
 export class CreateSpecificationDto {
   @Equals("v1")
   schemaVersion!: "v1";
@@ -63,4 +104,10 @@ export class CreateSpecificationDto {
   @ValidateNested()
   @Type(() => SpecificationStrategyDto)
   strategy!: SpecificationStrategyDto;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsDefined()
+  @ValidateNested()
+  @Type(() => SentimentInputDto)
+  sentimentInput?: SentimentInputDto;
 }

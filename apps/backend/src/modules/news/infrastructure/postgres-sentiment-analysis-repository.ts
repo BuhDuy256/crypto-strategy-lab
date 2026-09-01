@@ -1,9 +1,10 @@
 // PostgreSQL adapter for the News inference lifecycle, reusing the EXP-04 lease pattern.
 //
-// Claiming is a single `FOR UPDATE SKIP LOCKED` statement, so two analyzer stages
-// never take the same item, and an abandoned lease becomes claimable again once it
-// expires. Every finishing operation is one transaction that moves the item and
-// closes its attempt together.
+// A claim uses `FOR UPDATE SKIP LOCKED` plus a session advisory lock. The row lock
+// makes claims atomic and the session lock fences a live external inference without
+// holding a transaction open. A disconnected worker releases the session lock, so a
+// later stage can recover the expired lease. Every finishing operation is one
+// transaction that moves the item and closes its attempt together.
 
 import type { Pool, PoolClient } from "pg";
 import type {
@@ -35,6 +36,10 @@ interface ClaimRow extends ItemRow {
   attempt_lease_expires_at: Date;
 }
 
+interface HeldExecutionLock {
+  readonly client: PoolClient;
+}
+
 function mapItem(row: ItemRow): NewsItem {
   return {
     id: row.id,
@@ -52,6 +57,11 @@ function mapItem(row: ItemRow): NewsItem {
 /** News-owned database adapter. No other module reads or writes the `news` schema. */
 export class PostgresSentimentAnalysisRepository implements SentimentAnalysisStore {
   private readonly leaseSeconds: number;
+  /**
+   * A session advisory lock fences a live external inference without holding a
+   * transaction open. The lock dies with its database session on process loss.
+   */
+  private readonly executionLocks = new Map<string, HeldExecutionLock>();
 
   constructor(private readonly pool: Pool, options: SentimentAnalysisLeaseOptions) {
     this.leaseSeconds = options.leaseSeconds;
@@ -62,44 +72,56 @@ export class PostgresSentimentAnalysisRepository implements SentimentAnalysisSto
     batchSize: number
   ): Promise<readonly ClaimedNewsItem[]> {
     const client = await this.pool.connect();
+    const acquiredLockIds: string[] = [];
+    const claimedRows: ClaimRow[] = [];
+    let retained = false;
     try {
       await client.query("BEGIN");
-      const claimed = await client.query<ClaimRow>(
+      const candidates = await client.query<ItemRow>(
         `
-          WITH candidate AS (
-            SELECT id FROM news.items
-            WHERE analysis_state = 'pending'
-               OR (analysis_state = 'analyzing' AND analysis_lease_expires_at <= now())
-            ORDER BY collected_at, id
-            FOR UPDATE SKIP LOCKED
-            LIMIT $2
-          ), updated AS (
-            UPDATE news.items i
-            SET analysis_state = 'analyzing',
-                analysis_claimed_by = $1,
-                analysis_attempt_count = i.analysis_attempt_count + 1,
-                analysis_lease_expires_at = now() + ($3 * interval '1 second')
-            FROM candidate c WHERE i.id = c.id
-            RETURNING i.id, i.title, i.content, i.source, i.published_at, i.collected_at,
-                      i.related_coins, i.url, i.analysis_state, i.analysis_attempt_count,
-                      i.analysis_lease_expires_at
-          ), attempt AS (
-            INSERT INTO news.sentiment_analysis_attempts
-              (news_item_id, attempt_number, analyzer_id, claimed_at, lease_expires_at)
-            SELECT u.id, u.analysis_attempt_count, $1, now(), u.analysis_lease_expires_at
-            FROM updated u
-            RETURNING news_item_id, attempt_number, lease_expires_at
-          )
-          SELECT u.id, u.title, u.content, u.source, u.published_at, u.collected_at,
-                 u.related_coins, u.url, u.analysis_state,
-                 a.attempt_number, a.lease_expires_at AS attempt_lease_expires_at
-          FROM updated u JOIN attempt a ON a.news_item_id = u.id
+          SELECT id, title, content, source, published_at, collected_at, related_coins, url, analysis_state
+          FROM news.items
+          WHERE analysis_state = 'pending'
+             OR (analysis_state = 'analyzing' AND analysis_lease_expires_at <= now())
+          ORDER BY collected_at, id
+          FOR UPDATE SKIP LOCKED
+          LIMIT $1
         `,
-        [analyzerId, batchSize, this.leaseSeconds]
+        [batchSize]
       );
-      // An earlier stage that died still has an open attempt row; close it as expired
-      // so attempt history stays a truthful record of what happened.
-      for (const row of claimed.rows) {
+      for (const candidate of candidates.rows) {
+        const lock = await client.query<{ acquired: boolean }>(
+          "SELECT pg_try_advisory_lock(hashtextextended($1, 0)) AS acquired",
+          [candidate.id]
+        );
+        if (lock.rows[0]?.acquired !== true) continue;
+        acquiredLockIds.push(candidate.id);
+        const updated = await client.query<ClaimRow>(
+          `
+            UPDATE news.items
+            SET analysis_state = 'analyzing',
+                analysis_claimed_by = $2,
+                analysis_attempt_count = analysis_attempt_count + 1,
+                analysis_lease_expires_at = now() + ($3 * interval '1 second')
+            WHERE id = $1
+            RETURNING id, title, content, source, published_at, collected_at, related_coins, url,
+                      analysis_state, analysis_attempt_count AS attempt_number,
+                      analysis_lease_expires_at AS attempt_lease_expires_at
+          `,
+          [candidate.id, analyzerId, this.leaseSeconds]
+        );
+        const row = updated.rows[0];
+        if (row === undefined) {
+          throw new Error(`NEWS_ANALYSIS_CLAIM: candidate ${candidate.id} disappeared during claim`);
+        }
+        await client.query(
+          `INSERT INTO news.sentiment_analysis_attempts
+             (news_item_id, attempt_number, analyzer_id, claimed_at, lease_expires_at)
+           VALUES ($1, $2, $3, now(), $4)`,
+          [row.id, row.attempt_number, analyzerId, row.attempt_lease_expires_at]
+        );
+        // An earlier stage that died has no advisory session lock. Closing its
+        // attempt on the new durable claim keeps history truthful.
         if (row.attempt_number > 1) {
           await client.query(
             `UPDATE news.sentiment_analysis_attempts
@@ -109,19 +131,68 @@ export class PostgresSentimentAnalysisRepository implements SentimentAnalysisSto
             [row.id, row.attempt_number]
           );
         }
+        claimedRows.push(row);
       }
       await client.query("COMMIT");
-      return claimed.rows.map((row) => ({
+      for (const row of claimedRows) {
+        this.executionLocks.set(this.claimKey(row.id, row.attempt_number, analyzerId), { client });
+      }
+      retained = claimedRows.length > 0;
+      return claimedRows.map((row) => ({
         item: mapItem(row),
         attempt: row.attempt_number,
         analyzerId,
         leaseExpiresAt: row.attempt_lease_expires_at.toISOString()
       }));
     } catch (error) {
-      await client.query("ROLLBACK");
+      await client.query("ROLLBACK").catch(() => undefined);
       throw error;
     } finally {
-      client.release();
+      if (!retained) {
+        for (const itemId of acquiredLockIds) {
+          await client.query("SELECT pg_advisory_unlock(hashtextextended($1, 0))", [itemId])
+            .catch(() => undefined);
+        }
+        client.release();
+      }
+    }
+  }
+
+  async renewLease(claim: ClaimedNewsItem): Promise<ClaimedNewsItem | undefined> {
+    const held = this.executionLocks.get(this.claimKey(claim.item.id, claim.attempt, claim.analyzerId));
+    if (held === undefined) return undefined;
+    try {
+      const renewed = await held.client.query<{ lease_expires_at: Date }>(
+        `
+          UPDATE news.items SET analysis_lease_expires_at = now() + ($4 * interval '1 second')
+          WHERE id = $1
+            AND analysis_state = 'analyzing'
+            AND analysis_claimed_by = $3
+            AND EXISTS (
+              SELECT 1 FROM news.sentiment_analysis_attempts
+              WHERE news_item_id = $1 AND attempt_number = $2 AND analyzer_id = $3
+                AND completed_at IS NULL
+                AND attempt_number = (
+                  SELECT max(newest.attempt_number) FROM news.sentiment_analysis_attempts newest
+                  WHERE newest.news_item_id = $1
+                )
+              )
+          RETURNING analysis_lease_expires_at AS lease_expires_at
+        `,
+        [claim.item.id, claim.attempt, claim.analyzerId, this.leaseSeconds]
+      );
+      const row = renewed.rows[0];
+      if (row === undefined) {
+        await this.releaseExecutionLock(claim);
+        return undefined;
+      }
+      return {
+        ...claim,
+        leaseExpiresAt: row.lease_expires_at.toISOString()
+      };
+    } catch (error) {
+      await this.releaseExecutionLock(claim);
+      throw error;
     }
   }
 
@@ -171,6 +242,15 @@ export class PostgresSentimentAnalysisRepository implements SentimentAnalysisSto
     });
   }
 
+  /** Closes only this adapter's held execution sessions during worker shutdown. */
+  async close(): Promise<void> {
+    const clients = new Set([...this.executionLocks.values()].map((held) => held.client));
+    this.executionLocks.clear();
+    for (const client of clients) {
+      client.release(true);
+    }
+  }
+
   /**
    * Moves a claimed item to its next state and runs the caller's work in the same
    * transaction. The state change applies only while this claim is still the newest
@@ -182,7 +262,11 @@ export class PostgresSentimentAnalysisRepository implements SentimentAnalysisSto
     failureReason: string | null,
     work: (client: PoolClient) => Promise<void>
   ): Promise<void> {
-    const client = await this.pool.connect();
+    const held = this.executionLocks.get(this.claimKey(claim.item.id, claim.attempt, claim.analyzerId));
+    if (held === undefined) {
+      throw new Error(`NEWS_ANALYSIS_CLAIM_LOST: ${claim.item.id} attempt ${claim.attempt}`);
+    }
+    const client = held.client;
     try {
       await client.query("BEGIN");
       const updated = await client.query(
@@ -216,7 +300,26 @@ export class PostgresSentimentAnalysisRepository implements SentimentAnalysisSto
       await client.query("ROLLBACK");
       throw error;
     } finally {
-      client.release();
+      await this.releaseExecutionLock(claim);
     }
+  }
+
+  private claimKey(itemId: string, attempt: number, analyzerId: string): string {
+    return `${itemId}|${attempt}|${analyzerId}`;
+  }
+
+  private async releaseExecutionLock(claim: ClaimedNewsItem): Promise<void> {
+    const key = this.claimKey(claim.item.id, claim.attempt, claim.analyzerId);
+    const held = this.executionLocks.get(key);
+    if (held === undefined) return;
+    this.executionLocks.delete(key);
+    let connectionBroken = false;
+    try {
+      await held.client.query("SELECT pg_advisory_unlock(hashtextextended($1, 0))", [claim.item.id]);
+    } catch {
+      connectionBroken = true;
+    }
+    const isStillHeld = [...this.executionLocks.values()].some((entry) => entry.client === held.client);
+    if (!isStillHeld) held.client.release(connectionBroken);
   }
 }

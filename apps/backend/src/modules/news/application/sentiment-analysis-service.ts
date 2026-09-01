@@ -84,14 +84,19 @@ export class SentimentAnalysisService {
   private async analyzeOne(
     claim: ClaimedNewsItem
   ): Promise<"analyzed" | "pending" | "degraded" | "lost"> {
+    const renewal = this.startLeaseRenewal(claim);
     let result: SentimentResult;
     try {
       result = await this.infer(claim);
     } catch (error: unknown) {
+      renewal.stop();
+      if (renewal.ownershipLost()) return "lost";
       return this.recordFailure(claim, this.reasonFor(error));
     }
 
     try {
+      renewal.stop();
+      if (renewal.ownershipLost()) return "lost";
       await this.store.commitResult(claim, result);
       return "analyzed";
     } catch (error: unknown) {
@@ -102,6 +107,57 @@ export class SentimentAnalysisService {
       }
       return this.recordFailure(claim, `NEWS_ANALYSIS_RESULT_NOT_STORED: ${reason}`);
     }
+  }
+
+  /**
+   * Keeps the durable claim alive while inference runs outside any database
+   * transaction. A lost renewal fences this stage from result/failure writes;
+   * a process crash after an external request remains an unavoidable at-least-once
+   * boundary and is recorded as a later retry rather than claimed exactly-once.
+   */
+  private startLeaseRenewal(claim: ClaimedNewsItem): {
+    stop(): void;
+    ownershipLost(): boolean;
+  } {
+    let timer: NodeJS.Timeout | undefined;
+    let active = true;
+    let lost = false;
+
+    const schedule = (leaseExpiresAt: string): void => {
+      const remainingMs = Date.parse(leaseExpiresAt) - Date.now();
+      const delayMs = Math.max(1, Math.floor(Math.max(1, remainingMs) / 2));
+      timer = setTimeout(() => { void renew(); }, delayMs);
+      timer.unref();
+    };
+    const renew = async (): Promise<void> => {
+      timer = undefined;
+      if (!active) return;
+      try {
+        const renewed = await this.store.renewLease(claim);
+        if (renewed === undefined) {
+          lost = true;
+          this.logger.warn(`Claim for ${claim.item.id} was lost during lease renewal.`, CONTEXT);
+          return;
+        }
+        schedule(renewed.leaseExpiresAt);
+      } catch (error: unknown) {
+        lost = true;
+        this.logger.warn(
+          `Claim for ${claim.item.id} could not renew: ${this.reasonFor(error)}`,
+          CONTEXT
+        );
+      }
+    };
+
+    schedule(claim.leaseExpiresAt);
+    return {
+      stop: () => {
+        active = false;
+        if (timer !== undefined) clearTimeout(timer);
+        timer = undefined;
+      },
+      ownershipLost: () => lost
+    };
   }
 
   private async infer(claim: ClaimedNewsItem): Promise<SentimentResult> {
@@ -172,14 +228,26 @@ const systemTimer: SentimentAnalysisTimer = {
   clearInterval: (handle) => clearInterval(handle as NodeJS.Timeout)
 };
 
+const silentSchedulerLogger: SentimentAnalysisLogger = {
+  log: () => undefined,
+  warn: () => undefined,
+  error: () => undefined
+};
+
+function schedulerErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "unknown scheduled analysis failure";
+}
+
 /** Offers explicit manual analysis and a single non-overlapping timer registration. */
 export class SentimentAnalysisScheduler {
   private handle: unknown | undefined;
+  private scheduledRun: Promise<void> | undefined;
 
   constructor(
     private readonly stage: SentimentAnalysisService,
     private readonly pollIntervalMs: number,
-    private readonly timer: SentimentAnalysisTimer = systemTimer
+    private readonly timer: SentimentAnalysisTimer = systemTimer,
+    private readonly logger: SentimentAnalysisLogger = silentSchedulerLogger
   ) {}
 
   async analyzeManually(): Promise<SentimentAnalysisRunResult> {
@@ -192,14 +260,24 @@ export class SentimentAnalysisScheduler {
 
   start(): void {
     if (this.handle !== undefined) return;
-    this.handle = this.timer.setInterval(() => {
-      void this.analyzeOnSchedule();
-    }, this.pollIntervalMs);
+    this.handle = this.timer.setInterval(() => this.triggerScheduledAnalysis(), this.pollIntervalMs);
   }
 
   stop(): void {
     if (this.handle === undefined) return;
     this.timer.clearInterval(this.handle);
     this.handle = undefined;
+  }
+
+  private triggerScheduledAnalysis(): void {
+    if (this.handle === undefined || this.scheduledRun !== undefined) return;
+    this.scheduledRun = this.analyzeOnSchedule()
+      .then(() => undefined)
+      .catch((error: unknown) => {
+        this.logger.error(`Scheduled analysis failed: ${schedulerErrorMessage(error)}`, CONTEXT);
+      })
+      .finally(() => {
+        this.scheduledRun = undefined;
+      });
   }
 }

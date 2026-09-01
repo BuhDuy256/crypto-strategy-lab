@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   NewsWorkerRuntime,
+  type NewsWorkerAnalysisLifecycle,
   type NewsWorkerAnalysisSchedule,
   type NewsWorkerSchedule
 } from "./news-worker-runtime.js";
@@ -11,6 +12,8 @@ import type { NewsWorkerHeartbeat } from "./news-worker-heartbeat.js";
 
 class RecordingSchedule implements NewsWorkerSchedule {
   readonly calls: string[] = [];
+
+  constructor(private readonly shutdownEvents?: string[]) {}
 
   async collectManually() {
     this.calls.push("manual");
@@ -23,11 +26,16 @@ class RecordingSchedule implements NewsWorkerSchedule {
   }
 
   start(): void { this.calls.push("start"); }
-  stop(): void { this.calls.push("stop"); }
+  stop(): void {
+    this.calls.push("stop");
+    this.shutdownEvents?.push("collection-stop");
+  }
 }
 
 class RecordingAnalysisSchedule implements NewsWorkerAnalysisSchedule {
   readonly calls: string[] = [];
+
+  constructor(private readonly shutdownEvents?: string[]) {}
 
   async analyzeManually() {
     this.calls.push("manual");
@@ -54,22 +62,43 @@ class RecordingAnalysisSchedule implements NewsWorkerAnalysisSchedule {
   }
 
   start(): void { this.calls.push("start"); }
-  stop(): void { this.calls.push("stop"); }
+  stop(): void {
+    this.calls.push("stop");
+    this.shutdownEvents?.push("analysis-stop");
+  }
 }
 
 class RecordingHeartbeat implements NewsWorkerHeartbeat {
   readonly calls: string[] = [];
 
+  constructor(private readonly shutdownEvents?: string[]) {}
+
   async start(): Promise<void> { this.calls.push("start"); }
-  stop(): void { this.calls.push("stop"); }
+  stop(): void {
+    this.calls.push("stop");
+    this.shutdownEvents?.push("heartbeat-stop");
+  }
+}
+
+class RecordingAnalysisLifecycle implements NewsWorkerAnalysisLifecycle {
+  readonly calls: string[] = [];
+
+  constructor(private readonly shutdownEvents?: string[]) {}
+
+  async close(): Promise<void> {
+    this.calls.push("close");
+    this.shutdownEvents?.push("analysis-close");
+  }
 }
 
 describe("NewsWorkerRuntime", () => {
   it("runs independent collection and analyzer stages without a backtest runner", async () => {
-    const schedule = new RecordingSchedule();
-    const analysis = new RecordingAnalysisSchedule();
-    const heartbeat = new RecordingHeartbeat();
-    const runtime = new NewsWorkerRuntime(schedule, analysis, heartbeat, { log: () => undefined });
+    const shutdownEvents: string[] = [];
+    const schedule = new RecordingSchedule(shutdownEvents);
+    const analysis = new RecordingAnalysisSchedule(shutdownEvents);
+    const heartbeat = new RecordingHeartbeat(shutdownEvents);
+    const lifecycle = new RecordingAnalysisLifecycle(shutdownEvents);
+    const runtime = new NewsWorkerRuntime(schedule, analysis, heartbeat, lifecycle, { log: () => undefined });
     const controller = new AbortController();
     const running = runtime.run(controller.signal);
 
@@ -80,19 +109,28 @@ describe("NewsWorkerRuntime", () => {
     expect(schedule.calls).toEqual(["scheduled", "start", "stop"]);
     expect(analysis.calls).toEqual(["scheduled", "start", "stop"]);
     expect(heartbeat.calls).toEqual(["start", "stop"]);
+    expect(lifecycle.calls).toEqual(["close"]);
+    expect(shutdownEvents).toEqual([
+      "collection-stop",
+      "analysis-stop",
+      "heartbeat-stop",
+      "analysis-close"
+    ]);
   });
 
   it("keeps manual collection and analysis as separate operational triggers", async () => {
     const schedule = new RecordingSchedule();
     const analysis = new RecordingAnalysisSchedule();
     const heartbeat = new RecordingHeartbeat();
-    const runtime = new NewsWorkerRuntime(schedule, analysis, heartbeat, { log: () => undefined });
+    const lifecycle = new RecordingAnalysisLifecycle();
+    const runtime = new NewsWorkerRuntime(schedule, analysis, heartbeat, lifecycle, { log: () => undefined });
 
     await expect(runtime.collectOnce()).resolves.toMatchObject({ storedCount: 1 });
     await expect(runtime.analyzeOnce()).resolves.toMatchObject({ analyzedCount: 1 });
     expect(schedule.calls).toEqual(["manual"]);
     expect(analysis.calls).toEqual(["manual"]);
     expect(heartbeat.calls).toEqual([]);
+    expect(lifecycle.calls).toEqual([]);
   });
 });
 

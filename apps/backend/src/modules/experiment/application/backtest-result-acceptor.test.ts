@@ -93,6 +93,7 @@ describe("DurableBacktestResultAcceptor", () => {
           window: { id: "window-first", startAt: 1_000, endAt: 61_000, aggregationVersion: "signed-mean-v1" },
           resultIds: ["result-a"],
           modelVersions: ["model-v1"],
+          freshness: { state: "current", ageMs: 0 },
           quality: "current",
           appliedPolicy: { state: "not-applied" }
         },
@@ -100,12 +101,30 @@ describe("DurableBacktestResultAcceptor", () => {
           window: { id: "window-second", startAt: 61_000, endAt: 121_000, aggregationVersion: "signed-mean-v1" },
           resultIds: ["result-b", "result-c"],
           modelVersions: ["model-v2", "model-v1"],
+          freshness: { state: "stale", ageMs: 60_000 },
           quality: "degraded",
           appliedPolicy: { state: "applied", reason: "stale", action: "degrade" }
         }
       ]
     };
-    const withSentiment = { ...outcome, sentimentUsage } as unknown as BacktestRunnerOutcome;
+    const withSentiment = {
+      ...outcome,
+      specification: {
+        ...outcome.specification,
+        content: {
+          ...outcome.specification.content,
+          sentimentInput: {
+            windowDurationMs: 60_000,
+            policy: {
+              maxAgeMs: 30_000,
+              onMissing: { action: "substitute", substituteValue: 0 },
+              onStale: { action: "degrade" }
+            }
+          }
+        }
+      },
+      sentimentUsage
+    } as unknown as BacktestRunnerOutcome;
     const store = { accept: vi.fn(async () => ({ resultId: "result" })) };
 
     await new DurableBacktestResultAcceptor(store as never).accept(withSentiment);
@@ -117,5 +136,40 @@ describe("DurableBacktestResultAcceptor", () => {
         sentimentModel: { status: "recorded", value: ["model-v1", "model-v2"] }
       })
     );
+  });
+
+  it("rejects a sentiment-dependent frozen specification without durable sentiment usage", () => {
+    const requiresSentiment = {
+      ...outcome,
+      specification: {
+        ...outcome.specification,
+        content: {
+          ...outcome.specification.content,
+          sentimentInput: {
+            windowDurationMs: 60_000,
+            policy: {
+              maxAgeMs: 30_000,
+              onMissing: { action: "substitute", substituteValue: 0 },
+              onStale: { action: "degrade" }
+            }
+          }
+        }
+      }
+    } as BacktestRunnerOutcome;
+
+    expect(() => new DurableBacktestResultAcceptor({ accept: vi.fn(async () => ({ resultId: "result" })) } as never)
+      .accept(requiresSentiment))
+      .toThrow("BACKTEST_SENTIMENT_PROVENANCE_REQUIRED");
+  });
+
+  it("rejects sentiment usage for a technical-only frozen specification", () => {
+    const technicalWithSentiment = {
+      ...outcome,
+      sentimentUsage: { schemaVersion: "sentiment-feature-usage.v1", snapshots: [] }
+    } as BacktestRunnerOutcome;
+
+    expect(() => new DurableBacktestResultAcceptor({ accept: vi.fn(async () => ({ resultId: "result" })) } as never)
+      .accept(technicalWithSentiment))
+      .toThrow("BACKTEST_SENTIMENT_PROVENANCE_FORBIDDEN");
   });
 });

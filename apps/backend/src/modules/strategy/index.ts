@@ -2,6 +2,10 @@
 // importable from outside it.
 export { StrategyRegistry } from "./application/strategy-registry.js";
 export { createBuiltInStrategyRegistry } from "./application/built-in-strategy-registry.js";
+export {
+  compositeExecutionDescriptor,
+  createCompositeExecutionStrategy
+} from "./application/composite-execution-strategy.js";
 export type { RunnableStrategy, StrategyRef } from "./application/strategy-registry.js";
 export type {
   Annotation,

@@ -83,16 +83,31 @@ describe("NewsController", () => {
     expect(getDistribution).not.toHaveBeenCalled();
   });
 
-  it("returns the health snapshot as-is, with no aggregation of its own", async () => {
+  it("maps health to the transport-safe contract without forwarding stored internals", async () => {
     const snapshot = {
-      collection: [{ provider: "coindesk-rss", status: "healthy" as const, checkedAt: 1 }],
-      analysis: { status: "healthy" as const, pendingCount: 0, degradedCount: 0, checkedAt: 1 }
-    };
+      collection: [{
+        provider: "coindesk-rss",
+        status: "degraded" as const,
+        checkedAt: 1,
+        reason: "provider error: model gpt-4.1-mini connection refused"
+      }],
+      analysis: {
+        status: "degraded" as const,
+        reason: "openai-responses gpt-4.1-mini rejected request",
+        pendingCount: 1,
+        degradedCount: 0,
+        checkedAt: 1
+      }
+    } as unknown as Awaited<ReturnType<NewsHealthQuery["getHealth"]>>;
     const getHealth = vi.fn(async () => snapshot);
     const controller = await controllerWith({ health: { getHealth } });
 
     const response = await controller.getHealth();
 
-    expect(response).toEqual(snapshot);
+    expect(response).toEqual({
+      collection: [{ status: "degraded", checkedAt: 1 }],
+      analysis: { status: "degraded", pendingCount: 1, degradedCount: 0, checkedAt: 1 }
+    });
+    expect(JSON.stringify(response)).not.toMatch(/coindesk|openai|gpt|provider error/u);
   });
 });

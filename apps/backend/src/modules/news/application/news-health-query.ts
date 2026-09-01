@@ -13,6 +13,21 @@ export interface NewsSourceHealth {
   readonly reason?: string;
 }
 
+/** Transport-safe collection categories. Provider identifiers and reasons stay internal. */
+export type NewsCollectionHealthMessage = "worker-stale" | "source-degraded" | "source-unavailable";
+
+export interface NewsCollectionHealth {
+  readonly status: NewsHealthStatus;
+  readonly checkedAt: number;
+  readonly message?: NewsCollectionHealthMessage;
+}
+
+/** Transport-safe analysis categories. Model and provider failure details stay internal. */
+export type NewsAnalysisHealthMessage =
+  | "retry-limit-reached"
+  | "retryable-failures"
+  | "no-completed-analysis";
+
 export interface NewsAnalysisStateCounts {
   readonly pending: number;
   readonly analyzing: number;
@@ -22,22 +37,20 @@ export interface NewsAnalysisStateCounts {
 
 export interface NewsAnalysisHealth {
   readonly status: NewsHealthStatus;
-  readonly reason?: string;
+  readonly message?: NewsAnalysisHealthMessage;
   readonly pendingCount: number;
   readonly degradedCount: number;
   readonly checkedAt: number;
 }
 
 export interface NewsHealthSnapshot {
-  readonly collection: readonly NewsSourceHealth[];
+  readonly collection: readonly NewsCollectionHealth[];
   readonly analysis: NewsAnalysisHealth;
 }
 
 export interface NewsHealthQuery {
   getHealth(): Promise<NewsHealthSnapshot>;
 }
-
-const STALE_COLLECTION_REASON = "collection worker has not reported within the configured poll interval";
 
 /**
  * `workerHeartbeatAt` is recorded independently of provider collection. A healthy
@@ -49,13 +62,19 @@ export function deriveCollectionHealth(
   workerHeartbeatAt: number | null,
   pollIntervalMs: number,
   now: number
-): NewsSourceHealth[] {
+): NewsCollectionHealth[] {
   return collection.map((source) => {
-    if (
-      source.status !== "healthy" ||
-      (workerHeartbeatAt !== null && now - workerHeartbeatAt < pollIntervalMs)
-    ) return source;
-    return { ...source, status: "degraded", reason: STALE_COLLECTION_REASON };
+    if (source.status === "healthy") {
+      if (workerHeartbeatAt !== null && now - workerHeartbeatAt < pollIntervalMs) {
+        return { status: source.status, checkedAt: source.checkedAt };
+      }
+      return { status: "degraded", checkedAt: source.checkedAt, message: "worker-stale" };
+    }
+    return {
+      status: source.status,
+      checkedAt: source.checkedAt,
+      message: source.status === "degraded" ? "source-degraded" : "source-unavailable"
+    };
   });
 }
 
@@ -71,7 +90,7 @@ export function deriveAnalysisHealth(
   if (counts.degraded > 0) {
     return {
       status: "degraded",
-      reason: `${counts.degraded} item(s) exhausted retries and could not be analyzed`,
+      message: "retry-limit-reached",
       pendingCount,
       degradedCount: counts.degraded,
       checkedAt
@@ -80,7 +99,7 @@ export function deriveAnalysisHealth(
   if (retryableFailureCount > 0) {
     return {
       status: "degraded",
-      reason: "analysis has retryable failures",
+      message: "retryable-failures",
       pendingCount,
       degradedCount: counts.degraded,
       checkedAt
@@ -89,7 +108,7 @@ export function deriveAnalysisHealth(
   if (lastCompletedAt === null) {
     return {
       status: "unavailable",
-      reason: "analysis has not completed any item yet",
+      message: "no-completed-analysis",
       pendingCount,
       degradedCount: counts.degraded,
       checkedAt

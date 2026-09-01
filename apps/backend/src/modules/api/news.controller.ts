@@ -13,10 +13,28 @@ import {
   NEWS_ITEM_QUERY,
   SENTIMENT_DISTRIBUTION_QUERY,
   type NewsHealthQuery,
+  type NewsHealthSnapshot,
   type NewsItemQuery,
   type SentimentDistributionQuery
 } from "../news/index.js";
 import { NewsItemListQueryDto, NewsSentimentDistributionQueryDto } from "./news.dto.js";
+
+function toNewsHealthResponse(snapshot: NewsHealthSnapshot): NewsHealthResponse {
+  return {
+    collection: snapshot.collection.map((entry) => ({
+      status: entry.status,
+      checkedAt: entry.checkedAt,
+      ...(entry.message === undefined ? {} : { message: entry.message })
+    })),
+    analysis: {
+      status: snapshot.analysis.status,
+      pendingCount: snapshot.analysis.pendingCount,
+      degradedCount: snapshot.analysis.degradedCount,
+      checkedAt: snapshot.analysis.checkedAt,
+      ...(snapshot.analysis.message === undefined ? {} : { message: snapshot.analysis.message })
+    }
+  };
+}
 
 @Controller("news")
 export class NewsController {
@@ -47,6 +65,6 @@ export class NewsController {
 
   @Get("health")
   async getHealth(): Promise<NewsHealthResponse> {
-    return this.health.getHealth();
+    return toNewsHealthResponse(await this.health.getHealth());
   }
 }

@@ -4,12 +4,15 @@
 // claiming, and analyzer substitutability. No real model is involved anywhere.
 
 import type { Pool } from "pg";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { loadConfig } from "../../../platform/config.js";
+import { createDatabasePool } from "../../../platform/database.js";
 import { resetTestDatabase } from "../../../platform/test-database.js";
 import {
   SentimentAnalysisService,
   type SentimentAnalysisPolicy
 } from "../application/sentiment-analysis-service.js";
+import type { SentimentAnalysisStore } from "../application/sentiment-analysis-store.js";
 import type { SentimentAnalyzer } from "../application/sentiment-analyzer.js";
 import {
   FakeConstantSentimentAnalyzer,
@@ -26,6 +29,17 @@ const silentLogger = {
   warn: () => undefined,
   error: () => undefined
 };
+
+interface Deferred<T> {
+  readonly promise: Promise<T>;
+  resolve(value: T): void;
+}
+
+function deferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => { resolve = resolvePromise; });
+  return { promise, resolve };
+}
 
 interface ItemStateRow {
   id: string;
@@ -179,7 +193,13 @@ describe("news sentiment inference lifecycle", () => {
 
   it("lets another stage reclaim an abandoned lease without duplicating a result", async () => {
     await collect(1);
-    const abandoned = await store(0).claimPendingItems("analyzer-dead", 1);
+    const deadWorkerPool = createDatabasePool(loadConfig().postgres);
+    const deadWorker = new PostgresSentimentAnalysisRepository(deadWorkerPool, { leaseSeconds: 0 });
+    const abandoned = await deadWorker.claimPendingItems("analyzer-dead", 1);
+    // Dropping only the worker adapter's retained session models process loss:
+    // PostgreSQL releases its advisory execution lock before lease recovery.
+    await deadWorker.close();
+    await deadWorkerPool.end();
 
     const recovery = await stage(new FakeLexiconSentimentAnalyzer(), "analyzer-b", {
       maxAttempts: 3,
@@ -224,6 +244,91 @@ describe("news sentiment inference lifecycle", () => {
     expect(perItem.rows).toEqual([]);
     expect(results.rows).toHaveLength(12);
     expect((await itemStates()).every((row) => row.analysis_state === "analyzed")).toBe(true);
+  });
+
+  it("renews a slow inference lease so a second stage makes no duplicate analyzer call", async () => {
+    await collect(1);
+    let releaseInference!: () => void;
+    let markInferenceStarted!: () => void;
+    const inferenceStarted = new Promise<void>((resolve) => { markInferenceStarted = resolve; });
+    const inferenceRelease = new Promise<void>((resolve) => { releaseInference = resolve; });
+    const slowAnalyzer: SentimentAnalyzer = {
+      analyze: vi.fn(async () => {
+        markInferenceStarted();
+        await inferenceRelease;
+        return new FakeLexiconSentimentAnalyzer().analyze({
+          item: newsItemFixture(),
+          inputVersion: "news-item.v1"
+        });
+      })
+    };
+    const secondAnalyzer: SentimentAnalyzer = {
+      analyze: vi.fn(async (input) => new FakeLexiconSentimentAnalyzer().analyze(input))
+    };
+    const firstRun = stage(slowAnalyzer, "analyzer-a", { maxAttempts: 3, batchSize: 1 }, 1)
+      .analyzeNextBatch();
+    await inferenceStarted;
+    await new Promise((resolve) => setTimeout(resolve, 1_200));
+
+    const secondRun = await stage(secondAnalyzer, "analyzer-b", { maxAttempts: 3, batchSize: 1 }, 1)
+      .analyzeNextBatch();
+
+    expect(secondRun.claimedCount).toBe(0);
+    expect(secondAnalyzer.analyze).not.toHaveBeenCalled();
+
+    releaseInference();
+    await expect(firstRun).resolves.toMatchObject({ analyzedCount: 1, lostClaimCount: 0 });
+  });
+
+  it("keeps a delayed renewal's live inference exclusive after nominal expiry", async () => {
+    await collect(1);
+    const firstRepository = store(1);
+    const renewalEntered = deferred<void>();
+    const releaseRenewal = deferred<void>();
+    const inferenceStarted = deferred<void>();
+    const releaseInference = deferred<void>();
+    const delayedStore: SentimentAnalysisStore = {
+      claimPendingItems: (analyzerId, batchSize) => firstRepository.claimPendingItems(analyzerId, batchSize),
+      renewLease: async (claim) => {
+        renewalEntered.resolve();
+        await releaseRenewal.promise;
+        return firstRepository.renewLease(claim);
+      },
+      commitResult: (claim, result) => firstRepository.commitResult(claim, result),
+      recordFailure: (claim, failure) => firstRepository.recordFailure(claim, failure)
+    };
+    const slowAnalyzer: SentimentAnalyzer = {
+      analyze: async (input) => {
+        inferenceStarted.resolve();
+        await releaseInference.promise;
+        return new FakeLexiconSentimentAnalyzer().analyze(input);
+      }
+    };
+    const secondAnalyzer: SentimentAnalyzer = {
+      analyze: vi.fn(async (input) => new FakeLexiconSentimentAnalyzer().analyze(input))
+    };
+    const firstRun = new SentimentAnalysisService(
+      slowAnalyzer,
+      delayedStore,
+      { maxAttempts: 3, batchSize: 1 },
+      "analyzer-a",
+      silentLogger
+    ).analyzeNextBatch();
+    await inferenceStarted.promise;
+    await renewalEntered.promise;
+    await new Promise((resolve) => setTimeout(resolve, 800));
+
+    const secondRun = await stage(secondAnalyzer, "analyzer-b", { maxAttempts: 3, batchSize: 1 }, 1)
+      .analyzeNextBatch();
+
+    try {
+      expect(secondRun.claimedCount).toBe(0);
+      expect(secondAnalyzer.analyze).not.toHaveBeenCalled();
+    } finally {
+      releaseRenewal.resolve();
+      releaseInference.resolve();
+      await firstRun;
+    }
   });
 
   it("changes only the analyzer binding to swap in a different fake", async () => {

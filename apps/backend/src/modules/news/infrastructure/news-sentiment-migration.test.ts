@@ -3,9 +3,8 @@ import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { MIGRATIONS_DIR, resetDatabase } from "../../../migrate/migration-runner.js";
-import { loadConfig } from "../../../platform/config.js";
-import { createDatabasePool } from "../../../platform/database.js";
+import { MIGRATIONS_DIR } from "../../../migrate/migration-runner.js";
+import { resetTestDatabase } from "../../../platform/test-database.js";
 
 const WIDENING_MIGRATION = "0017_add_news_sentiment_analysis.sql";
 const COLLECTION_MIGRATION = "0016_create_news_collection.sql";
@@ -37,8 +36,7 @@ describe("news sentiment analysis migration", () => {
   let pool: Pool;
 
   beforeAll(async () => {
-    pool = createDatabasePool(loadConfig().postgres);
-    await resetDatabase(pool);
+    pool = await resetTestDatabase({ applyMigrations: false });
     await applyMigrationsThrough(pool, COLLECTION_MIGRATION);
     await insertCollectedItem(pool, "https://www.coindesk.com/existing/first");
     await insertCollectedItem(pool, "https://www.coindesk.com/existing/second");

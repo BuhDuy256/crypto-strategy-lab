@@ -9,6 +9,8 @@ export interface SentimentFeatureUsage {
   readonly window: SentimentFeatureWindow;
   readonly resultIds: readonly string[];
   readonly modelVersions: readonly string[];
+  /** Frozen feature freshness makes the applied policy interpretable after the run. */
+  readonly freshness: SentimentFeatureSnapshot["feature"]["freshness"];
   readonly quality: SentimentFeatureSnapshot["feature"]["quality"];
   readonly appliedPolicy: SentimentFeatureSnapshot["feature"]["appliedPolicy"];
 }
@@ -23,6 +25,7 @@ function usageFrom(snapshot: SentimentFeatureSnapshot): SentimentFeatureUsage {
     window: snapshot.feature.window,
     resultIds: [...new Set(snapshot.provenance.resultIds)].sort(),
     modelVersions: [...new Set(snapshot.provenance.modelVersions)].sort(),
+    freshness: snapshot.feature.freshness,
     quality: snapshot.feature.quality,
     appliedPolicy: snapshot.feature.appliedPolicy
   };

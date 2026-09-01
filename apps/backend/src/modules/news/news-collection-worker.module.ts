@@ -77,9 +77,9 @@ export class NewsCollectionWorkerRuntime {
     },
     {
       provide: NewsCollectionScheduler,
-      inject: [NewsCollectionService],
-      useFactory: (collector: NewsCollectionService): NewsCollectionScheduler =>
-        new NewsCollectionScheduler(collector, loadConfig().news.coinDeskRss.pollIntervalMs)
+      inject: [NewsCollectionService, NEWS_COLLECTION_WORKER_LOGGER],
+      useFactory: (collector: NewsCollectionService, logger: StructuredLogger): NewsCollectionScheduler =>
+        new NewsCollectionScheduler(collector, loadConfig().news.coinDeskRss.pollIntervalMs, undefined, logger)
     },
     {
       provide: NewsCollectionWorkerRuntime,

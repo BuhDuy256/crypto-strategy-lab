@@ -126,9 +126,9 @@ export function NewsPage() {
               {health.collection.length === 0 ? (
                 <p>Collection: unavailable</p>
               ) : (
-                health.collection.map((source) => (
+                health.collection.map((source, index) => (
                   <p
-                    key={`${source.provider}:${source.checkedAt}`}
+                    key={`${source.status}:${source.checkedAt}:${index}`}
                     className={`news-health-status news-health-${source.status}`}
                   >
                     Collection: {source.status}

@@ -2,7 +2,13 @@
 
 import { describe, expect, it } from "vitest";
 import type { DatasetRef, DatasetService } from "../../market/index.js";
-import { StrategyRegistry, type Strategy, type StrategyResult } from "../../strategy/index.js";
+import {
+  CompositeStrategyService,
+  StrategyRegistry,
+  type CompositeStrategyDefinition,
+  type Strategy,
+  type StrategyResult
+} from "../../strategy/index.js";
 import type {
   DraftExperimentSpecification,
   ExperimentDraftContent,
@@ -131,7 +137,18 @@ function sentimentInput() {
   };
 }
 
-function service(): ExperimentSpecificationService {
+function sentimentDraft() {
+  return {
+    ...draft("sentiment-fixture"),
+    strategy: {
+      id: "sentiment-fixture",
+      version: "1.0.0",
+      parameters: { windowDurationMs: 60_000 }
+    }
+  } as ExperimentDraftContent;
+}
+
+function service(composites?: CompositeStrategyService): ExperimentSpecificationService {
   const datasets: DatasetService = {
     createDataset: async () => { throw new Error("not used"); },
     resolveDataset: async (ref) => ({ manifest: { ref, candleCount: 0, gaps: [] }, candles: [] })
@@ -154,20 +171,27 @@ function service(): ExperimentSpecificationService {
     description: "Sentiment required",
     category: "sentiment",
     capabilities: ["sentiment"],
-    parameterSchema: { properties: {}, required: [] },
+    parameterSchema: {
+      properties: {
+        windowDurationMs: {
+          type: "integer", label: "Sentiment window", minimum: 60_000, maximum: 604_800_000
+        }
+      },
+      required: ["windowDurationMs"]
+    },
     requiredInputs: ["sentiment-series"],
     implementation: { kind: "built-in", key: "sentiment-fixture" }
   });
   return new ExperimentSpecificationService(new MemorySpecificationStore(), datasets, new StrategyRegistry([
     technical,
     sentiment
-  ]));
+  ]), composites);
 }
 
 describe("ExperimentSpecificationService sentiment input", () => {
   it("requires explicit sentiment configuration for a sentiment-dependent descriptor", async () => {
     const specifications = service();
-    const created = await specifications.createDraft(draft("sentiment-fixture"));
+    const created = await specifications.createDraft(sentimentDraft());
 
     await expect(specifications.freeze(created.specId, provenance)).rejects.toThrow(
       "EXPERIMENT_FIELD_REQUIRED: sentimentInput"
@@ -176,7 +200,7 @@ describe("ExperimentSpecificationService sentiment input", () => {
 
   it("freezes the sentiment policy with a sentiment-dependent specification", async () => {
     const specifications = service();
-    const content = { ...draft("sentiment-fixture"), sentimentInput: sentimentInput() } as ExperimentDraftContent;
+    const content = { ...sentimentDraft(), sentimentInput: sentimentInput() } as ExperimentDraftContent;
     const created = await specifications.createDraft(content);
 
     await expect(specifications.freeze(created.specId, provenance)).resolves.toMatchObject({
@@ -192,5 +216,53 @@ describe("ExperimentSpecificationService sentiment input", () => {
     await expect(specifications.freeze(created.specId, provenance)).rejects.toThrow(
       "EXPERIMENT_FIELD_FORBIDDEN: sentimentInput"
     );
+  });
+
+  it("rejects a frozen sentiment input whose window disagrees with the selected descriptor", async () => {
+    const specifications = service();
+    const content = {
+      ...sentimentDraft(),
+      strategy: {
+        id: "sentiment-fixture",
+        version: "1.0.0",
+        parameters: { windowDurationMs: 3_600_000 }
+      },
+      sentimentInput: sentimentInput()
+    } as ExperimentDraftContent;
+    const created = await specifications.createDraft(content);
+
+    await expect(specifications.freeze(created.specId, provenance)).rejects.toThrow(
+      "EXPERIMENT_SENTIMENT_WINDOW_MISMATCH"
+    );
+  });
+
+  it("freezes an explicit sentiment input for a composite that contains the sentiment descriptor", async () => {
+    const definition: CompositeStrategyDefinition = {
+      id: "sentiment-composite",
+      version: "1.0.0",
+      name: "Sentiment composite",
+      description: "Fixture",
+      components: [
+        { id: "sentiment-fixture", version: "1.0.0", parameters: { windowDurationMs: 60_000 } },
+        { id: "technical-fixture", version: "1.0.0", parameters: {} }
+      ],
+      policy: { id: "majority-vote", version: "1.0.0", configuration: {} }
+    };
+    const composites = {
+      resolve: async () => ({
+        descriptor: { requiredInputs: ["price-bars"] },
+        definition
+      })
+    } as unknown as CompositeStrategyService;
+    const specifications = service(composites);
+    const content = {
+      ...draft("sentiment-composite"),
+      sentimentInput: sentimentInput()
+    } as ExperimentDraftContent;
+    const created = await specifications.createDraft(content);
+
+    await expect(specifications.freeze(created.specId, provenance)).resolves.toMatchObject({
+      content: { sentimentInput: sentimentInput() }
+    });
   });
 });

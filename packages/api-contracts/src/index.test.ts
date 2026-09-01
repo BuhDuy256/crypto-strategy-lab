@@ -213,15 +213,18 @@ describe("News query contracts (NEWS-07)", () => {
     expect(isNewsSentimentDistributionResponse({
       window: { startAt: 1_000, endAt: 2_000 }, itemCount: 1, positive: Number.NaN, neutral: 0, negative: 0
     })).toBe(false);
+    expect(isNewsSentimentDistributionResponse({
+      window: { startAt: 2_000, endAt: 1_000 }, itemCount: 0, positive: 0, neutral: 0, negative: 0
+    })).toBe(false);
     expect(isNewsSentimentDistributionResponse({ itemCount: 0, positive: 0, neutral: 0, negative: 0 })).toBe(false);
   });
 
-  it("accepts a well-formed health snapshot, including an unavailable analysis state", () => {
+  it("accepts a transport-safe health snapshot, including an unavailable analysis state", () => {
     expect(isNewsHealthResponse({
-      collection: [{ provider: "coindesk-rss", status: "healthy", checkedAt: 1_788_177_600_000 }],
+      collection: [{ status: "degraded", checkedAt: 1_788_177_600_000, message: "source-degraded" }],
       analysis: {
         status: "unavailable",
-        reason: "analysis has not completed any item yet",
+        message: "no-completed-analysis",
         pendingCount: 0,
         degradedCount: 0,
         checkedAt: 0
@@ -229,14 +232,18 @@ describe("News query contracts (NEWS-07)", () => {
     })).toBe(true);
   });
 
-  it("rejects an unknown status or a non-array collection list", () => {
+  it("rejects an unknown status, a non-array collection list, or News internals", () => {
     expect(isNewsHealthResponse({
-      collection: [{ provider: "coindesk-rss", status: "offline", checkedAt: 0 }],
+      collection: [{ status: "offline", checkedAt: 0 }],
       analysis: { status: "healthy", pendingCount: 0, degradedCount: 0, checkedAt: 0 }
     })).toBe(false);
     expect(isNewsHealthResponse({
       collection: {},
       analysis: { status: "healthy", pendingCount: 0, degradedCount: 0, checkedAt: 0 }
+    })).toBe(false);
+    expect(isNewsHealthResponse({
+      collection: [{ status: "degraded", checkedAt: 0, provider: "coindesk-rss", reason: "OpenAI model failed" }],
+      analysis: { status: "degraded", pendingCount: 1, degradedCount: 0, checkedAt: 0, reason: "model gpt failed" }
     })).toBe(false);
   });
 });

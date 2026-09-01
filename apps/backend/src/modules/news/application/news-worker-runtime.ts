@@ -18,6 +18,11 @@ export interface NewsWorkerAnalysisSchedule {
   stop(): void;
 }
 
+/** Releases inference-owned resources before the worker's shared pool shuts down. */
+export interface NewsWorkerAnalysisLifecycle {
+  close(): Promise<void>;
+}
+
 export interface NewsWorkerLogger {
   log(message: string, context?: string): void;
 }
@@ -37,6 +42,7 @@ export class NewsWorkerRuntime {
     private readonly schedule: NewsWorkerSchedule,
     private readonly analysis: NewsWorkerAnalysisSchedule,
     private readonly heartbeat: NewsWorkerHeartbeat,
+    private readonly analysisLifecycle: NewsWorkerAnalysisLifecycle,
     private readonly logger: NewsWorkerLogger
   ) {}
 
@@ -80,7 +86,11 @@ export class NewsWorkerRuntime {
       this.schedule.stop();
       this.analysis.stop();
       this.heartbeat.stop();
-      this.logger.log("News worker stopped gracefully.", "NewsWorker");
+      try {
+        await this.analysisLifecycle.close();
+      } finally {
+        this.logger.log("News worker stopped gracefully.", "NewsWorker");
+      }
     }
   }
 }

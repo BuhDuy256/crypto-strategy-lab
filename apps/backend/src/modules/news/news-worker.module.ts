@@ -82,11 +82,13 @@ const PROCESS_ROLE = "news-worker";
     },
     {
       provide: SentimentAnalysisScheduler,
-      inject: [SentimentAnalysisService],
-      useFactory: (stage: SentimentAnalysisService): SentimentAnalysisScheduler =>
+      inject: [SentimentAnalysisService, NEWS_WORKER_LOGGER],
+      useFactory: (stage: SentimentAnalysisService, logger: StructuredLogger): SentimentAnalysisScheduler =>
         new SentimentAnalysisScheduler(
           stage,
-          loadConfig().news.sentimentAnalysis.pollIntervalMs
+          loadConfig().news.sentimentAnalysis.pollIntervalMs,
+          undefined,
+          logger
         )
     },
     {
@@ -95,14 +97,16 @@ const PROCESS_ROLE = "news-worker";
         NewsCollectionScheduler,
         SentimentAnalysisScheduler,
         PostgresNewsWorkerHeartbeat,
+        PostgresSentimentAnalysisRepository,
         NEWS_WORKER_LOGGER
       ],
       useFactory: (
         schedule: NewsCollectionScheduler,
         analysis: SentimentAnalysisScheduler,
         heartbeat: PostgresNewsWorkerHeartbeat,
+        lifecycle: PostgresSentimentAnalysisRepository,
         logger: StructuredLogger
-      ): NewsWorkerRuntime => new NewsWorkerRuntime(schedule, analysis, heartbeat, logger)
+      ): NewsWorkerRuntime => new NewsWorkerRuntime(schedule, analysis, heartbeat, lifecycle, logger)
     }
   ],
   exports: [NewsWorkerRuntime]

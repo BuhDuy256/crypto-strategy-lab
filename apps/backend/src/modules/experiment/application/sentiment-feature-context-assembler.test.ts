@@ -138,6 +138,7 @@ describe("ExperimentSentimentContextAssembler", () => {
             window: { id: "window-first", startAt: firstTime - 60_000, endAt: firstTime },
             resultIds: ["result-a"],
             modelVersions: ["model-v1"],
+            freshness: { state: "current", ageMs: 0 },
             quality: "current",
             appliedPolicy: { state: "not-applied" }
           },
@@ -145,6 +146,7 @@ describe("ExperimentSentimentContextAssembler", () => {
             window: { id: "window-second", startAt: secondTime - 60_000, endAt: secondTime },
             resultIds: ["result-b", "result-c"],
             modelVersions: ["model-v1", "model-v2"],
+            freshness: { state: "current", ageMs: 0 },
             quality: "current",
             appliedPolicy: { state: "not-applied" }
           }

@@ -61,7 +61,12 @@ export type {
   SentimentFeatureWindow,
   SentimentWindowIdentityInput
 } from "./application/sentiment-feature.js";
-export { NEWS_HEALTH_QUERY, NEWS_ITEM_QUERY, SENTIMENT_DISTRIBUTION_QUERY } from "./application/tokens.js";
+export {
+  NEWS_HEALTH_QUERY,
+  NEWS_ITEM_QUERY,
+  SENTIMENT_DISTRIBUTION_QUERY,
+  SENTIMENT_FEATURE
+} from "./application/tokens.js";
 export type {
   NewsItemListRequest,
   NewsItemPage,

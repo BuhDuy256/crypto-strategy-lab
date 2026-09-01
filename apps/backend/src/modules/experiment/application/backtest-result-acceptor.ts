@@ -84,6 +84,13 @@ export class DurableBacktestResultAcceptor implements BacktestResultAcceptor {
       throw new Error("BACKTEST_PROVENANCE_MISMATCH: engine");
     }
     const sentimentUsage = outcome.sentimentUsage;
+    const requiresSentiment = outcome.specification.content.sentimentInput !== undefined;
+    if (requiresSentiment && sentimentUsage === undefined) {
+      throw new Error("BACKTEST_SENTIMENT_PROVENANCE_REQUIRED");
+    }
+    if (!requiresSentiment && sentimentUsage !== undefined) {
+      throw new Error("BACKTEST_SENTIMENT_PROVENANCE_FORBIDDEN");
+    }
     const checklist: ProvenanceChecklist = {
       specification: { status: "recorded", id: outcome.specification.specId, hash: outcome.specification.contentHash },
       dataset: {
