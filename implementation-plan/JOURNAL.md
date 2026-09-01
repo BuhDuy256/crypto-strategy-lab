@@ -2988,3 +2988,371 @@ criteria alone**
   optional and out of V5 exit criteria. V5 is not declared demoable: its separate
   owner-deferred News backend integration/full-suite, final Compose, and proof gates
   remain unchanged.
+
+### 2026-08-31 - V5 certification pre-proof review reconciliation
+
+**Git and document truth**
+
+- `65110ec` is the committed UI-07 implementation. `d02318b` is its later
+  documentation record, so earlier V5 Journal statements that described UI-07 as
+  uncommitted are historical states, not the current status. No earlier Journal entry
+  was rewritten.
+- The V5 roadmap counted its slices incorrectly. It contains six required News slices
+  plus required UI-07, so its summary now says "7 required slices, plus 1 optional".
+
+**Deferred two-axis reviews**
+
+- NEWS-01 through NEWS-03 were reviewed as `c20d7f9...c46c2e1`; NEWS-05 as
+  `e777b1c...9a44b10`; and NEWS-07 as `956afb7...b5e5f12`. Each review inspected
+  current HEAD `d02318b` before classifying a finding.
+- The reviews found persistent V5 repair candidates: expired sentiment leases can
+  permit duplicate external inference; scheduled collection and analysis omit an
+  in-flight guard and an explicit rejected-promise path; the historical migration test
+  bypasses the shared test-database helper; the News health API exposes provider IDs
+  and raw stored reasons; and NEWS-07 isolation coverage does not exercise all News
+  reads against chart, backtest, and discovery consumers. Smaller NEWS-07 test-name
+  and assertion gaps were also recorded.
+- The NEWS-05 reviewers also flagged the public sentiment snapshot/provenance surface
+  for conformance review. Its response object excludes model data, while the separate
+  Experiment provenance carrier contains result references and model versions. This
+  must be resolved together with the proof-scope decision below, not silently changed.
+
+**Certification blocker**
+
+- V5 demo step 8 and `PROOF-ISO-002` require a sentiment-dependent candidate that
+  applies the missing/stale policy. However no required V5 strategy declares
+  `sentiment-series`; the Journal records the runner wiring as intentionally
+  unreachable; and `NEWS-06`, the only planned sentiment strategy, is explicitly
+  optional and outside V5 exit criteria. The owner prohibited implementing NEWS-06
+  merely to create proof evidence. This is a scope conflict, not a documentation gap.
+- No proof, full-suite certification, final Compose gate, migration, reset, seed,
+  commit, or tag was run after this blocker was identified. The main Compose database
+  remained intact after read-only preflight inspection.
+
+**Next action**
+
+- Obtain an owner decision that either authorizes a minimal required V5 consumer path,
+  removes the candidate demonstration from V5 proof/demo obligations, or changes V5
+  scope through the architecture review procedure. Then repair the review findings
+  with targeted red-green tests before resuming `PROOF-ISO-001` and `PROOF-ISO-002`.
+
+### 2026-09-01 - V5 scope correction: NEWS-06 is required
+
+**Owner decision and scope rationale**
+
+- The owner selected the first resolution: retain the existing V5 demo and proof
+  obligation, and make `NEWS-06` a required V5 slice. `VERSIONS.md` demo step 8 and
+  `PROOF-ISO-002` already require a real sentiment-dependent candidate that applies a
+  missing-or-stale policy. `NEWS-06` is the sole planned slice that owns that consumer.
+  This corrects an inconsistent plan boundary; it does not add a new strategy system,
+  model, source, UI feature, or V6 mechanism.
+- The V5 count is consequently eight required slices: seven News slices and `UI-07`.
+  The former optional wording and the claim that V5 was demoable without `NEWS-06`
+  were corrected in the live plan and tracker. Earlier Journal entries remain a record
+  of their then-current state and are not rewritten.
+
+**Execution seam and preserved architecture**
+
+- `NEWS-05` already provides the public `SentimentFeature` port, explicit policy,
+  `ExperimentSentimentContextAssembler`, and a durable result-provenance field. The
+  minimal V5 completion is a registered `NewsSentimentStrategy`, public News feature
+  binding, and runner-side context assembly before worker-thread computation. A
+  technical-only descriptor continues to resolve no News port.
+- No frozen Strategy, Backtester, Evaluator, RankingPolicy, BacktestExecutor,
+  SentimentAnalyzer, or SentimentFeature contract changes. Strategy remains isolated
+  from concrete News infrastructure; the runner consumes only the public News port.
+  The worker thread receives assembled immutable inputs and does not call News.
+
+**Next action**
+
+- Implement `NEWS-06` and the persistent Phase A review repairs using focused
+  red-green tests. Proofs, the final repository-wide gate, and Compose certification
+  remain deferred until a fixed-point two-axis review is clean.
+
+### 2026-09-01 - Owner clarification: NEWS-06 remains optional
+
+**Decision**
+
+- This entry supersedes the current exit-scope effect of the preceding scope-correction
+  entry; it does not rewrite the historical record of that decision. `NEWS-06` remains
+  an optional V5 bonus slice and is not a V5 certification, Definition of Demoable, or
+  `PROOF-ISO-002` prerequisite.
+- The normative V5 plan explicitly states that `NEWS-05` directly supports
+  `PROOF-ISO-002`, and the proof plan permits direct use of the existing NEWS-05
+  sentiment feature/context assembly when the optional strategy slice is skipped.
+  `PROOF-ISO-002` will therefore be demonstrated through that existing consumer seam,
+  not through the optional registered strategy.
+- The in-progress `NEWS-06` implementation may continue only as an optional bonus
+  against its original acceptance criteria. It must not change existing strategies,
+  `CompositeStrategy`, Backtester, Evaluator, ranking, or combination policy.
+
+**Consequences**
+
+- The live V5 count is restored to seven required slices plus one optional slice.
+  `VERSIONS.md` and `TRACKING.md` again identify `NEWS-06` as optional and remove it
+  from all exit criteria.
+- The registered sentiment strategy and runner-side declared-input assembly remain an
+  allowed optional implementation surface. Any composite input declaration needed for
+  its execution must be assembled outside `CompositeStrategy` from existing component
+  descriptors.
+- The required V5 proof and final certification remain blocked only by their actual
+  repairs, runtime evidence, and integration gates; they do not depend on completion
+  of the optional bonus.
+
+### 2026-09-01 - V5 Phase A repairs and checkpoint
+
+**Scope truth**
+
+- The V5 demo scenario now names the required NEWS-05 direct context consumer for the
+  missing-or-stale policy demonstration. `NEWS-06` may demonstrate it as an optional
+  bonus only. This removes the remaining implication that an optional strategy is an
+  exit requirement; `PROOF-ISO-002` remains independent of it.
+
+**Repairs and validation**
+
+- The deferred NEWS-01..03, NEWS-05, and NEWS-07 reviews were closed with focused
+  repairs: a session advisory lock fences normal live inference across nominal lease
+  expiry without holding a transaction during model I/O; schedulers contain rejection,
+  serialize ticks, and stop new work on shutdown; destructive tests fail closed unless
+  their connected database is a marker-verified `csl_test_*` database; public News
+  health is generic; and all News reads have independent failure coverage while Market,
+  backtest, and discovery remain usable.
+- The optional `NEWS-06` implementation is present with a registered descriptor,
+  configured thresholds/window, NEWS-05 policy and provenance wiring, composite
+  required-input assembly outside `CompositeStrategy`, and a zero-call technical path.
+  It did not change an existing strategy, `CompositeStrategy`, Backtester, Evaluator,
+  ranking, or combination policy.
+- Provenance now retains frozen feature freshness, window, and applied policy. The
+  result acceptor rejects both missing sentiment usage for a sentiment-dependent
+  frozen specification and false sentiment usage for a technical-only specification.
+- On the isolated `csl_test_v5_certification` database, the lifecycle suite passed
+  8 tests, the repository suite passed 8 tests, the migration suite passed 4 tests,
+  and the database guard suite passed 4 tests. A read-only post-test query found no
+  remaining client sessions or advisory locks. The protected demo database was never
+  reset, reseeded, or modified.
+- The final shutdown repair stops collection, analysis, and heartbeat timers before
+  it releases News-owned inference sessions and before Nest closes the shared pool.
+  The runtime ordering and active-claim pool-close regressions, backend typecheck,
+  scoped lint, and `git diff --check` pass.
+
+**Residual boundary and next action**
+
+- Durable result/attempt completion is exactly-once for a live claim. External model
+  invocation is deliberately not claimed as exactly-once: process/session loss,
+  graceful shutdown after request dispatch, or an uncertain network response can leave
+  an external request in flight while a later recovery retries. The session lock removes
+  the normal lease-expiry concurrent-call race only.
+- The two independent fixed-point reviews found and drove the repairs above. The
+  final narrow re-review request of the heartbeat-ordering delta could not run because
+  the review agents exhausted their usage limit. Repeat that narrow two-axis review
+  first on resume, then start `PROOF-ISO-001`. No proof, repository-wide V5 gate,
+  final Compose gate, commit, or tag has run in this session.
+
+### 2026-09-01 - V5 Phase A fixed point and optional NEWS-06 completion
+
+**Result**
+
+- The narrow two-axis re-review of the final shutdown delta is clean. Standards found no
+  documented-rule or baseline-smell finding. Spec/architecture found that collection, analysis,
+  and heartbeat timers stop before `NewsWorkerAnalysisLifecycle.close()` is awaited; the local
+  `PostgresSentimentAnalysisRepository` seam releases held advisory-lock clients before
+  `main.news-worker.ts` closes Nest's shared pool.
+- Optional `NEWS-06` is complete in the certification working tree. Its registered
+  `news-sentiment` descriptor declares `sentiment-series`; thresholds and window are descriptor
+  parameters; the existing composite/policy types remain unchanged; NEWS-05 supplies missing and
+  stale policy plus durable provenance; and technical-only execution makes no News feature call.
+  No existing strategy, `CompositeStrategy`, Backtester, Evaluator, ranking, or combination
+  policy changed.
+
+**Validation**
+
+- The refreshed NEWS-06/fixed-point batch passed 10 files / 58 tests, including signal cases,
+  strategy catalog, technical composite, missing-policy provenance, runner input transport and
+  technical-only zero-call behavior, API DTO/controller mapping, runner composition, contracts,
+  and shutdown order. Backend and API-contract typechecks, scoped ESLint, and `git diff --check`
+  pass.
+
+**Next action**
+
+- Phase A is closed. Phase B remains unstarted: first verify Docker Desktop read-only, then run
+  `PROOF-ISO-001`. `NEWS-06` remains an optional bonus and never gates V5, its Definition of
+  Demoable, or `PROOF-ISO-002`; that proof uses the NEWS-05 direct context-assembly seam. No
+  proof, repository-wide gate, Compose/demo gate, commit, push, or tag has run.
+
+### 2026-09-01 - V5 PROOF-ISO-001 passes on Compose
+
+**Result**
+
+- `PROOF-ISO-001` passes on the source-built V5 Compose topology. The separate News worker was
+  stopped gracefully, its health changed to the public `worker-stale` degraded state after the
+  configured heartbeat interval, and restarting only that worker returned collection health to
+  healthy. The real source recovered through normal deduplication.
+- A Socket.IO monitor held four `BTCUSDT` chart subscriptions (`5m`, `15m`, `1h`, `4h`) for
+  seventeen minutes across the failure and recovery. It received every snapshot, stayed connected,
+  and recorded no errors. API, runner, market ingest, Redis, and web remained available.
+- During the outage, a technical-only backtest completed with `newsInput` marked not applicable.
+  A discovery run on existing durable one-minute data stopped by its valid `exhausted` condition
+  with four completed candidates and four leaderboard entries. No reset, seed, migration-ledger
+  change, or temporary test-database use occurred.
+
+**Investigation note**
+
+- An initial short discovery fixture produced no leaderboard row. This was not a projection defect:
+  the applied-version ledger proved projection ran, and the result had one closed trade while the
+  frozen ranking policy requires five. The final longer fixture was eligible and ranked.
+
+**Evidence and next action**
+
+- Complete commands, runtime identities, dataset windows, result IDs, timestamps, and recovery
+  logs are recorded in [`PROOF-ISO-001.md`](../docs/validation/evidence/PROOF-ISO-001.md).
+- The temporary `csl_test_v5_certification` database still has no active sessions or advisory
+  locks, but its expected guard-marker schema was missing at this preflight. Do not use or alter it
+  without a separate marker-safe decision. The protected Compose database remains untouched except
+  for normal proof application operations.
+- Next: run `PROOF-ISO-002` through the required NEWS-05 direct context-assembly seam. `NEWS-06`
+  remains optional and is not part of that proof. The repository-wide V5 gate still waits for both
+  ISO proofs.
+
+### 2026-09-01 - V5 PROOF-ISO-002 passes through NEWS-05
+
+**Result**
+
+- `PROOF-ISO-002` passes through the required direct NEWS-05
+  `ExperimentSentimentContextAssembler` seam, not through optional NEWS-06. A temporary
+  source-built News worker with an empty model credential recorded an
+  `ANALYZER_UNAVAILABLE` attempt and returned its item to `pending`; a later normal worker
+  recorded the successful retry and exact hosted-model provenance.
+- The guarded `csl_test_v5_certification` database was rechecked immediately before use. Its
+  exact durable marker and token were present, all 18 migrations matched source, and it had zero
+  other sessions and zero advisory locks. A deterministic BTC fixture was persisted only through
+  the real News collection service/repository, never by direct SQL. The protected Compose
+  database and migration ledger were not reset, reseeded, dropped, or changed outside normal
+  proof operations.
+- Direct context assembly produced a current BTC usage manifest with durable result/model
+  provenance, stale observed sentiment with explicit `degrade` policy, and missing ETH sentiment
+  with explicit `block` policy. A technical-only descriptor made zero News feature calls.
+
+**Evidence and next action**
+
+- Commands, timestamps, attempt outcomes, provenance, policy results, and cleanup state are in
+  [`PROOF-ISO-002.md`](../docs/validation/evidence/PROOF-ISO-002.md). The source Compose
+  topology stayed running; the temporary worker containers exited cleanly with no held client or
+  advisory-lock session.
+- Both required V5 isolation proofs now pass. Next: run the repository-wide V5 gate exactly once,
+  then run the final Compose Definition of Demoable/cleanup gate. `NEWS-06` remains optional and
+  never becomes an exit condition.
+
+### 2026-09-01 - V5 repository gate hand-off is not certifiable
+
+- Repository typecheck passed. The first lint run found only two unused callback parameters in an
+  untracked V5 lease-renewal regression test; the test-only parameters/import were removed and a
+  second lint run passed. `git diff --check` passed without whitespace errors.
+- Before the suite, the guarded test database marker/token, zero other sessions, and zero advisory
+  locks were verified. The one authorized `pnpm test` process inherited the explicit test database
+  name and guard token, ran database resets only there, and later exited with zero remaining test
+  sessions or advisory locks.
+- The terminal tool yielded part-way through that long-running process and did not retain the
+  process session identifier or final exit code/summary. The process subsequently exited, but its
+  pass/fail result cannot be recovered from the available evidence. Do not claim a repository-wide
+  V5 gate pass or begin final Compose/demo cleanup. A replacement full-suite run requires an owner
+  decision because the certification instruction limited it to one run.
+
+### 2026-09-01 - Unguarded manual `pnpm test` is an invalid gate attempt, not 26 regressions
+
+- A manually run `pnpm test` (Git Bash, no injected `POSTGRES_DB`/`TEST_DATABASE_GUARD_TOKEN`)
+  reported 26 failed / 108 passed test files and 643 passed / 129 skipped tests, with nearly
+  every failed suite's `beforeAll` throwing `TEST_DATABASE_GUARD_DATABASE: configured database is
+  not a dedicated test database`, plus one secondary `TypeError: Cannot read properties of
+  undefined (reading 'end')` in `integration/market-live-ingest.e2e.test.ts`'s `afterAll`.
+- Root cause confirmed by reading `.env` (`POSTGRES_DB=crypto_strategy_lab`, the protected main
+  database, no `TEST_DATABASE_GUARD_TOKEN`) and `vitest.setup.ts` (loads root `.env` only for
+  variables not already in the process environment). The plain invocation therefore resolved
+  `loadConfig()` to the protected main database name, which fails
+  `TEST_DATABASE_NAME.test(database)` in `assertTestDatabaseGuard`
+  (`apps/backend/src/platform/test-database.ts`) before any reset is attempted — exactly
+  reproduced in isolation on `apps/backend/src/modules/news/infrastructure/news-sentiment-migration.test.ts`.
+  The `market-live-ingest.e2e.test.ts` `TypeError` is a direct downstream symptom: its
+  module-level `pool` stays `undefined` when `beforeAll` throws first, so `afterAll`'s
+  `pool.end()` fails on `undefined` — not an independent product bug.
+- This was an invalidly configured gate attempt, not 26 application regressions. No product or
+  test code was faulted for it and none was changed for it.
+- The guarded temporary database `csl_test_v5_certification` was reverified read-only before any
+  further action: exact durable marker/token present, zero other sessions, zero advisory locks,
+  distinct from and never confused with the protected `crypto_strategy_lab` database.
+- The same file passed cleanly (4/4) once run with the correct guarded configuration
+  (`POSTGRES_DB=csl_test_v5_certification TEST_DATABASE_GUARD_TOKEN=v5-certification-test-guard-token`),
+  confirming the diagnosis before spending the one authorized full-suite run.
+
+### 2026-09-01 - Correctly guarded full-suite run finds and fixes one pre-existing defect
+
+- The one authorized full `pnpm test` run under the correct guarded configuration completed with
+  exit code 1: **1 failed / 133 passed test files, 1 failed / 771 passed tests, 250.51s**
+  (`Start at 19:18:03`). The guard/session/lock state was reverified clean before and after.
+- The single failure, `apps/backend/src/platform/database.test.ts > database schemas > creates
+  only the tables currently owned by each module`, expected the `news` schema to own zero tables
+  and received the 5 real tables (`collection_worker_heartbeat`, `items`,
+  `sentiment_analysis_attempts`, `sentiment_results`, `source_health`).
+- This is a genuine, pre-existing defect unrelated to the V5 certification diff: `database.test.ts`
+  was last committed at the V4 freeze (`5f2f7af`), before migrations `0016`-`0018` created any News
+  table. Its hardcoded `news: []` expectation was simply never updated across NEWS-01 through
+  NEWS-07/UI-07; the actual schema is correct per the frozen architecture's News module boundary.
+- Fix: updated only the stale `expectedTables.news` array in `database.test.ts` to the five real,
+  intentional News-owned table names (alphabetical, matching the query's `ORDER BY table_name`).
+  No product code changed. Targeted re-run of the corrected file passes (2/2). Guard/session/lock
+  state on `csl_test_v5_certification` remained clean after.
+- The one full-suite run authorized for that session is spent. A second full run to obtain a
+  clean, complete repository-wide gate result is recommended but requires explicit owner
+  authorization before it is run. Final Compose/demo cleanup, commit, push, and tag remain
+  pending regardless.
+
+### 2026-09-01 - V5 repository gate is green
+
+- The owner authorized a second guarded full-suite run plus iterate-until-clean repair authority.
+  Preflight reconfirmed `csl_test_v5_certification`'s guard marker/token, zero sessions, and zero
+  advisory locks. The correctly guarded `pnpm test` run is fully clean: **exit code 0, 134/134
+  test files, 772/772 tests, 178.06s** (`Start at 19:39:59`). No further defects were found; the
+  database guard/session/lock state remained clean after.
+- Independently cross-checked the official assignment spec (`docs/requirements/Crypto Strategy
+  Lab – Đồ án cuối kỳ.pdf`, previously rendered pages 27-29 and the MVP minimum section 37/38) against
+  the implemented code. News module fields (`news.items`: id, title, content, source,
+  published_at, collected_at, related_coins, url) match section 27's required `News` shape
+  exactly. The News Provider port (`news-provider.ts`) with a swappable `coindesk-rss-news-provider.ts`,
+  a fake, and a shared reusable contract test satisfies section 28's "must not be hard-coded to
+  one crawler" requirement. Sentiment analysis (analyzer port + OpenAI-based analyzer,
+  POSITIVE/NEGATIVE-shaped classification) satisfies section 29 (Module 11). The MVP minimum
+  checklist in section 37 (Market: Binance data/candlestick/realtime/4 timeframes; Strategy: at
+  least MA, RSI, Bollinger, Support/Resistance; Combination: composite strategy; Backtest;
+  Evaluation: totalReturn/winRate/maximumDrawdown/numberOfTrades; Search: random search;
+  Leaderboard: Top-K; Visualization: buy/sell/entry/exit; News: collect -> store -> analyze
+  sentiment pipeline) is present in code with matching field/module names. V1-V4 items were spot-
+  checked, not re-audited from scratch, since that scope carries its own prior `v4.0-demo`
+  certification.
+- The repository-wide V5 gate is now genuinely green. Next: the Compose/demo integration cleanup
+  gate (`DEMO-01`), then commit and push (owner pre-authorized the push).
+
+### 2026-09-01 - DEMO-01 recertified for V5
+
+- `docker compose up --build -d` rebuilt every backend image from the current source (including
+  the uncommitted V5 certification diff) and brought up the topology in dependency order:
+  `postgres` healthy -> `migrate` exit 0 -> `api` healthy, `market-ingest`, `news-worker`,
+  `runner` started -> `web` up. `docker compose config --services` lists exactly `api
+  market-ingest migrate news-worker postgres redis runner web`, matching `VERSIONS.md`'s V5 role
+  table (V4's roles plus the news worker) with no later-version role (no BullMQ, outbox, or
+  worker-pool scaling).
+- Live smoke against the rebuilt stack (not a full browser walkthrough, since the two isolation
+  proofs already drove that scenario in depth): `GET /health` -> `{"status":"ok"}`; `GET
+  /news/health` -> collection `healthy`, analysis `healthy` with zero pending/degraded; `GET
+  /news/items` -> real analyzed CoinDesk RSS items with title/source/publishedAt/relatedCoins;
+  `GET /strategies` -> the descriptor catalog including `moving-average` with its parameter
+  schema; the web SPA responded `200` at `:8080`.
+- `docs/demo-script.md` gained a "V5 News and Sentiment walkthrough" section (collect/store/
+  analyze, stop/restart the news worker, unreachable-model degradation, technical-only zero
+  sentiment call, the architecture isolation point), referencing `PROOF-ISO-001.md` and
+  `PROOF-ISO-002.md` for full command-level evidence rather than duplicating it. The "Before you
+  start" expected-service list was corrected: it previously said a news service was absent
+  (stale, predating NEWS-02); it now lists `news-worker`. `docker-compose.yml`'s header comment
+  was corrected from "V4's current MKT-06 state" to V5's state. The document's own certified-
+  baseline header is untouched (still V1-V4) since freezing V5 remains an explicit owner decision.
+- `DEMO-01`'s V5 Compose integration gate PASS. Combined with the green repository-wide test
+  suite, both ISO proofs, and the requirements cross-check, every condition in V5's Definition of
+  Demoable (`VERSIONS.md`) now has direct evidence except the owner's own freeze decision.

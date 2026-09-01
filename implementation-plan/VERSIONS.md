@@ -470,7 +470,7 @@ of the application keep working while the news worker is switched off.
 
 ### Included implementation slices
 
-6 slices, plus 1 optional.
+7 required slices, plus 1 optional.
 
 | File | Slices |
 |---|---|
@@ -501,8 +501,10 @@ Optional, not part of exit criteria: `NEWS-06` (sentiment as a strategy).
 6. Restart the news worker; collection resumes and catches up.
 7. Make the model unreachable. Collection keeps storing items; the analysis health
    goes degraded and failed attempts are recorded with reasons.
-8. Show a sentiment-dependent candidate applying the configured missing-sentiment
-   policy rather than silently using stale data.
+8. Show the required NEWS-05 sentiment context consumer applying its configured
+   missing-or-stale policy rather than silently using stale data. The optional
+   `NEWS-06` strategy may demonstrate the same policy as a bonus, but is not needed
+   for this scenario or any exit criterion.
 9. Show the architecture point: the collector never calls the model, and the
    strategy never imports either one.
 

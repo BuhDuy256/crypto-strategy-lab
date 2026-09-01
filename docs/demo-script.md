@@ -7,7 +7,11 @@ as part of `DEMO-01`.
 
 Current certified baseline: **V1 through V4**, frozen at `v4.0-demo`. Repository
 product authorization is now **V5**; this evidence script records what is certified
-and does not advance it. Demo scenario sources are in
+and does not advance it. The V5 walkthrough below is validated (both isolation
+proofs pass on this topology; see
+[`PROOF-ISO-001.md`](validation/evidence/PROOF-ISO-001.md) and
+[`PROOF-ISO-002.md`](validation/evidence/PROOF-ISO-002.md)) but V5 itself is not
+yet frozen — that tag is an explicit owner decision. Demo scenario sources are in
 [`implementation-plan/VERSIONS.md`](../implementation-plan/VERSIONS.md).
 
 ## Before you start
@@ -28,9 +32,8 @@ and does not advance it. Demo scenario sources are in
    ```
 
    You should see `postgres` healthy, `migrate` exited with code 0, `api`
-   healthy, `runner`, `market-ingest`, and `web` up, and `redis` healthy. BullMQ,
-   an outbox dispatcher, and a news service are not present; they belong to later
-   versions.
+   healthy, `runner`, `market-ingest`, `news-worker`, and `web` up, and `redis`
+   healthy. BullMQ and an outbox dispatcher are not present; they belong to V6.
 
 3. Load the demo market data:
 
@@ -53,6 +56,36 @@ and does not advance it. Demo scenario sources are in
    ```
 
 4. Open the SPA at <http://localhost:8080> and go to the Discovery page.
+
+## V5 News and Sentiment walkthrough
+
+1. Start the full topology, including `news-worker`, as in "Before you start".
+   Open the News page. Collected items list with source, publish time, and
+   related coins.
+2. Show the sentiment distribution over the last window and the analyzed item
+   count.
+3. Stop the news worker (`docker compose stop news-worker`). The News page
+   reports collection degraded; no other page is affected.
+4. Switch to Realtime — charts still stream. Run a backtest — it still
+   completes. Run a discovery loop — it still ranks. This is the isolation
+   claim `PROOF-ISO-001` proves in full detail, including recovery after
+   `docker compose start news-worker`.
+5. Configure the news worker with an unreachable model credential. Collection
+   keeps storing items; analysis health goes degraded and failed attempts are
+   recorded with a generic reason, never a raw provider/model detail. This is
+   the isolation claim `PROOF-ISO-002` proves in full detail, including the
+   durable retry once the model is reachable again.
+6. Run a technical-only backtest (no sentiment-series strategy) and confirm its
+   result records `newsInput` as not applicable — the sentiment port is never
+   called for a descriptor that does not declare it.
+7. Show the architecture point: the collector never calls the sentiment model,
+   and no strategy imports the News repository, provider, or analyzer
+   directly — only the durable `SentimentFeature` query, applying its
+   configured missing/stale policy.
+
+Full evidence, including exact commands and durable identities, is in
+[`PROOF-ISO-001.md`](validation/evidence/PROOF-ISO-001.md) and
+[`PROOF-ISO-002.md`](validation/evidence/PROOF-ISO-002.md).
 
 ## V4 Realtime Market Data walkthrough
 

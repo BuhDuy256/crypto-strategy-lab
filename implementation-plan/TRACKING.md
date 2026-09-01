@@ -21,13 +21,13 @@ true; keep conversation out of them.
 | Current target version | **V5 - News and Sentiment** |
 | Previous version | **V4 - Realtime Market Data: frozen at `v4.0-demo` on 2026-08-30.** V3 was frozen at `v3.1-demo` on 2026-08-29. |
 | Last verified commit | `65110ec`, the committed UI-07 implementation on `v5-news-and-sentiment`. `b5e5f12`, `9a44b10`, `e777b1c`, `c46c2e1`, `93958a9`, and `6f387d6` are the committed NEWS-07, NEWS-05, NEWS-04, NEWS-03, NEWS-02, and NEWS-01 slices. |
-| Next allowed action | No required V5 implementation slice is `READY`: `UI-07` is committed `65110ec` and `NEWS-06` remains optional/out of scope. Do not declare V5 demoable, move versions, tag, or automatically start the owner-deferred News backend integration/full-suite and final Compose/proof gates. The NEWS-01..NEWS-03 slice-diff review and both NEWS-05's and NEWS-07's own code-review/full-suite steps remain owner-deferred. |
-| Last verified on | 2026-08-31 (UI-07 heartbeat, targeted tests, typechecks, scoped lint, diff check, two-axis review, and browser proof; V4 certification remains unchanged). |
+| Next allowed action | **Repository-wide V5 gate is GREEN. Proceed to Compose/demo integration cleanup, then commit and push (owner-authorized).** `PROOF-ISO-001` and `PROOF-ISO-002` pass; repository typecheck and lint pass. Guarded `pnpm test` (`POSTGRES_DB=csl_test_v5_certification`, `TEST_DATABASE_GUARD_TOKEN` set) ran twice: the first run found one pre-existing, out-of-scope defect (`apps/backend/src/platform/database.test.ts`, stale since the V4 freeze, predating any News migration — asserted the `news` schema owns zero tables when migrations `0016`-`0018` correctly created 5 News-owned tables); fixed by updating only the stale expectation. The second guarded run is fully clean: **exit code 0, 134/134 test files, 772/772 tests, 178.06s**. An earlier plain `pnpm test` (no injected `POSTGRES_DB`/`TEST_DATABASE_GUARD_TOKEN`) is a separate, invalid data point recorded for history: it resolved to the protected main database `crypto_strategy_lab`, so the guard correctly fail-closed on every database-backed suite's `beforeAll` (`TEST_DATABASE_GUARD_DATABASE`); those 26 suites were blocked by an invalid local invocation, not by application defects. |
+| Last verified on | 2026-09-01 (Phase A fixed-point review, optional NEWS-06 validation, both ISO proofs, repository typecheck/lint, a correctly guarded full-suite run that found and fixed one pre-existing stale-test defect, a second correctly guarded full-suite run fully green, and an invalid unguarded manual run recorded for history; V4 certification remains unchanged). |
 | Last tag | `v4.0-demo`, the certified V1-V4 baseline, on `v4-realtime-market-data`. `v3.1-demo` remains the certified V1-V3 baseline on `feat/v3-automated-discovery`; `v3.0-demo` deliberately remains on `2b98139`. `v1.0-demo` and `v2.0-demo` do not exist. |
 | V3 slices | 8 (`DONE` 8, `READY` 0, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 0) — V3's own scope and its V1+V2 regression condition pass in the baseline-freeze state. |
 | V4 slices | 5 (`DONE` 5, `READY` 0, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 0) — `WS-03`, `MKT-06`, `MKT-07`, `MKT-09`, and `MKT-11` are done. |
-| V5 slices | 7 required plus 1 optional (`DONE` 7, `READY` 0, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 1) — `NEWS-01` through `NEWS-05`, `NEWS-07`, and `UI-07` are committed (`6f387d6`, `93958a9`, `c46c2e1`, `e777b1c`, `9a44b10`, `b5e5f12`, `65110ec`); the owner deferred the NEWS-01..NEWS-03 combined slice-diff review and both NEWS-05's and NEWS-07's own code-review/full-suite steps; `NEWS-06` (optional) is `TODO`. |
-| History | [`JOURNAL.md`](JOURNAL.md), sections "V1", "V3", "V1/V2 recovery", "V1-V3 freeze repairs", "Demo data prerequisite", and "V4". The V4 -> V5 transition below records the version handover. The recovery entry records the durable V2 decisions that were missing from the original history. |
+| V5 slices | 7 required (`DONE` 7, `READY` 0, `IN_PROGRESS` 0, `BLOCKED` 0, `TODO` 0), plus 1 optional `DONE` bonus — `NEWS-01` through `NEWS-05`, `NEWS-07`, and `UI-07` are committed (`6f387d6`, `93958a9`, `c46c2e1`, `e777b1c`, `9a44b10`, `b5e5f12`, `65110ec`); their deferred two-axis reviews are complete and their current findings are recorded in JOURNAL.md. `NEWS-06` is complete in the uncommitted certification worktree, remains optional, and does not gate V5 certification. |
+| History | [`JOURNAL.md`](JOURNAL.md), sections "V1", "V3", "V1/V2 recovery", "V1-V3 freeze repairs", "Demo data prerequisite", "V4", and "V5". The V4 -> V5 transition below records the version handover. The recovery entry records the durable V2 decisions that were missing from the original history. |
 
 ## V4 -> V5 transition (2026-08-30)
 
@@ -307,7 +307,7 @@ more than one session.
 | EXP-11 | REQ | S | Visualization annotation capture | **DONE** | EXP-10, STRAT-01 | | Implemented annotation downsampler and integrated into PostgresResultAcceptanceStore. Fixed API process timeout in E2E tests (`integration/backtest-runner-lifecycle.e2e.test.ts`). Tests pass. | [03](03-experiment-backtest-evaluation.md) |
 | UI-04 | CRIT | M | Backtest page with metrics and trades | **DONE** | EXP-10, MKT-05 | | Original claim, kept as written: "Interaction defaults accepted (2s poll, 20 trades/page, static panel). Implemented metrics dashboard, trade list, pagination, and sorting; test suite and visual inspection confirmed." **Reopened 2026-08-28** (audit, R1): pressing Start returned 500, used an invented DatasetRef and an unregistered strategy id, assembled Experiment business configuration in the browser, and hid the error. **Functionally restored 2026-08-28:** the page now sends a versioned dataset-window and catalog-strategy request; the backend resolves the real content-addressed dataset, supplies the V1 execution and metric profiles, and freezes real runtime provenance. Focused backend/frontend tests pass; the specification E2E uses the real DatasetService and StrategyRegistry; a rebuilt Compose run completed over 1,000 real Binance candles with 58 trades, four metrics, and recorded provenance. **Historical deviation:** AC9 remains failed because the pre-existing backend endpoint was unusable and required a bounded backend enabler. The original implementer should have stopped and reported that missing capability. | [06](06-ui-and-demo-integration.md) |
 | UI-05 | REQ | M | Signal and trade visualization | **DONE** | UI-04, EXP-11 | | **Certified 2026-08-29:** the restored V1 Compose flow completed with four real trades, including final liquidation, and returned stored strategy annotations through the same result surface used by the page. Focused `CandlestickChart` and `BacktestPage` tests cover annotation rendering, trade markers, selection, deselection, and visible-range movement; the final full suite passes. Original reopening retained for history: the 2026-08-28 audit could not verify this slice while UI-04 was broken. | [06](06-ui-and-demo-integration.md) |
-| DEMO-01 | CRIT | M | Run documentation, Compose topology, and version demo script | **DONE** | UI-04, UI-05 | | **Certified 2026-08-29:** `docs/demo-script.md` now includes V1 and V2 regression walkthroughs. A fresh `docker compose up --build -d` brought up only `postgres`, one-shot `migrate`, `api`, `runner`, and `web`; health passed. Runtime proof completed a real MA backtest with four metrics/trades/provenance, a saved MA+RSI composite with server evaluation and component annotations, four independent chart API windows with 150 real candles each through the web proxy, and a five-candidate V3 regression with five ranked entries. **Recertified 2026-08-30 for V4:** `docs/demo-script.md` gained the V4 realtime walkthrough, and the Compose topology now also brings up `redis` and `market-ingest`; see the V4 Compose integration gate. | [06](06-ui-and-demo-integration.md) |
+| DEMO-01 | CRIT | M | Run documentation, Compose topology, and version demo script | **DONE** | UI-04, UI-05 | | **Certified 2026-08-29:** `docs/demo-script.md` now includes V1 and V2 regression walkthroughs. A fresh `docker compose up --build -d` brought up only `postgres`, one-shot `migrate`, `api`, `runner`, and `web`; health passed. Runtime proof completed a real MA backtest with four metrics/trades/provenance, a saved MA+RSI composite with server evaluation and component annotations, four independent chart API windows with 150 real candles each through the web proxy, and a five-candidate V3 regression with five ranked entries. **Recertified 2026-08-30 for V4:** `docs/demo-script.md` gained the V4 realtime walkthrough, and the Compose topology now also brings up `redis` and `market-ingest`; see the V4 Compose integration gate. **Recertified 2026-09-01 for V5:** a fresh `docker compose up --build -d` from the current (uncommitted) source brought up all 8 required roles (`postgres`, `redis`, one-shot `migrate` exit 0, `api` healthy, `market-ingest`, `runner`, `news-worker`, `web`) matching `VERSIONS.md`'s V5 role table exactly; `docker compose config --services` confirms no later-version role is present. Live smoke against the rebuilt stack: `/health` ok, `/news/health` healthy with zero pending/degraded, `/news/items` returned real analyzed CoinDesk items, `/strategies` served the descriptor catalog, and the web SPA answered `200`. `docs/demo-script.md` gained the V5 News and Sentiment walkthrough, referencing `PROOF-ISO-001` and `PROOF-ISO-002` for full evidence; the "Before you start" expected-service list was corrected to include `news-worker`. V5 is not tagged/frozen — that remains an explicit owner decision. | [06](06-ui-and-demo-integration.md) |
 
 ## V1 proof
 
@@ -666,7 +666,7 @@ topology rather than on host processes.
 
 ---
 
-# V5 - News and Sentiment (MVP complete)
+# V5 - News and Sentiment (certification in progress)
 
 Demo contract: [`VERSIONS.md` V5](VERSIONS.md#v5---news-and-sentiment)
 
@@ -679,7 +679,29 @@ Demo contract: [`VERSIONS.md` V5](VERSIONS.md#v5---news-and-sentiment)
 | NEWS-05 | REQ | S | Sentiment feature query and degradation policy | **DONE** | NEWS-04 | Committed `9a44b10`. All 6 acceptance criteria proved by 14 TDD cycles: windowed signed-mean query with window/item-count/freshness/quality; missing and stale block/degrade/substitute all visible in the response; technical-only descriptors make zero News calls; a supplied multi-window usage manifest is recorded as `newsInput`/`sentimentModel` in the provenance checklist. Typecheck, ESLint, and 37 targeted tests pass. The owner explicitly deferred this slice's own code-review and full-suite steps. See JOURNAL.md. | [05](05-news-and-sentiment.md) |
 | NEWS-07 | REQ | S | News list, health, and sentiment query surface | **DONE** | NEWS-05 | Committed `b5e5f12`. All 6 acceptance criteria proved by TDD: paginated item list (title/source/publishedAt/relatedCoins/analysisState); windowed sentiment distribution (positive/neutral/negative proportions + item count + window bounds); collection health (per-provider, from `news.source_health`) and analysis health (derived from `news.items` state counts, no separate table); all three read as well-formed zero/`unavailable` payloads against an empty schema instead of throwing; no model/artifact/provider internal detail in any response; a News-query throw proven not to affect a sibling Market controller in the same module instance. Typecheck (all 3 packages), scoped ESLint, and 40 targeted test files / 234 tests pass. See JOURNAL.md. | [05](05-news-and-sentiment.md) |
 | UI-07 | REQ | M | News page | **DONE** | NEWS-07, SETUP-06 | Committed `65110ec`. Endpoint-only 24-hour page lists items/source/time/coins, distribution plus count, and generic health. A News-owned normal-worker heartbeat writes at half the configured collection interval; after one full missed interval, `/news/health` degrades collection without changing source status. Browser proves healthy -> stopped/stale collection-degraded -> restarted healthy, retained items, and independent Realtime live subscriptions. Missing model credential produces generic analysis-degraded with items retained; a normal retry recovers healthy. No provider/model internals are rendered. 21 backend + 7 web targeted tests, package typechecks, scoped ESLint, diff check, and two-axis review pass. See JOURNAL.md. | [06](06-ui-and-demo-integration.md) |
-| NEWS-06 | **OPT** | M | Sentiment as a strategy | TODO | NEWS-05, STRAT-04 | | [05](05-news-and-sentiment.md) |
+| NEWS-06 | OPTIONAL | M | Sentiment as a strategy | **DONE** | NEWS-05, STRAT-04 | Optional bonus complete in the uncommitted certification worktree: registered `news-sentiment`, descriptor-driven thresholds/window, NEWS-05 missing/stale policy and durable provenance, technical-only zero-call path, and composite descriptor assembly outside `CompositeStrategy`. Slice validation and the final narrow two-axis fixed-point review pass; it never gates V5 certification or `PROOF-ISO-002`. No commit was requested. | [05](05-news-and-sentiment.md) |
+
+### Phase A repair evidence (2026-09-01)
+
+- The deferred NEWS-01..03, NEWS-05, and NEWS-07 two-axis reviews were completed against
+  their Git commit boundaries and current `d02318b`. Their actionable current-HEAD findings
+  were repaired with focused red-green regressions: session-fenced inference ownership,
+  non-overlapping failure-contained schedulers, guarded destructive test databases, generic
+  public health transport, complete News-read isolation coverage, and durable sentiment
+  freshness/policy provenance.
+- The guarded temporary database `csl_test_v5_certification` was explicitly verified with its
+  durable marker before destructive integration tests. Lifecycle (8), repository (8), migration
+  (4), and database-guard (4) tests passed there; its post-test read-only activity query showed
+  zero remaining client sessions and advisory locks. The protected demo database and migration
+  ledger were not changed.
+- The latest shutdown repair stops collection, analysis, and heartbeat timers before releasing
+  retained News inference sessions and before Nest closes the pool. Its active-claim PostgreSQL
+  pool-close regression passed. The final narrow two-axis re-review found no Standards or
+  Spec/architecture findings: `NewsWorkerRuntime` awaits its local lifecycle seam only after all
+  timers stop, and that seam releases held advisory-lock clients before `main.news-worker.ts`
+  closes the Nest context/pool. A refreshed NEWS-06 validation batch passed 10 files / 58 tests,
+  with backend and API-contract typechecks, scoped ESLint, and `git diff --check`. No proof or
+  repository-wide certification has run.
 
 ### NEWS-01 evidence (2026-08-30)
 
@@ -799,13 +821,14 @@ The NEWS-01..NEWS-03 slice-diff review is outstanding but deliberately deferred 
 owner decision. It was not run in this session. After separate owner authorization,
 NEWS-03 was committed as `c46c2e1`; nothing was pushed.
 
-`NEWS-06` is optional. It is **not** part of V5's exit criteria and V5 is demoable
-without it. Build it only if V5 finishes early.
+`NEWS-06` remains optional after the 2026-09-01 owner clarification. `PROOF-ISO-002`
+uses the required `NEWS-05` sentiment feature/context-assembly path directly; V5
+certification and demoability do not depend on the optional strategy.
 
 | ID | Proof | Status | Prerequisites |
 |---|---|---|---|
-| PROOF-ISO-001 | News failure isolation | TODO | NEWS-02, MKT-11, EXP-05, UI-07 |
-| PROOF-ISO-002 | Sentiment failure isolation | TODO | NEWS-03, NEWS-04, NEWS-05, UI-07 |
+| PROOF-ISO-001 | News failure isolation | **PASS** | NEWS-02, MKT-11, EXP-05, UI-07. Full source-image Compose proof: isolated News-worker stop reached `worker-stale` while four chart subscriptions, a technical-only backtest, and a ranked discovery run remained operational; restart recovered collection health. Evidence: [`PROOF-ISO-001.md`](../docs/validation/evidence/PROOF-ISO-001.md). |
+| PROOF-ISO-002 | Sentiment failure isolation | **PASS** | NEWS-03, NEWS-04, NEWS-05, UI-07. Guarded test-database proof: a missing-model retry was durable and recovered through the normal worker; direct NEWS-05 context assembly proved current provenance, stale/degrade, missing/block, and technical-only zero-call behavior. Optional NEWS-06 was not used. Evidence: [`PROOF-ISO-002.md`](../docs/validation/evidence/PROOF-ISO-002.md). |
 
 ---
 
