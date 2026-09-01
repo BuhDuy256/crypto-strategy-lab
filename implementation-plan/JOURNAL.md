@@ -3356,3 +3356,24 @@ criteria alone**
 - `DEMO-01`'s V5 Compose integration gate PASS. Combined with the green repository-wide test
   suite, both ISO proofs, and the requirements cross-check, every condition in V5's Definition of
   Demoable (`VERSIONS.md`) now has direct evidence except the owner's own freeze decision.
+
+### 2026-09-01 - V5 frozen at `v5.0-demo`
+
+- The owner explicitly authorized the freeze and the temporary-database cleanup in the same
+  instruction. Committed the certification work as three commits on `v5-news-and-sentiment` and
+  pushed: `392cbeb` (isolated stale-test fix), `ac7fa9b` (NEWS-06 + Phase A fixed-point repairs,
+  53 files), `2b751f0` (certification evidence + DEMO-01 recert docs, 7 files).
+- Before dropping the temporary database, its guard marker/token and zero active sessions were
+  reverified read-only, and its identity was reconfirmed distinct from the protected
+  `crypto_strategy_lab` database. `DROP DATABASE csl_test_v5_certification` ran against the
+  `postgres` maintenance database; the protected main database and its migration ledger were not
+  touched.
+- Created the annotated safety tag `git tag -a v5.0-demo` on `2b751f0` per `VERSIONS.md`'s V5 Git
+  checkpoint instruction, and pushed it to origin.
+- `TRACKING.md` is updated: implementation status is now `V1-V5 BASELINE CERTIFIED`, the last tag
+  is `v5.0-demo`, and `NEWS-06` is recorded as committed rather than uncommitted. The current
+  target version remains V5 — moving the target to V6 is a separate owner decision, not made here,
+  and no coding agent advances it.
+- V5 is frozen. Everything after `v5.0-demo` is V6 architecture evolution (BullMQ, transactional
+  outbox, idempotent consumers, operational telemetry); this tag must remain demoable no matter
+  how V6 goes.
