@@ -1323,7 +1323,7 @@ body {
 
 .strategy-cell {
   white-space: normal;
-  min-width: 18rem;
+  min-width: 22rem;
 }
 
 /* A candidate is written on two lines: the name it is known by, then the

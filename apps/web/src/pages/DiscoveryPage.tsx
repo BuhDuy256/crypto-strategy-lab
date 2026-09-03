@@ -121,7 +121,8 @@ function storeSpecId(specId: string | null): void {
 // on the cell's title attribute, so traceability is not lost.
 interface StrategyLabel {
   readonly title: string;
-  readonly detail: string;
+  /** One line per component, so two candidates of the same shape can be told apart. */
+  readonly detail: readonly string[];
   readonly reference: string;
 }
 
@@ -136,30 +137,39 @@ function describeParameters(
       const label = descriptor?.parameterSchema.properties[key]?.label ?? key;
       return `${label}: ${String(value)}`;
     })
-    .join("  ·  ");
+    .join(", ");
+}
+
+function describeComponent(
+  reference: { readonly id: string; readonly parameters: Record<string, unknown> },
+  catalog: StrategyCatalog
+): string {
+  const descriptor = catalog.get(reference.id);
+  const name = descriptor?.name ?? reference.id;
+  const parameters = describeParameters(reference.parameters, descriptor);
+  return parameters === "" ? name : `${name} - ${parameters}`;
 }
 
 function describeStrategy(entry: ApiLeaderboardEntry, catalog: StrategyCatalog): StrategyLabel {
   if (entry.strategy.kind === "single") {
     const descriptor = catalog.get(entry.strategy.id);
+    const parameters = describeParameters(entry.strategy.parameters, descriptor);
     return {
       title: descriptor?.name ?? entry.strategy.id,
-      detail: describeParameters(entry.strategy.parameters, descriptor),
+      detail: parameters === "" ? [] : [parameters],
       reference: `${entry.strategy.id}@${entry.strategy.version}`
     };
   }
   // A generated composite is already named after its parts by the backend
-  // ("Composite of rsi + moving-average"). That name stays first, because it is
-  // also the name an operator gave a composite they saved themselves; the line
-  // below spells the same parts out in catalog words.
+  // ("Composite of rsi + moving-average"), and that is also the name an operator
+  // gives a composite they saved themselves, so it stays on the first line. What
+  // separates two composites of the same parts is the parameters each component
+  // was generated with, so every component gets its own line underneath.
   const composite = entry.strategy.composite;
-  const parts = composite.components
-    .map((component) => catalog.get(component.id)?.name ?? component.id)
-    .join(" + ");
   const policy = composite.policy.id.replace(/-/g, " ");
   return {
     title: composite.name,
-    detail: `${parts}  ·  ${policy}`,
+    detail: [...composite.components.map((c) => describeComponent(c, catalog)), policy],
     reference: `${composite.id}@${composite.version}`
   };
 }
@@ -703,9 +713,9 @@ export function DiscoveryPage({
                               return (
                                 <span className="strategy-label" title={label.reference}>
                                   <span className="strategy-title">{label.title}</span>
-                                  {label.detail !== "" && (
-                                    <span className="strategy-detail">{label.detail}</span>
-                                  )}
+                                  {label.detail.map((line) => (
+                                    <span className="strategy-detail" key={line}>{line}</span>
+                                  ))}
                                 </span>
                               );
                             })()}
@@ -740,7 +750,7 @@ export function DiscoveryPage({
                 <h2 id="entry-detail-heading">
                   Rank {selectedEntry.rank}: {describeStrategy(selectedEntry, catalogById).title}
                 </h2>
-                <p>{describeStrategy(selectedEntry, catalogById).detail}</p>
+                <p>{describeStrategy(selectedEntry, catalogById).detail.join("  ·  ")}</p>
               </div>
             </header>
             <div className="panel-body">

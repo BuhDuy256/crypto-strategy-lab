@@ -132,10 +132,11 @@ describe("DiscoveryPage read layer", () => {
     // A candidate is named the way the catalog names it, and the parameters that
     // tell two candidates of the same strategy apart are written underneath. The
     // exact identifier and version stay reachable for traceability.
-    expect(screen.getByText("RSI")).toBeDefined();
+    // Scoped to the leaderboard cell on purpose: "RSI" is also the label of the
+    // strategy pool checkbox further up the page.
+    const candidate = screen.getByText("RSI", { selector: ".strategy-title" });
     expect(screen.getByText("Period: 14")).toBeDefined();
-    expect(screen.getByText("RSI").closest(".strategy-label")?.getAttribute("title"))
-      .toBe("rsi@1.0.0");
+    expect(candidate.closest(".strategy-label")?.getAttribute("title")).toBe("rsi@1.0.0");
     expect(screen.getByText("1,250%")).toBeDefined();
   });
 
@@ -224,9 +225,11 @@ describe("DiscoveryPage entry detail", () => {
     vi.mocked(getCandleHistory).mockResolvedValue({ candles: [] });
 
     render(<DiscoveryPage dataSource={fakeSource()} pollMs={100000} />);
-    await waitFor(() => expect(screen.getByText("RSI")).toBeDefined());
+    await waitFor(() =>
+      expect(screen.getByText("RSI", { selector: ".strategy-title" })).toBeDefined()
+    );
 
-    fireEvent.click(screen.getByText("RSI"));
+    fireEvent.click(screen.getByText("RSI", { selector: ".strategy-title" }));
 
     await waitFor(() => expect(getBacktestProvenance).toHaveBeenCalledWith("run-1"));
     expect(getBacktestTrades).toHaveBeenCalledWith("run-1", 1, 20);
