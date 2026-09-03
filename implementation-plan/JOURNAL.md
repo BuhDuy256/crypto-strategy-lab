@@ -3377,3 +3377,34 @@ criteria alone**
 - V5 is frozen. Everything after `v5.0-demo` is V6 architecture evolution (BullMQ, transactional
   outbox, idempotent consumers, operational telemetry); this tag must remain demoable no matter
   how V6 goes.
+
+### 2026-09-03 - Final pre-defense release: composite discovery closure and truthfulness sync
+
+**Decisions**
+- Owner closed the automated-discovery ambiguity: single-strategy search plus a separately saved
+  manual composite is not the accepted reading. Automated discovery must itself generate composite
+  candidates and carry them through execution, evaluation, ranking, and leaderboard projection.
+  Tracked as `frozen_implementation_plan/` (`FIN-01` through `FIN-06`), separate from this V1-V6
+  roadmap and not a new product version.
+- `FIN-01` rejected persisting every generated composite through `CompositeStrategyService`: a
+  generated candidate is an immutable, experiment-scoped proposal, not a durable object a person
+  owns, and collapsing the two would create ownerless data once accounts exist.
+
+**Deviations / debt**
+- Deferred account/login requirement and the frontend combination-policy catalog gap are recorded
+  as known limitations in `docs/final-defense-notes.md`, not fixed this release.
+
+**Validation**
+- `FIN-01` through `FIN-04` done: composite candidate execution, minimal Discovery UI exposure,
+  demo-surface presentation hardening, and the canonical demo script. Each used its own targeted
+  validation; the repository-wide gate has not re-run since `v5.0-demo` and is `FIN-06` work.
+
+**Problems worth remembering**
+- `VERSIONS.md`'s V5 "MVP list is fully satisfied" line was true only under the single-strategy
+  reading at the `v5.0-demo` commit; a stated Definition-of-Demoable condition can silently depend
+  on which reading of a requirement is accepted. Made explicit in `VERSIONS.md` and `TRACKING.md`.
+
+**Ending state**
+- Working tree carries `FIN-01` through `FIN-04` uncommitted on top of `2b751f0` (`v5.0-demo`).
+  `FIN-05` (this entry) is in progress. `FIN-06` (repository-wide gate, Compose rehearsal, freeze)
+  has not run. No tag moved; the target version remains V5.

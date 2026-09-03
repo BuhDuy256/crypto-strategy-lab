@@ -1,210 +1,216 @@
 # Demo script
 
-The numbered walkthrough for the certified V1-V4 baseline. This is the script a
-person follows to show each version end to end on the full-system Compose topology
-(see the README's "Full-system integration and demo path"). Each version updates it
-as part of `DEMO-01`.
+One coherent oral-defense walkthrough of the system as it exists now. It tells a
+single story instead of touring pages independently: market data feeds strategy
+work, strategy work feeds a backtest, and automated composite discovery — the
+newest capability — produces a leaderboard entry whose provenance can be traced
+back to a frozen specification. News and sentiment are demonstrated separately,
+as an isolated capability, at the end.
 
-Current certified baseline: **V1 through V4**, frozen at `v4.0-demo`. Repository
-product authorization is now **V5**; this evidence script records what is certified
-and does not advance it. The V5 walkthrough below is validated (both isolation
-proofs pass on this topology; see
-[`PROOF-ISO-001.md`](validation/evidence/PROOF-ISO-001.md) and
-[`PROOF-ISO-002.md`](validation/evidence/PROOF-ISO-002.md)) but V5 itself is not
-yet frozen — that tag is an explicit owner decision. Demo scenario sources are in
-[`implementation-plan/VERSIONS.md`](../implementation-plan/VERSIONS.md).
+Certified baseline: **V1 through V5**, tag `v5.0-demo`, commit `2b751f0`.
+Generated-composite execution (`FIN-01`) and its Discovery exposure (`FIN-02`)
+close the one functional gap that baseline had; presentation hardening (`FIN-03`)
+is the demo-visible state below. **V6** (BullMQ-based execution, the
+transactional outbox, and the scale/retry/duplicate/observability proofs) is not
+implemented and is not part of this demo.
 
-## Before you start
+Architecture statements below are limited to the claimable set in
+[`frozen_implementation_plan/README.md`](../frozen_implementation_plan/README.md#c-architecture-demoable)
+section C. Nothing about queue scaling, candidate throughput, the outbox, broker
+retry, duplicate-delivery safety, or latency is claimed anywhere in this script.
 
-1. From a clean checkout, copy the environment file and set real build-identity
-   values (`DEPENDENCY_LOCK_HASH` as a 64-character SHA-256 hex, plus
-   `APPLICATION_COMMIT` and `WORKER_COMMIT`):
+Known limitations and the full list of claims this demo must not make are in
+[`final-defense-notes.md`](final-defense-notes.md) — read it before presenting.
+
+## The one distinction to keep straight
+
+| Thing | What it is |
+|---|---|
+| Built-in strategy | A system-global definition from the strategy registry |
+| Saved composite strategy | A combination a person deliberately created and saved (step 3) |
+| Generated candidate | A proposal Discovery's search produced for one run; never saved as a composite strategy (step 5) |
+| Leaderboard entry | The evaluated outcome of a candidate, not the source of truth for its execution (step 6) |
+
+A generated candidate is not a saved composite. Do not call one the other during
+the demo.
+
+## Pre-demo
+
+1. **Topology.** From a clean checkout:
 
    ```powershell
    cp .env.example .env
-   ```
-
-2. Bring up the whole topology with one command and wait until it is healthy:
-
-   ```powershell
    docker compose up --build -d
    docker compose ps
    ```
 
-   You should see `postgres` healthy, `migrate` exited with code 0, `api`
-   healthy, `runner`, `market-ingest`, `news-worker`, and `web` up, and `redis`
-   healthy. BullMQ and an outbox dispatcher are not present; they belong to V6.
+   Expect `postgres` and `redis` healthy, `migrate` exited 0, and `api`, `runner`,
+   `market-ingest`, `news-worker`, `web` up. There is no BullMQ worker and no
+   outbox dispatcher in this topology — that machinery belongs to V6.
 
-3. Load the demo market data:
+2. **Dataset.** Seed the demo data before opening the SPA:
 
    ```powershell
    docker compose exec api pnpm run demo:seed
    ```
 
-   Every page opens on a window derived from the current time: Realtime shows the
-   last 150 closed candles per timeframe, and Backtest, Strategy Engine, and
-   Discovery each open on a recent range. This command loads 30 days of BTCUSDT
-   candles at 5m, 15m, 1h, and 4h, which covers all of them.
+   This loads 30 days of BTCUSDT candles at `5m`, `15m`, `1h`, and `4h`. Without
+   it, pages are not broken, they are empty for the window they ask for.
 
-   Run it before opening the SPA. Without it the pages are not broken, they are
-   empty: each one correctly reports that it has no candles for the window it
-   asked for. If you would rather load a specific range, the underlying CLI still
-   takes one directly:
+   Discovery's leaderboard only accepts candidates that clear its `minTrades: 5`
+   ranking-eligibility gate. The 30-day, four-timeframe seed is normally enough
+   for the `5m`/`15m` search space used in step 5. If the search space is changed
+   to a longer timeframe or a shorter window, confirm at least a few candidates
+   clear 5 trades before presenting live — a too-short window can silently
+   produce zero ranking-eligible candidates and make Discovery look broken when
+   it is only starved of data.
 
-   ```powershell
-   docker compose exec api pnpm run market:backfill -- --symbol BTCUSDT --timeframe 1h --startTime <ms> --endTime <ms>
-   ```
+3. **Starting screen.** Open the SPA at <http://localhost:8080> and navigate
+   directly to **Realtime** (`/realtime`). The app's default route is
+   `/backtest`; that is unrelated to demo order.
 
-4. Open the SPA at <http://localhost:8080> and go to the Discovery page.
+## Canonical demo flow
 
-## V5 News and Sentiment walkthrough
+### 1. Market / Realtime
 
-1. Start the full topology, including `news-worker`, as in "Before you start".
-   Open the News page. Collected items list with source, publish time, and
-   related coins.
-2. Show the sentiment distribution over the last window and the analyzed item
-   count.
-3. Stop the news worker (`docker compose stop news-worker`). The News page
-   reports collection degraded; no other page is affected.
-4. Switch to Realtime — charts still stream. Run a backtest — it still
-   completes. Run a discovery loop — it still ranks. This is the isolation
-   claim `PROOF-ISO-001` proves in full detail, including recovery after
-   `docker compose start news-worker`.
-5. Configure the news worker with an unreachable model credential. Collection
-   keeps storing items; analysis health goes degraded and failed attempts are
-   recorded with a generic reason, never a raw provider/model detail. This is
-   the isolation claim `PROOF-ISO-002` proves in full detail, including the
-   durable retry once the model is reachable again.
-6. Run a technical-only backtest (no sentiment-series strategy) and confirm its
-   result records `newsInput` as not applicable — the sentiment port is never
-   called for a descriptor that does not declare it.
-7. Show the architecture point: the collector never calls the sentiment model,
-   and no strategy imports the News repository, provider, or analyzer
-   directly — only the durable `SentimentFeature` query, applying its
-   configured missing/stale policy.
+- **ACTION:** On the Realtime page, point out the four charts. Change chart 1's
+  timeframe.
+- **VISIBLE BEHAVIOR:** Four independent BTCUSDT charts stream at `5m`, `15m`,
+  `1h`, `4h` in a 2×2 grid; a forming candle updates live. Changing chart 1
+  reloads only chart 1 — charts 2 to 4 keep streaming, untouched.
+- **REQUIREMENT:** Multi-timeframe realtime market data.
+- **ARCHITECTURE POINT:** Market data is normalized behind a provider port — a
+  second provider needs no frontend change (`PROOF-PROVIDER-001`). Realtime
+  recovery from a provider outage produces no gaps and no duplicates
+  (`PROOF-RT-001`; it disclaims any latency target).
+- **DEFENSE LINE:** "Every chart here reads a normalized candle contract, not a
+  specific exchange's payload — that's what lets a provider fail or get swapped
+  without the frontend ever knowing."
+- *If time allows:* `pnpm run smoke:mkt09` recreates `market-ingest` under a
+  provider outage and shows `healthy → degraded → healthy` while all four
+  subscriptions stay open.
 
-Full evidence, including exact commands and durable identities, is in
-[`PROOF-ISO-001.md`](validation/evidence/PROOF-ISO-001.md) and
-[`PROOF-ISO-002.md`](validation/evidence/PROOF-ISO-002.md).
+### 2. Strategy catalog
 
-## V4 Realtime Market Data walkthrough
+- **ACTION:** Open Strategy Engine. Show the list of selectable strategies.
+- **VISIBLE BEHAVIOR:** The list is served from the backend's strategy registry,
+  not hard-coded in the page.
+- **REQUIREMENT:** A catalog of multiple technical strategies to choose from.
+- **ARCHITECTURE POINT:** Adding a strategy needs no downstream change —
+  proven with a real added strategy (`PROOF-EXT-001`).
+- **DEFENSE LINE:** "Every strategy on this screen comes from one registry; a
+  new one is added behind that contract with nothing downstream touched."
 
-1. Open the Realtime page. Confirm four BTCUSDT charts run at `5m`, `15m`, `1h`,
-   and `4h`. A forming candle moves through live ticks and closed candles remain in
-   the durable series.
-2. Change chart 1 to `1m`. Only chart 1 receives a new snapshot. Charts 2 to 4
-   keep their candles and live updates, and the page does not reload.
-3. Run the controlled provider outage browser check:
+### 3. Manual composite
 
-   ```powershell
-   pnpm run smoke:mkt09
-   ```
+- **ACTION:** Select at least two catalog strategies, set schema-driven
+  parameters and weights, choose a combination policy, set a backfilled window,
+  and save.
+- **VISIBLE BEHAVIOR:** A saved composite strategy is created; its combined
+  signal comes from the backend response, not a frontend simulation.
+- **REQUIREMENT:** Deliberate combination of multiple strategies into one
+  tradeable definition.
+- **DEFENSE LINE:** "This composite is something I built and saved on purpose —
+  keep that in mind, because what Discovery produces automatically in step 5 is
+  a different thing."
 
-   It recreates only `market-ingest` with the tracked provider-host override,
-   checks `healthy -> degraded -> healthy`, keeps four subscriptions on the same
-   page, and restores the normal Compose definition even when it fails.
-4. Confirm recovery is complete through the Market read endpoint over the outage
-   range. It must report `resolved: true`, no gaps, and matching expected and
-   present candle counts. The release evidence shows an example command and range.
-5. Reload the Realtime page. Each chart must return a PostgreSQL snapshot before
-   live continuation; it must not rely on Redis replay.
-6. Show the Redis boundary with the focused smoke:
+### 4. Backtest
 
-   ```powershell
-   pnpm run smoke:ws03
-   ```
+- **ACTION:** Open Backtest, select the saved composite, and run it.
+- **VISIBLE BEHAVIOR:** `queued → running → completed`; the result shows total
+  return, win rate, maximum drawdown, trade count, chart annotations, and a
+  paged trade table.
+- **REQUIREMENT:** Backtesting with the required metric set and trade
+  visualization.
+- **DEFENSE LINE:** "A saved composite runs through the exact same backtest path
+  as a built-in strategy — nothing about it is special-cased."
 
-   It restarts the API and verifies fresh snapshots, including while Redis is
-   stopped. Redis stops live push, but it never becomes candle durability truth.
+### 5. Automated composite Discovery — give this real attention
 
-For repeatable four-chart isolation and forming-tick checks, run:
+- **ACTION:**
+  a. Open Discovery. Set the search space to two or more single strategies.
+  b. Set **composite size greater than 1** and pick the generator from the
+     selector (not hard-coded — `random-search` is shown; `grid-search` exists
+     in the same selector).
+  c. Start the run.
+- **VISIBLE BEHAVIOR:** The candidate counter rises as the generator produces
+  both single-strategy and **composite** candidates; each is backtested by the
+  separate runner process and evaluated; the Top-K leaderboard fills and
+  reorders. Every number is durable backend state — the page counts nothing
+  itself.
+- **REQUIREMENT:** Automated search, extended to composite candidates under the
+  accepted requirement reading (`FIN-01`/`FIN-02`) — search must not be limited
+  to single strategies.
+- **ARCHITECTURE POINT:** The generator is swappable behind a port with no
+  downstream change (`PROOF-REPLACE-001`). Pause, resume, and a mid-run restart
+  of the API all survive because run state lives in PostgreSQL, not in the API
+  process (`PROOF-CONTROL-001`, PostgreSQL-executor realization).
+- **Live restart, while the run is still active:**
 
-```powershell
-pnpm run smoke:mkt11
-```
+  ```powershell
+  docker compose restart api
+  ```
 
-## V1 regression walkthrough
+  The page keeps reading the same run once the API is back; no candidate is
+  duplicated or lost.
+- **DEFENSE LINE:** "This is the new piece — Discovery isn't just searching
+  single strategies anymore, it's searching combinations, and the run survives
+  losing the API mid-search because the API was never its source of truth."
 
-1. Open the Backtest page. Select BTCUSDT, `1h`, the backfilled 2024 window,
-   and the moving-average strategy. Set a fast period smaller than the slow
-   period.
-2. Start the backtest. Observe `queued`, `running`, then `completed`; a failure
-   must show its server reason instead of leaving the page running forever.
-3. Confirm the result shows total return, win rate, maximum drawdown, number of
-   trades, the execution assumptions, chart annotations, and paged trades.
-4. Run the same configuration again and compare the trade list and frozen
-   specification hash.
-5. Start another run and stop only the API with `docker compose stop api`.
-   The separate runner must complete the run. Start the API again with
-   `docker compose start api` and read the completed result.
+### 6. Leaderboard
 
-## V2 regression walkthrough
+- **ACTION:** Point out a composite entry in the Top-K leaderboard.
+- **VISIBLE BEHAVIOR:** Entries are ranked candidates, including at least one
+  identifiable generated composite alongside single-strategy candidates.
+- **REQUIREMENT:** Ranked Top-K results from the search.
+- **DEFENSE LINE:** "The leaderboard is a projection of evaluated candidates —
+  it's an output, not where the experiment actually executes."
 
-1. Open Realtime. Confirm four real BTCUSDT charts render at `5m`, `15m`, `1h`,
-   and `4h`. Change only chart 1; the other three must not reload or change.
-2. Open Strategy Engine. Select at least two catalog strategies, enter valid
-   schema-driven parameters and weights, choose a combination policy, and set a
-   backfilled data window.
-3. Save the composite. The combined signal must come from the backend response;
-   there is no simulated-signal control in the page.
-4. Return to Backtest, select the saved composite, and run it through the same
-   frozen-specification and runner path as a built-in strategy.
-5. Click one trade, then another. The chart must replace the entry/exit
-   highlight and move to that trade. Use Clear selection and confirm the
-   highlight is removed.
+### 7. Provenance — one of the strongest architecture points
 
-## V3 walkthrough
+- **ACTION:** Click the composite leaderboard entry, then open its provenance
+  record.
+- **VISIBLE BEHAVIOR:** The record shows the engine and its version, the runner
+  attempt, the immutable dataset snapshot with its integrity hash, and the
+  frozen experiment specification the candidate ran under.
+- **REQUIREMENT:** Every result must trace back to a complete, immutable
+  experiment specification.
+- **ARCHITECTURE POINT:** A leaderboard entry resolves to its frozen
+  specification and reruns identically (`PROOF-REP-001`) — already proven for
+  single-strategy candidates on the certified baseline. The equivalent rerun
+  check specifically for a **generated composite** candidate is part of the
+  final certification gate (`FIN-06`); it has not been exercised yet, so do not
+  claim it has.
+- **DEFENSE LINE:** "This isn't just a score — it's a pointer back to the exact
+  frozen inputs that produced it, and re-running that specification reproduces
+  the same trades."
 
-1. **Configure the run.** Set the dataset to BTCUSDT, `1h`, and the window you
-   backfilled. Choose the `random-search` generator from the selector (the list
-   is fed by the generator catalog, not hard-coded). Set the search space to one
-   or more single strategies (for example moving average, Bollinger bands,
-   support/resistance). Set a candidate limit as the stop condition and a seed.
+### 8. News / Sentiment isolation
 
-2. **Press start.** The candidate counter rises as candidates are generated,
-   backtested by the separate runner process, and evaluated. The Top-K
-   leaderboard fills and reorders as better candidates are accepted. Every number
-   comes from durable backend state; the page counts nothing itself.
+- **ACTION:** Open News. Show the collected items and the sentiment
+  distribution. Then stop the news worker:
 
-3. **Pause, then resume.** Press pause. New dispatch stops and, once the
-   in-flight candidate drains, the page shows the converged `paused` state (not an
-   optimistic one). Press resume; the run continues from where it stopped, with no
-   duplicated candidate.
+  ```powershell
+  docker compose stop news-worker
+  ```
 
-4. **Restart the API mid-run.** In another terminal, restart just the API
-   process:
-
-   ```powershell
-   docker compose restart api
-   ```
-
-   The run state survives, because it lives in PostgreSQL, not in the API
-   process. The runner is a separate process and keeps working while the API is
-   down. When the API is back, the page reads the same run and continues. This is
-   the architecture point: run control is durable and the runner is independent.
-
-5. **Let a stop condition fire.** When the candidate limit is reached, the run
-   stops and the page shows why (stop reason `max-candidates`). The duration-limit
-   and no-improvement stop conditions work the same way.
-
-6. **Open the top entry.** Click the top leaderboard row. Its trades, its chart
-   overlays (drawn from stored annotation primitives), and its four metrics
-   appear. The chart is drawn over the run's own dataset window.
-
-7. **Read the provenance.** Open the entry's provenance record and read the
-   reproducibility checklist: the engine and its version, the runner attempt, the
-   immutable dataset snapshot with its integrity hash, and the frozen
-   specification. Every leaderboard row resolves back to its result and its spec.
-
-8. **Show reproducibility.** The same seed and search space produce the same
-   candidate sequence across two runs, and rerunning the recorded specification
-   reproduces the same result. The stored trade content hash in the provenance
-   record is what a rerun must match.
-
-9. **Show the architecture point.** The generator is selectable, and the
-   backtester, evaluator, ranking policy, and leaderboard know nothing about how a
-   candidate was produced. A second generator (`grid-search`) is already in the
-   selector, added through the generator port with no downstream change.
+- **VISIBLE BEHAVIOR:** News reports collection degraded. Switch to Realtime —
+  charts still stream. Run a backtest — it still completes. This is isolation,
+  not a coincidence.
+- **REQUIREMENT:** News collection and sentiment classification, isolated from
+  core trading capability.
+- **ARCHITECTURE POINT:** News-worker failure does not stop charts, backtests,
+  or discovery (`PROOF-ISO-001`). A technical-only backtest records `newsInput`
+  as not applicable — the sentiment port is never called for a strategy that
+  does not declare it.
+- **DEFENSE LINE:** "News can fail completely and the trading side of the
+  system never notices — that boundary is enforced by a query the strategy has
+  to explicitly ask for, not by hoping nothing breaks."
+- *If time allows:* restart the worker (`docker compose start news-worker`) to
+  show recovery, then point a model credential at an unreachable endpoint to
+  show analysis go degraded while collection keeps storing items
+  (`PROOF-ISO-002`) — failures are recorded with a generic reason, never a raw
+  provider/model detail.
 
 ## When you are done
 
@@ -212,5 +218,13 @@ pnpm run smoke:mkt11
 docker compose down
 ```
 
-Data persists in the `postgres_data` volume across `down` / `up`; add `-v` only
-to delete it.
+Data persists in the `postgres_data` volume across `down`/`up`; add `-v` only to
+delete it.
+
+## Further evidence
+
+Full commands and durable identities for the proofs referenced above are in
+[`validation/evidence/PROOF-RT-001.md`](validation/evidence/PROOF-RT-001.md),
+[`validation/evidence/PROOF-ISO-001.md`](validation/evidence/PROOF-ISO-001.md),
+and
+[`validation/evidence/PROOF-ISO-002.md`](validation/evidence/PROOF-ISO-002.md).

@@ -518,6 +518,18 @@ Optional, not part of exit criteria: `NEWS-06` (sentiment as a strategy).
 - Everything in V1 to V4 still passes.
 - The official source's MVP list in section 37 is fully satisfied.
 
+**Final pre-defense closure note.** The accepted reading of the search
+requirement is that automated discovery must itself generate composite
+candidates end to end (generation, execution, evaluation, ranking, and
+leaderboard projection), not only single-strategy candidates alongside a
+separately saved manual composite. At the `v5.0-demo` tag, the search
+coordinator rejected any non-single candidate and the Discovery UI never
+requested one, so this MVP-list line held only for single-strategy search. Final
+pre-defense closure (`frozen_implementation_plan/`, `FIN-01`/`FIN-02`) closed
+that gap on the same V5 product version: automated discovery now generates and
+ranks composite candidates. This is a completion inside V5, not a new product
+version and not a V6 property.
+
 ### Architecture evidence
 
 - `PROOF-ISO-001` - news failure isolation.

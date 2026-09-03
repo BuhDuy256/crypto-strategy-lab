@@ -179,6 +179,10 @@ body {
   color: #cf222e;
 }
 
+.chart-error p {
+  margin: 0.25rem 0;
+}
+
 .news-page {
   max-width: 76rem;
 }
@@ -311,14 +315,214 @@ body {
   min-height: 26.25rem;
 }
 
+.configuration-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 1rem 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.configuration-panel > label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #24292f;
+}
+
+.configuration-panel input,
+.configuration-panel select {
+  font-weight: 400;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid #afb8c1;
+  border-radius: 0.375rem;
+  background: #ffffff;
+  color: #24292f;
+}
+
+.configuration-panel button {
+  padding: 0.5rem 1rem;
+  border: 1px solid #afb8c1;
+  border-radius: 0.375rem;
+  background: #f6f8fa;
+  color: #24292f;
+  cursor: pointer;
+}
+
+.configuration-panel button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.search-space {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1.25rem;
+  margin: 0;
+  padding: 0.75rem 1rem 1rem;
+  border: 1px solid #d8dee4;
+  border-radius: 0.5rem;
+}
+
+.search-space legend {
+  padding: 0 0.4rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #57606a;
+}
+
+.strategy-option {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 400;
+}
+
+.error {
+  color: #cf222e;
+}
+
+.realtime-page {
+  max-width: 90rem;
+}
+
+.realtime-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #d8dee4;
+}
+
+.realtime-heading h1 {
+  margin: 0;
+}
+
+.realtime-heading p {
+  margin: 0.35rem 0 0;
+  color: #57606a;
+}
+
+.realtime-connection {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  padding: 0.3rem 0.85rem;
+  border: 1px solid #d8dee4;
+  border-radius: 999px;
+  background: #f6f8fa;
+}
+
+.realtime-connection[data-realtime-connection="connected"] .health-dot {
+  background: #2ea043;
+}
+
+.realtime-connection[data-realtime-connection="disconnected"] .health-dot {
+  background: #d4a72c;
+}
+
+.chart-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem;
+}
+
+.chart-widget {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #d8dee4;
+  border-radius: 0.5rem;
+  background: #ffffff;
+  box-shadow: 0 1px 2px #1f23280a;
+  overflow: hidden;
+}
+
+.chart-widget-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #d8dee4;
+  background: #f6f8fa;
+}
+
+.chart-widget-info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.chart-widget-symbol {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 600;
+  color: #24292f;
+}
+
+.chart-widget-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.75rem;
+  color: #57606a;
+}
+
+.chart-widget[data-subscription-state="live"] .health-dot {
+  background: #2ea043;
+}
+
+.chart-widget[data-subscription-state="subscribing"] .health-dot,
+.chart-widget[data-subscription-state="disconnected"] .health-dot {
+  background: #d4a72c;
+}
+
+.chart-widget[data-subscription-state="error"] .health-dot {
+  background: #d1242f;
+}
+
+.chart-widget-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: #57606a;
+}
+
+.chart-widget-controls select {
+  padding: 0.35rem 0.5rem;
+  border: 1px solid #afb8c1;
+  border-radius: 0.375rem;
+  background: #ffffff;
+  color: #24292f;
+}
+
+.chart-widget-body {
+  position: relative;
+  flex: 1;
+}
+
 @media (max-width: 48rem) {
   .page-heading,
-  .chart-title {
+  .chart-title,
+  .realtime-heading {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .news-summary-grid {
+  .news-summary-grid,
+  .chart-grid {
     grid-template-columns: 1fr;
   }
 }
