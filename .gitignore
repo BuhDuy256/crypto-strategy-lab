@@ -11,3 +11,4 @@ coverage/
 
 # Local environment values (copy from .env.example)
 .env
+.scratch/ui-rescue/
