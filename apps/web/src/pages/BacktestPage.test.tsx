@@ -170,6 +170,17 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+/**
+ * Reads the number a metric card shows, by its visible label. Scoped to the
+ * metric cards on purpose: "Trades" is also a section heading further down.
+ */
+function metricValue(label: string): string | undefined {
+  const card = [...document.querySelectorAll(".metric-card")].find(
+    (element) => element.querySelector(".metric-label")?.textContent === label
+  );
+  return card?.querySelector(".metric-value")?.textContent ?? undefined;
+}
+
 describe("buildRecentCandleRequest", () => {
   it("requests 200 fully closed one-hour candles", () => {
     expect(buildRecentCandleRequest("1h", Date.UTC(2026, 7, 23, 12, 34))).toEqual({
@@ -404,14 +415,21 @@ describe("BacktestPage run lifecycle", () => {
     await waitFor(() => expect(screen.getByText("Status: queued")).toBeDefined());
     await waitFor(() => expect(screen.getByText("Status: running")).toBeDefined(), { timeout: 5_000 });
     await waitFor(() => expect(screen.getByText("Status: completed")).toBeDefined(), { timeout: 5_000 });
-    await waitFor(() => expect(screen.getByText("Total Return: 0.125")).toBeDefined());
+    // The backend still owns every number; the page only writes each one in a
+    // readable form next to its label.
+    await waitFor(() => expect(metricValue("Total return")).toBe("12.5%"));
 
-    expect(screen.getByText("Win Rate: 0.6")).toBeDefined();
-    expect(screen.getByText("Max Drawdown: 0.05")).toBeDefined();
-    expect(screen.getByText("Trades: 10")).toBeDefined();
-    expect(screen.getByText("Fill Rule: next-open")).toBeDefined();
-    expect(screen.getByText("Initial Capital: 10000")).toBeDefined();
-    expect(screen.getByText(`Specification hash: ${"a".repeat(64)}`)).toBeDefined();
+    expect(metricValue("Win rate")).toBe("60%");
+    expect(metricValue("Max drawdown")).toBe("5%");
+    expect(metricValue("Trades")).toBe("10");
+    expect(screen.getByText("Fill rule").parentElement?.textContent)
+      .toBe("Fill rulenext-open");
+    expect(screen.getByText("Initial capital").parentElement?.textContent)
+      .toBe("Initial capital10,000.00");
+    // The full hash stays reachable; only its rendering is shortened.
+    const hash = screen.getByText("Specification hash").parentElement
+      ?.querySelector(".provenance-value");
+    expect(hash?.getAttribute("title")).toBe("a".repeat(64));
   });
 
   it("renders an empty state for a result with zero trades", async () => {
@@ -434,7 +452,7 @@ describe("BacktestPage run lifecycle", () => {
     fireEvent.click(screen.getByRole("button", { name: "Start Backtest" }));
 
     await waitFor(() => expect(screen.getByText("No trades executed.")).toBeDefined());
-    expect(screen.getByText("Trades: 0")).toBeDefined();
+    expect(metricValue("Trades")).toBe("0");
   });
 
   it("shows the failure reason instead of hanging on running", async () => {
@@ -488,7 +506,7 @@ describe("BacktestPage trade table and selection", () => {
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
 
     await waitFor(() => expect(vi.mocked(getBacktestTrades).mock.calls[1]).toEqual([RUN_ID, 2, 20]));
-    await waitFor(() => expect(screen.getByText("2 / 2")).toBeDefined());
+    await waitFor(() => expect(screen.getByText("Page 2 of 2")).toBeDefined());
   });
 
   it("selects a trade row, replaces the selection, and clears it", async () => {

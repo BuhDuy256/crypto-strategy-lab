@@ -11,6 +11,7 @@ import {
   getNewsItems,
   getNewsSentimentDistribution
 } from "../api/client.js";
+import { formatDateTime } from "../format.js";
 
 const PAGE_SIZE = 10;
 const SENTIMENT_WINDOW_MS = 24 * 60 * 60 * 1_000;
@@ -166,9 +167,9 @@ export function NewsPage() {
               <tbody>
                 {items.items.map((item) => (
                   <tr key={item.id}>
-                    <td>{item.title}</td>
+                    <td className="news-title" title={item.title}>{item.title}</td>
                     <td>{item.source}</td>
-                    <td>{new Date(item.publishedAt).toISOString()}</td>
+                    <td className="news-published">{formatDateTime(item.publishedAt)}</td>
                     <td>{item.relatedCoins.join(", ") || "None"}</td>
                     <td>{statusLabel(item.analysisState)}</td>
                   </tr>

@@ -125,9 +125,12 @@ describe("DiscoveryPage read layer", () => {
 
     await waitFor(() => expect(screen.getByText("Status: running")).toBeDefined());
     expect(source.getProgress).toHaveBeenCalledWith(specId);
-    expect(screen.getByText("Completed: 2")).toBeDefined();
+    // The counts are shown as labelled cards and the metrics are formatted for
+    // reading; the values themselves still come straight from the data source.
+    const completed = screen.getByText("Completed").closest("li");
+    expect(completed?.textContent).toBe("Completed2");
     expect(screen.getByText("rsi@1.0.0")).toBeDefined();
-    expect(screen.getByText("12.5")).toBeDefined();
+    expect(screen.getByText("1,250%")).toBeDefined();
   });
 
   it("restores the last run from storage on refresh", async () => {

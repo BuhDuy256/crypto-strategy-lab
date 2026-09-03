@@ -81,7 +81,7 @@ describe("NewsPage", () => {
     expect(await screen.findByRole("heading", { name: "News" })).not.toBeNull();
     expect(screen.getByText("Bitcoin reaches a new high")).not.toBeNull();
     expect(screen.getByText("CoinDesk")).not.toBeNull();
-    expect(screen.getByText("2026-08-31T10:30:00.000Z")).not.toBeNull();
+    expect(screen.getByText("Aug 31, 10:30")).not.toBeNull();
     expect(screen.getByText("BTC, ETH")).not.toBeNull();
     expect(screen.getByText("Analyzed")).not.toBeNull();
 
