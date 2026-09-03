@@ -24,6 +24,11 @@ function percentage(value: number): string {
   return `${Math.round(value * 100)}%`;
 }
 
+function pageCount(list: NewsItemListResponse): number {
+  if (list.page.pageSize <= 0) return 1;
+  return Math.max(1, Math.ceil(list.page.totalCount / list.page.pageSize));
+}
+
 export function NewsPage() {
   const [pageNumber, setPageNumber] = useState(1);
   const [items, setItems] = useState<NewsItemListResponse | null>(null);
@@ -154,7 +159,7 @@ export function NewsPage() {
           <p>No collected items in this page.</p>
         ) : (
           <>
-            <table>
+            <table className="data-table">
               <thead>
                 <tr>
                   <th>Title</th>
@@ -171,12 +176,16 @@ export function NewsPage() {
                     <td>{item.source}</td>
                     <td className="news-published">{formatDateTime(item.publishedAt)}</td>
                     <td>{item.relatedCoins.join(", ") || "None"}</td>
-                    <td>{statusLabel(item.analysisState)}</td>
+                    <td>
+                      <span className="status-chip" data-status={item.analysisState}>
+                        {statusLabel(item.analysisState)}
+                      </span>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            <div className="news-pagination">
+            <div className="table-footer">
               <button
                 type="button"
                 onClick={() => setPageNumber((current) => current - 1)}
@@ -184,7 +193,9 @@ export function NewsPage() {
               >
                 Previous page
               </button>
-              <span>Page {items.page.pageNumber}</span>
+              <span>
+                Page {items.page.pageNumber} of {pageCount(items)}
+              </span>
               <button
                 type="button"
                 onClick={() => setPageNumber((current) => current + 1)}

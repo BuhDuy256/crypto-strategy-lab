@@ -233,6 +233,10 @@ describe("DiscoveryPage entry detail", () => {
 
     await waitFor(() => expect(getBacktestProvenance).toHaveBeenCalledWith("run-1"));
     expect(getBacktestTrades).toHaveBeenCalledWith("run-1", 1, 20);
-    await waitFor(() => expect(screen.getByText("specification: recorded")).toBeDefined());
+    // The checklist keeps the backend's own status word, written as a label and
+    // the same status chip the rest of the app uses.
+    await waitFor(() => expect(screen.getByText("Specification")).toBeDefined());
+    expect(screen.getByText("Specification").closest("li")?.textContent)
+      .toBe("Specificationrecorded");
   });
 });

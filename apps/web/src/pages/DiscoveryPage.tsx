@@ -52,6 +52,11 @@ import {
 
 const CHART_CANDLE_COUNT = 200;
 
+// The detail panel reads one page of trades at a time, the same size the
+// Backtest page uses. Before, it read the first twenty and offered no way to
+// reach the rest, so a candidate with forty-four trades silently showed twenty.
+const TRADE_PAGE_SIZE = 20;
+
 // A dataset window is addressed by candle open times, so a bound chosen on a
 // calendar day is snapped back to the open time that contains it. The Backtest
 // page does the same; without it the backend refuses an unaligned bound.
@@ -174,6 +179,13 @@ function describeStrategy(entry: ApiLeaderboardEntry, catalog: StrategyCatalog):
   };
 }
 
+// Provenance checklist keys arrive as contract names ("specificationHash").
+// Reading one out loud is how it should be written on screen.
+function humanizeKey(key: string): string {
+  const spaced = key.replace(/([a-z0-9])([A-Z])/g, "$1 $2").toLowerCase();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
 // The sort control offered the raw contract values ("maximumDrawdown"). It now
 // shows the same words the table headers use.
 const SORT_LABELS: Readonly<Record<LeaderboardSort, string>> = {
@@ -242,6 +254,7 @@ export function DiscoveryPage({
   const [detailResult, setDetailResult] = useState<BacktestResultResponse | null>(null);
   const [detailTrades, setDetailTrades] = useState<BacktestTradesResponse | null>(null);
   const [detailProvenance, setDetailProvenance] = useState<ProvenanceResponse | null>(null);
+  const [detailTradePage, setDetailTradePage] = useState(1);
   const [detailCandles, setDetailCandles] = useState<readonly ApiCandle[]>([]);
   const [chartState, setChartState] = useState<ChartState>("loading");
 
@@ -376,11 +389,12 @@ export function DiscoveryPage({
 
   async function openEntry(entry: ApiLeaderboardEntry): Promise<void> {
     setSelectedEntry(entry);
+    setDetailTradePage(1);
     setChartState("loading");
     try {
       const [result, trades, provenance] = await Promise.all([
         getBacktestResult(entry.runId),
-        getBacktestTrades(entry.runId, 1, 20),
+        getBacktestTrades(entry.runId, 1, TRADE_PAGE_SIZE),
         getBacktestProvenance(entry.runId)
       ]);
       setDetailResult(result);
@@ -409,6 +423,16 @@ export function DiscoveryPage({
   const canPause = status === "running";
   const canResume = status === "paused";
   const canCancel = status !== undefined && status !== "cancelled" && status !== "stopped";
+  async function showDetailTradePage(pageNumber: number): Promise<void> {
+    if (selectedEntry === null) return;
+    setDetailTradePage(pageNumber);
+    try {
+      setDetailTrades(await getBacktestTrades(selectedEntry.runId, pageNumber, TRADE_PAGE_SIZE));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not read that page of trades.");
+    }
+  }
+
   const entries = leaderboard?.entries ?? [];
   // The catalog is already loaded for the strategy pool. Indexing it by id lets
   // the leaderboard write a candidate in the same words the pool uses.
@@ -420,6 +444,10 @@ export function DiscoveryPage({
     detailResult?.status === "completed" ? detailResult.annotations : [];
   const detailTradeRows =
     detailTrades && "trades" in detailTrades ? detailTrades.trades : [];
+  const detailTradePageCount =
+    detailTrades && "page" in detailTrades && detailTrades.page.pageSize > 0
+      ? Math.max(1, Math.ceil(detailTrades.page.totalCount / detailTrades.page.pageSize))
+      : 1;
 
   return (
     <section className="discovery-page">
@@ -754,6 +782,38 @@ export function DiscoveryPage({
               </div>
             </header>
             <div className="panel-body">
+              <div className="metric-grid">
+                <div
+                  className="metric-card"
+                  data-tone={selectedEntry.metrics.totalReturn < 0 ? "negative" : "positive"}
+                >
+                  <span className="metric-label">Total return</span>
+                  <span className="metric-value">
+                    {formatPercent(selectedEntry.metrics.totalReturn)}
+                  </span>
+                </div>
+                <div className="metric-card">
+                  <span className="metric-label">Win rate</span>
+                  <span className="metric-value">
+                    {formatPercent(selectedEntry.metrics.winRate)}
+                  </span>
+                </div>
+                <div className="metric-card" data-tone="negative">
+                  <span className="metric-label">Max drawdown</span>
+                  <span className="metric-value">
+                    {formatPercent(selectedEntry.metrics.maximumDrawdown)}
+                  </span>
+                </div>
+                <div className="metric-card">
+                  <span className="metric-label">Trades</span>
+                  <span className="metric-value">{selectedEntry.metrics.numberOfTrades}</span>
+                </div>
+                <div className="metric-card">
+                  <span className="metric-label">Score</span>
+                  <span className="metric-value">{formatNumber(selectedEntry.score)}</span>
+                </div>
+              </div>
+
               <div className="chart-card">
                 <CandlestickChart
                   state={chartState}
@@ -802,6 +862,23 @@ export function DiscoveryPage({
                     </table>
                   </div>
                 )}
+                <div className="table-footer">
+                  <button
+                    type="button"
+                    disabled={detailTradePage === 1}
+                    onClick={() => void showDetailTradePage(detailTradePage - 1)}
+                  >
+                    Prev
+                  </button>
+                  <span>Page {detailTradePage} of {detailTradePageCount}</span>
+                  <button
+                    type="button"
+                    disabled={detailTradePage >= detailTradePageCount}
+                    onClick={() => void showDetailTradePage(detailTradePage + 1)}
+                  >
+                    Next
+                  </button>
+                </div>
               </section>
 
               {detailProvenance !== null && (
@@ -810,7 +887,8 @@ export function DiscoveryPage({
                   <ul className="provenance-list">
                     {Object.entries(detailProvenance.checklist).map(([key, item]) => (
                       <li key={key}>
-                        {key}: {item.status}
+                        <span className="provenance-term">{humanizeKey(key)}</span>
+                        <span className="status-chip" data-status={item.status}>{item.status}</span>
                       </li>
                     ))}
                   </ul>
