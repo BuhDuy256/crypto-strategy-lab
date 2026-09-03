@@ -134,6 +134,10 @@ export function StrategyEnginePage() {
     }
   };
 
+  // A saved composite is immutable once it is stored, so an accidental save with
+  // an empty name would leave a nameless row in the strategy list forever. The
+  // button stays disabled until the composite has a name, which is also what the
+  // hint next to it has always said.
   const missingName = compositeName.trim() === "";
   const missingComponents = components.length < MINIMUM_COMPONENTS;
   const saveBlockedReason = missingComponents
@@ -200,7 +204,7 @@ export function StrategyEnginePage() {
                 type="button"
                 className="button-accent"
                 onClick={handleSave}
-                disabled={isSaving || missingComponents}
+                disabled={isSaving || missingComponents || missingName}
               >
                 {isSaving ? "SAVING..." : "SAVE COMPOSITE"}
               </button>

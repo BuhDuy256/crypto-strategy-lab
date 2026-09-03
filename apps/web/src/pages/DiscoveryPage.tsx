@@ -25,7 +25,7 @@ import {
   type SearchRunStatus,
   type SearchStopConditionsRequest
 } from "@crypto-strategy-lab/api-contracts";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   cancelSearch,
   createSearchExperiment,
@@ -112,15 +112,67 @@ function storeSpecId(specId: string | null): void {
   }
 }
 
-function describeStrategy(entry: ApiLeaderboardEntry): string {
-  if (entry.strategy.kind === "single") {
-    return `${entry.strategy.id}@${entry.strategy.version}`;
-  }
-  // The backend already names a generated composite after its parts
-  // ("Composite of rsi + moving-average"), so adding a prefix here only
-  // repeated the word.
-  return entry.strategy.composite.name;
+// A leaderboard row has to be told apart from its neighbours at a glance. A
+// random search returns many candidates of the same strategy with different
+// parameters, so the identifier alone repeats: four rows all reading
+// "moving-average@1.0.0". The catalog already carries a readable name and a
+// label for every parameter, so a row shows the name first and the parameter
+// values that actually differ underneath. The exact identifier and version stay
+// on the cell's title attribute, so traceability is not lost.
+interface StrategyLabel {
+  readonly title: string;
+  readonly detail: string;
+  readonly reference: string;
 }
+
+type StrategyCatalog = ReadonlyMap<string, ApiStrategyDescriptor>;
+
+function describeParameters(
+  parameters: Record<string, unknown>,
+  descriptor: ApiStrategyDescriptor | undefined
+): string {
+  return Object.entries(parameters)
+    .map(([key, value]) => {
+      const label = descriptor?.parameterSchema.properties[key]?.label ?? key;
+      return `${label}: ${String(value)}`;
+    })
+    .join("  ·  ");
+}
+
+function describeStrategy(entry: ApiLeaderboardEntry, catalog: StrategyCatalog): StrategyLabel {
+  if (entry.strategy.kind === "single") {
+    const descriptor = catalog.get(entry.strategy.id);
+    return {
+      title: descriptor?.name ?? entry.strategy.id,
+      detail: describeParameters(entry.strategy.parameters, descriptor),
+      reference: `${entry.strategy.id}@${entry.strategy.version}`
+    };
+  }
+  // A generated composite is already named after its parts by the backend
+  // ("Composite of rsi + moving-average"). That name stays first, because it is
+  // also the name an operator gave a composite they saved themselves; the line
+  // below spells the same parts out in catalog words.
+  const composite = entry.strategy.composite;
+  const parts = composite.components
+    .map((component) => catalog.get(component.id)?.name ?? component.id)
+    .join(" + ");
+  const policy = composite.policy.id.replace(/-/g, " ");
+  return {
+    title: composite.name,
+    detail: `${parts}  ·  ${policy}`,
+    reference: `${composite.id}@${composite.version}`
+  };
+}
+
+// The sort control offered the raw contract values ("maximumDrawdown"). It now
+// shows the same words the table headers use.
+const SORT_LABELS: Readonly<Record<LeaderboardSort, string>> = {
+  rank: "Rank",
+  totalReturn: "Total return",
+  winRate: "Win rate",
+  maximumDrawdown: "Max drawdown",
+  numberOfTrades: "Trades"
+};
 
 // The chart backdrop for an opened entry must match the run's own dataset window,
 // not the current form state (which a refresh resets). Provenance records that
@@ -348,6 +400,12 @@ export function DiscoveryPage({
   const canResume = status === "paused";
   const canCancel = status !== undefined && status !== "cancelled" && status !== "stopped";
   const entries = leaderboard?.entries ?? [];
+  // The catalog is already loaded for the strategy pool. Indexing it by id lets
+  // the leaderboard write a candidate in the same words the pool uses.
+  const catalogById = useMemo(
+    () => new Map(strategies.map((descriptor) => [descriptor.id, descriptor])),
+    [strategies]
+  );
   const detailAnnotations =
     detailResult?.status === "completed" ? detailResult.annotations : [];
   const detailTradeRows =
@@ -606,7 +664,7 @@ export function DiscoveryPage({
                   onChange={(e) => void handleSortChange(e.target.value as LeaderboardSort)}
                 >
                   {LEADERBOARD_SORTS.map((option) => (
-                    <option key={option} value={option}>{option}</option>
+                    <option key={option} value={option}>{SORT_LABELS[option]}</option>
                   ))}
                 </select>
               </label>
@@ -639,7 +697,19 @@ export function DiscoveryPage({
                           }
                         >
                           <td className="rank-cell">{entry.rank}</td>
-                          <td className="strategy-cell">{describeStrategy(entry)}</td>
+                          <td className="strategy-cell">
+                            {(() => {
+                              const label = describeStrategy(entry, catalogById);
+                              return (
+                                <span className="strategy-label" title={label.reference}>
+                                  <span className="strategy-title">{label.title}</span>
+                                  {label.detail !== "" && (
+                                    <span className="strategy-detail">{label.detail}</span>
+                                  )}
+                                </span>
+                              );
+                            })()}
+                          </td>
                           <td
                             className={
                               entry.metrics.totalReturn < 0
@@ -667,8 +737,10 @@ export function DiscoveryPage({
           <section className="panel" aria-labelledby="entry-detail-heading">
             <header className="panel-header">
               <div>
-                <h2 id="entry-detail-heading">Entry detail: rank {selectedEntry.rank}</h2>
-                <p>{describeStrategy(selectedEntry)}</p>
+                <h2 id="entry-detail-heading">
+                  Rank {selectedEntry.rank}: {describeStrategy(selectedEntry, catalogById).title}
+                </h2>
+                <p>{describeStrategy(selectedEntry, catalogById).detail}</p>
               </div>
             </header>
             <div className="panel-body">

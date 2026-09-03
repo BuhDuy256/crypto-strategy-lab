@@ -1,0 +1,16 @@
+import { existsSync, mkdirSync } from "node:fs";
+import { chromium } from "playwright-core";
+const executablePath = ["C:/Users/Duy/AppData/Local/ms-playwright/chromium-1234/chrome-win64/chrome.exe","C:/Program Files/Google/Chrome/Application/chrome.exe"].find(existsSync);
+const ORIGIN = process.env.UI_ORIGIN ?? "http://localhost:5173";
+const OUT = ".scratch/ui-rescue/shots"; mkdirSync(OUT, { recursive: true });
+const browser = await chromium.launch({ executablePath, headless: true });
+const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+page.on("pageerror", (e) => console.log("PAGEERROR", e.message));
+await page.goto(`${ORIGIN}/backtest`, { waitUntil: "networkidle" });
+await page.waitForTimeout(1500);
+await page.getByRole("button", { name: "Start Backtest" }).click();
+await page.waitForFunction(() => document.body.innerText.includes("Total Return"), null, { timeout: 90_000 }).catch(()=>console.log("TIMEOUT waiting for result"));
+await page.waitForTimeout(2500);
+await page.screenshot({ path: `${OUT}/backtest-result.png`, fullPage: true });
+console.log(await page.evaluate(() => document.body.innerText.slice(0, 3000)));
+await browser.close();
