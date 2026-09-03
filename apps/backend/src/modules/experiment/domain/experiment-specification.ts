@@ -1,7 +1,7 @@
 // Typed V1 experiment configuration and immutable frozen specification shapes.
 
 import type { DatasetRef } from "../../market/index.js";
-import type { StrategyParameters, StrategyRef } from "../../strategy/index.js";
+import type { CompositeStrategyDefinition, StrategyParameters, StrategyRef } from "../../strategy/index.js";
 import type { SearchConfiguration } from "./search-specification.js";
 import type { SentimentInputConfiguration } from "./sentiment-input.js";
 
@@ -50,6 +50,12 @@ export interface ExperimentDraftContent {
   readonly metricSet: VersionedRef;
   /** Required exactly when the selected descriptor requires `sentiment-series`. */
   readonly sentimentInput?: SentimentInputConfiguration;
+  // Present only when `strategy` names a generated composite candidate that has
+  // no saved-composite record: keeps a generated candidate out of the
+  // saved-composite store while still letting the run resolve it, and folds the
+  // definition into the canonically hashed content so structurally different
+  // generated composites freeze to different specifications.
+  readonly compositeDefinition?: CompositeStrategyDefinition;
   // Present only for a search experiment. When present, `strategy` is a valid
   // template that each generated candidate replaces in its derived specification.
   readonly search?: SearchConfiguration;

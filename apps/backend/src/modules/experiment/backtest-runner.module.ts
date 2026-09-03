@@ -5,7 +5,9 @@ import type { Pool } from "pg";
 import { DATASET_SERVICE, MarketModule, type DatasetService } from "../market/index.js";
 import {
   compositeExecutionDescriptor,
+  createBuiltInCombinationPolicyRegistry,
   CompositeStrategyService,
+  instantiateCompositeStrategy,
   StrategyModule,
   StrategyRegistry
 } from "../strategy/index.js";
@@ -93,7 +95,19 @@ import { WorkerThreadBacktestComputation } from "./infrastructure/worker-thread-
         new StructuredLogger("backtest-runner"),
         undefined,
         {
-          resolve: async (strategy) => {
+          resolve: async (strategy, compositeDefinition) => {
+            // A generated composite carries its definition inline; prefer it over
+            // a saved-store lookup so required-input resolution never depends on
+            // a saved-composite record existing.
+            if (compositeDefinition !== undefined) {
+              const composite = instantiateCompositeStrategy(
+                compositeDefinition, strategies, createBuiltInCombinationPolicyRegistry()
+              );
+              return compositeExecutionDescriptor(
+                composite.descriptor,
+                composite.definition.components.map((reference) => strategies.resolve(reference).descriptor)
+              );
+            }
             try {
               return strategies.resolve(strategy).descriptor;
             } catch (error) {

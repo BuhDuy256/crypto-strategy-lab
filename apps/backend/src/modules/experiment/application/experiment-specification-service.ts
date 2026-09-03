@@ -4,7 +4,9 @@ import { randomUUID } from "node:crypto";
 import type { DatasetService } from "../../market/index.js";
 import {
   compositeExecutionDescriptor,
+  createBuiltInCombinationPolicyRegistry,
   CompositeStrategyService,
+  instantiateCompositeStrategy,
   StrategyRegistry
 } from "../../strategy/index.js";
 import { canonicalSha256 } from "../../../platform/canonical-json.js";
@@ -151,6 +153,18 @@ function assertDraft(content: ExperimentDraftContent): void {
   ) {
     throw new Error("EXPERIMENT_EXECUTION: execution.allowedDirections must contain long and short");
   }
+  const inline = content.compositeDefinition;
+  if (inline !== undefined) {
+    if (inline.id !== strategy.id || inline.version !== strategy.version) {
+      throw new Error(
+        "EXPERIMENT_COMPOSITE_DEFINITION_MISMATCH: strategy reference and inline composite definition must agree"
+      );
+    }
+    if (!Array.isArray(inline.components) || inline.components.length === 0) {
+      throw new Error("EXPERIMENT_COMPOSITE_DEFINITION: compositeDefinition.components must be a non-empty list");
+    }
+    requireField(inline.policy, "compositeDefinition.policy");
+  }
 }
 
 function assertProvenance(provenance: FreezeProvenance): void {
@@ -216,20 +230,25 @@ export class ExperimentSpecificationService {
       runnable.validateParameters(current.content.strategy.parameters);
       requiredInputs = runnable.descriptor.requiredInputs;
     } catch (error) {
-      if (
-        !(error instanceof Error) ||
-        !error.message.startsWith("STRATEGY_NOT_FOUND:") ||
-        this.composites === undefined
-      ) {
+      if (!(error instanceof Error) || !error.message.startsWith("STRATEGY_NOT_FOUND:")) {
         throw error;
       }
       if (Object.keys(current.content.strategy.parameters).length !== 0) {
         throw new Error("STRATEGY_PARAMETER_UNKNOWN: composite strategies accept no run-time parameters");
       }
-      const composite = await this.composites.resolve(
-        current.content.strategy.id,
-        current.content.strategy.version
-      );
+      // A generated composite carries its definition inline (validated against
+      // the strategy reference in assertDraft) so the run never depends on a
+      // saved-composite record existing. Only fall back to the saved store when
+      // no inline definition travelled with this draft.
+      const inline = current.content.compositeDefinition;
+      const composite = inline !== undefined
+        ? instantiateCompositeStrategy(inline, this.strategies, createBuiltInCombinationPolicyRegistry())
+        : this.composites === undefined
+          ? undefined
+          : await this.composites.resolve(current.content.strategy.id, current.content.strategy.version);
+      if (composite === undefined) {
+        throw error;
+      }
       requiredInputs = compositeExecutionDescriptor(
         composite.descriptor,
         composite.definition.components.map((reference) => this.strategies.resolve(reference).descriptor)

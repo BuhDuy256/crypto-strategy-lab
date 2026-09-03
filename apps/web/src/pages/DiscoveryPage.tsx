@@ -133,6 +133,7 @@ export function DiscoveryPage({
   const [endTime, setEndTime] = useState(() => defaultSearchWindow(Date.now()).endTime);
   const [generatorId, setGeneratorId] = useState("");
   const [selectedStrategies, setSelectedStrategies] = useState<readonly string[]>([]);
+  const [compositeSize, setCompositeSize] = useState(1);
   const [seed, setSeed] = useState("discovery-demo");
   const [maxCandidates, setMaxCandidates] = useState(20);
   const [maxDurationMs, setMaxDurationMs] = useState(0);
@@ -224,8 +225,8 @@ export function DiscoveryPage({
           id,
           version: strategies.find((s) => s.id === id)?.version ?? "1.0.0"
         })),
-        compositeSizes: [1],
-        policies: []
+        compositeSizes: [compositeSize],
+        policies: compositeSize > 1 ? [{ id: "majority-vote", version: "1.0.0" }] : []
       },
       seed,
       stopConditions,
@@ -378,6 +379,16 @@ export function DiscoveryPage({
             </label>
           ))}
         </fieldset>
+        <label>
+          <span>Composite size</span>
+          <input
+            aria-label="Composite size"
+            type="number"
+            min={1}
+            value={compositeSize}
+            onChange={(e) => setCompositeSize(Math.max(1, Number(e.target.value)))}
+          />
+        </label>
         <label>
           <span>Seed</span>
           <input aria-label="Seed" value={seed} onChange={(e) => setSeed(e.target.value)} />

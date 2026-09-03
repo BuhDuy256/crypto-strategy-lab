@@ -52,7 +52,8 @@ export interface BacktestResultAcceptor {
 /** Resolves declared inputs without exposing Strategy implementation details to the runner. */
 export interface StrategyInputDescriptorResolver {
   resolve(
-    strategy: FrozenExperimentSpecification["content"]["strategy"]
+    strategy: FrozenExperimentSpecification["content"]["strategy"],
+    compositeDefinition?: FrozenExperimentSpecification["content"]["compositeDefinition"]
   ): Promise<Pick<StrategyDescriptor, "requiredInputs">>;
 }
 
@@ -168,7 +169,10 @@ export class BacktestRunnerService {
     readonly usageManifest?: SentimentUsageManifest;
   }> {
     if (this.strategyDescriptors === undefined || this.sentimentContexts === undefined) return {};
-    const descriptor = await this.strategyDescriptors.resolve(specification.content.strategy);
+    const descriptor = await this.strategyDescriptors.resolve(
+      specification.content.strategy,
+      specification.content.compositeDefinition
+    );
     if (!descriptor.requiredInputs.includes("sentiment-series")) return {};
     const sentimentInput = specification.content.sentimentInput;
     if (sentimentInput === undefined) {
