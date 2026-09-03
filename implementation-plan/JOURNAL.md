@@ -3523,3 +3523,47 @@ zero alerts, and a light surface on every page.
 Four commits on `v5-news-and-sentiment`. No tag was created and the target version
 remains V5. The `.scratch/ui-rescue/` probe area was swept into the repository by a
 repository-wide `git add` during the session and has been untracked and ignored again.
+
+### 2026-09-04 - Repository gate re-run and V5.1 presentation freeze
+
+**Why this happened**
+The presentation pass changed only `apps/web/src/`, two plan documents, and one
+ESLint ignore, so the certified `FIN-06` gate was not invalidated by it. The owner
+asked for the repository-wide gate to be re-run anyway before freezing, so the
+freeze would stand on a gate taken at the exact commit being tagged.
+
+**First attempt: invalid, not a set of regressions**
+The first guarded run reported `6` failed test files and `2` failed tests. Every
+failure was `ECONNREFUSED 127.0.0.1:6379`, a `Test timed out`, or a `Hook timed out`
+in `redis-live-notifications.test.ts`. The cause was environmental: the Compose stack
+was killed by memory pressure (`web` exited `137`, `api` exited `143`) at the moment
+the gate started, taking Redis with it. The run is recorded here as an invalid gate
+attempt, in the same sense as the unguarded `pnpm test` attempt recorded on
+2026-09-01. It is not evidence of a regression, and it was not counted as a pass.
+
+**Second attempt: green**
+Redis was started first and confirmed answering `PONG`. The gate then ran against a
+disposable PostgreSQL container isolated from both the Compose stack and the protected
+main database (`csl-freeze-gate-postgres`, host port `5544`, database
+`csl_test_freeze`, guard marker provisioned explicitly, container removed afterwards):
+`136/136` test files, `787/787` tests, exit `0`, in `129.82s`.
+
+The counts moved from the `FIN-06` gate by exactly the work of this pass: `135` to
+`136` test files and `777` to `787` tests, which is `apps/web/src/format.test.ts` and
+its ten formatter tests. Nothing else changed shape.
+
+**Compose recertification**
+`docker compose up -d --build` from `main` brought up the unchanged V5 topology with
+no V6-only role: `postgres` and `redis` healthy, one-shot `migrate` exit `0`, then
+`api` (healthy), `runner`, `market-ingest`, `news-worker`, and `web`. All five pages
+were then driven in a real browser against that stack: zero page errors, zero alerts,
+a light surface on every page, and Realtime still four independent charts at
+`5m`/`15m`/`1h`/`4h`.
+
+**Freeze**
+Tagged `v5.1-demo` on `main`, on the owner's explicit instruction. `AGENTS.md` reserves
+version tags for the owner precisely so the decision is theirs; it was made explicitly
+and is recorded as theirs. The tag marks the presentation-hardened V1-V5 baseline.
+`v5.0-demo` remains untouched on `v5-news-and-sentiment` as the functional and
+architectural certification point. This does not advance `CURRENT PRODUCT VERSION` and
+does not authorize V6.
