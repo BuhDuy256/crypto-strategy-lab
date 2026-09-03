@@ -3465,3 +3465,61 @@ criteria alone**
   the target version remains V5. `FREEZE READINESS: READY` — see the freeze-readiness report in this
   session for the full gate-by-gate breakdown. Next: the owner decides whether to freeze and tag, and
   separately whether to authorize `V6`.
+
+### 2026-09-04 - Presentation pass on the five demo pages
+
+**Why this happened**
+The `FIN-06` entry above closed the functional and architectural gate but recorded one
+thing it could not observe: "pixel-level visual rendering of the SPA. No browser or
+screenshot tool was available." The owner reopened the presentation layer only, after
+that certification, and a browser was available this time. Nothing functional or
+architectural was in scope.
+
+**What the browser found**
+`StrategyEnginePage` and the shared `GenericParameterForm` were written entirely in
+Tailwind utility classes, but Tailwind is not installed in `apps/web`. Those two
+surfaces therefore rendered as an unstyled document. The Backtest result area had no
+CSS rules at all, so it printed backend values raw: `Total Return: 0.013565077721999842`,
+`Win Rate: 0.375`, `2026-08-28T08:00:00.000Z`. Discovery asked a human to type epoch
+milliseconds. The Discovery leaderboard identified every candidate as
+`moving-average@1.0.0`, so four rows of a random search were indistinguishable.
+
+No interaction defect was found. "Add Strategy" was reported as not working; it worked,
+but the single-column layout put "Selected Components" below the entire six-strategy
+catalog, so the result of a click landed off-screen. That is a layout defect, not a
+handler defect, and it was fixed as one.
+
+**Decisions**
+- Tailwind was not adopted and no build spike was run. Adding it to a certified release
+  would introduce a build dependency and a dark-themed island inside a light
+  semantic-CSS application. The two Tailwind surfaces were rewritten in the CSS
+  vocabulary the other pages already use.
+- `apps/web/src/format.ts` is the single place that turns a backend value into readable
+  text. It formats and never derives: no metric is computed, nothing is re-ranked, no
+  stored value changes. All calendar formatting is UTC, because dataset windows, candle
+  open times, and trade timestamps are UTC in this system.
+- Discovery's date inputs convert to and from the existing epoch-millisecond request
+  shape in the browser, and snap to candle open times. The API contract is unchanged.
+- Discovery raised a red error whenever a stored run id no longer resolved. A missing
+  run is an absence, not a failure, so the page now forgets the id and opens on its
+  normal empty state.
+- Strategy Engine's save button was enabled while the hint beside it said the composite
+  still needed a name. A stored composite is immutable, so an empty name would be
+  permanent. The button now waits for the name.
+- Two usability gaps were closed rather than left for the defense: the Discovery detail
+  panel read the first twenty trades with no way to reach the rest (a candidate with
+  forty-three trades silently showed twenty), and it dropped the ranking metrics from
+  view once a row was opened.
+
+**Scope and validation**
+Every change is under `apps/web/src/`. No backend, no `api-contracts`, no migration, no
+ADR, no proof definition, and no architecture document was touched. `tsc --noEmit`
+exits 0; the web suite is `12/12` files and `85/85` tests. All five pages were driven in
+a real Chromium against the Compose stack on `:8080`, with the browser emulating a dark
+system theme, which is how the original defect reports were produced: zero page errors,
+zero alerts, and a light surface on every page.
+
+**Ending state**
+Four commits on `v5-news-and-sentiment`. No tag was created and the target version
+remains V5. The `.scratch/ui-rescue/` probe area was swept into the repository by a
+repository-wide `git add` during the session and has been untracked and ignored again.
