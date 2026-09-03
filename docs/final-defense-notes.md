@@ -47,6 +47,3 @@ measured or proven, not that the architecture could never support it:
   target in its own text).
 - Any other V6 property (operational telemetry, the scale/retry/duplicate/
   observability proofs) as implemented or certified.
-- A rerun of `PROOF-REP-001` specifically for a **generated composite**
-  candidate. The single-strategy case is proven on the certified baseline; the
-  composite-specific rerun is `FIN-06` work and has not happened yet.

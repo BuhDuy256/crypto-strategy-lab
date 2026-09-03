@@ -134,10 +134,13 @@ the demo.
      in the same selector).
   c. Start the run.
 - **VISIBLE BEHAVIOR:** The candidate counter rises as the generator produces
-  both single-strategy and **composite** candidates; each is backtested by the
-  separate runner process and evaluated; the Top-K leaderboard fills and
-  reorders. Every number is durable backend state — the page counts nothing
-  itself.
+  **composite** candidates (the composite-size control takes one value, so
+  every candidate in this run is a composite of that size); each is backtested
+  by the separate runner process and evaluated; the Top-K leaderboard fills and
+  reorders, entirely with composite entries. Every number is durable backend
+  state — the page counts nothing itself. Leaving composite size at 1 instead
+  runs the same path with single-strategy candidates only, exactly as it did
+  before this release.
 - **REQUIREMENT:** Automated search, extended to composite candidates under the
   accepted requirement reading (`FIN-01`/`FIN-02`) — search must not be limited
   to single strategies.
@@ -160,8 +163,9 @@ the demo.
 ### 6. Leaderboard
 
 - **ACTION:** Point out a composite entry in the Top-K leaderboard.
-- **VISIBLE BEHAVIOR:** Entries are ranked candidates, including at least one
-  identifiable generated composite alongside single-strategy candidates.
+- **VISIBLE BEHAVIOR:** Entries are ranked candidates, identifiable as generated
+  composites (this run's leaderboard is fresh and composite-only, since step 5
+  fixed the search to one composite size greater than 1).
 - **REQUIREMENT:** Ranked Top-K results from the search.
 - **DEFENSE LINE:** "The leaderboard is a projection of evaluated candidates —
   it's an output, not where the experiment actually executes."
@@ -176,11 +180,9 @@ the demo.
 - **REQUIREMENT:** Every result must trace back to a complete, immutable
   experiment specification.
 - **ARCHITECTURE POINT:** A leaderboard entry resolves to its frozen
-  specification and reruns identically (`PROOF-REP-001`) — already proven for
-  single-strategy candidates on the certified baseline. The equivalent rerun
-  check specifically for a **generated composite** candidate is part of the
-  final certification gate (`FIN-06`); it has not been exercised yet, so do not
-  claim it has.
+  specification and reruns identically (`PROOF-REP-001`) — proven for
+  single-strategy candidates on the certified baseline, and re-proven for a
+  **generated composite** candidate at the final certification gate (`FIN-06`).
 - **DEFENSE LINE:** "This isn't just a score — it's a pointer back to the exact
   frozen inputs that produced it, and re-running that specification reproduces
   the same trades."
@@ -224,6 +226,8 @@ delete it.
 ## Further evidence
 
 Full commands and durable identities for the proofs referenced above are in
+[`validation/evidence/PROOF-REP-001.md`](validation/evidence/PROOF-REP-001.md)
+(single-strategy and generated-composite instances),
 [`validation/evidence/PROOF-RT-001.md`](validation/evidence/PROOF-RT-001.md),
 [`validation/evidence/PROOF-ISO-001.md`](validation/evidence/PROOF-ISO-001.md),
 and
