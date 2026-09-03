@@ -54,7 +54,13 @@ describe("database schemas", () => {
         "search_runs",
         "specifications"
       ],
-      news: []
+      news: [
+        "collection_worker_heartbeat",
+        "items",
+        "sentiment_analysis_attempts",
+        "sentiment_results",
+        "source_health"
+      ]
     };
     for (const schema of MODULE_SCHEMAS) {
       const result = await pool.query<{ table_name: string }>(

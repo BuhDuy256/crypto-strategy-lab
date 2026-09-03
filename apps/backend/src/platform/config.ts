@@ -34,6 +34,21 @@ export interface AppConfig {
     readonly timeframes: readonly string[];
     readonly streamBaseUrl: string;
   };
+  readonly news: {
+    readonly coinDeskRss: {
+      readonly feedUrl: string;
+      readonly pollIntervalMs: number;
+      readonly requestTimeoutMs: number;
+      readonly retryCount: number;
+      readonly retryDelayMs: number;
+    };
+    readonly sentimentAnalysis: {
+      readonly leaseSeconds: number;
+      readonly maxAttempts: number;
+      readonly batchSize: number;
+      readonly pollIntervalMs: number;
+    };
+  };
 }
 
 type RequiredEnvVar =
@@ -62,6 +77,31 @@ function parsePort(name: RequiredEnvVar, rawValue: string): number {
     );
   }
   return port;
+}
+
+function parseBoundedInteger(
+  name: string,
+  rawValue: string,
+  minimum: number,
+  maximum: number
+): number {
+  const value = Number(rawValue);
+  if (!Number.isSafeInteger(value) || value < minimum || value > maximum) {
+    throw new Error(
+      `Environment variable "${name}" must be a whole number between ${minimum} and ${maximum}, got "${rawValue}".`
+    );
+  }
+  return value;
+}
+
+function readHttpsUrl(name: string, rawValue: string): string {
+  try {
+    const parsed = new URL(rawValue);
+    if (parsed.protocol !== "https:") throw new Error();
+    return parsed.toString();
+  } catch {
+    throw new Error(`Environment variable "${name}" must be a valid https:// URL.`);
+  }
 }
 
 /**
@@ -120,6 +160,58 @@ export function loadConfig(env: EnvSource = process.env): AppConfig {
   } catch {
     throw new Error("Environment variable \"BINANCE_STREAM_URL\" must be a valid ws:// or wss:// URL.");
   }
+  const coinDeskRssUrl = readHttpsUrl(
+    "NEWS_COINDESK_RSS_URL",
+    env.NEWS_COINDESK_RSS_URL ?? "https://www.coindesk.com/arc/outboundfeeds/rss/"
+  );
+  const newsPollIntervalMs = parseBoundedInteger(
+    "NEWS_POLL_INTERVAL_MS",
+    env.NEWS_POLL_INTERVAL_MS ?? "900000",
+    60_000,
+    86_400_000
+  );
+  const newsRequestTimeoutMs = parseBoundedInteger(
+    "NEWS_REQUEST_TIMEOUT_MS",
+    env.NEWS_REQUEST_TIMEOUT_MS ?? "10000",
+    1_000,
+    60_000
+  );
+  const newsRetryCount = parseBoundedInteger(
+    "NEWS_RETRY_COUNT",
+    env.NEWS_RETRY_COUNT ?? "2",
+    0,
+    3
+  );
+  const newsRetryDelayMs = parseBoundedInteger(
+    "NEWS_RETRY_DELAY_MS",
+    env.NEWS_RETRY_DELAY_MS ?? "1000",
+    100,
+    60_000
+  );
+  const newsAnalysisLeaseSeconds = parseBoundedInteger(
+    "NEWS_ANALYSIS_LEASE_SECONDS",
+    env.NEWS_ANALYSIS_LEASE_SECONDS ?? "60",
+    5,
+    3_600
+  );
+  const newsAnalysisMaxAttempts = parseBoundedInteger(
+    "NEWS_ANALYSIS_MAX_ATTEMPTS",
+    env.NEWS_ANALYSIS_MAX_ATTEMPTS ?? "3",
+    1,
+    10
+  );
+  const newsAnalysisBatchSize = parseBoundedInteger(
+    "NEWS_ANALYSIS_BATCH_SIZE",
+    env.NEWS_ANALYSIS_BATCH_SIZE ?? "10",
+    1,
+    200
+  );
+  const newsAnalysisPollIntervalMs = parseBoundedInteger(
+    "NEWS_ANALYSIS_POLL_INTERVAL_MS",
+    env.NEWS_ANALYSIS_POLL_INTERVAL_MS ?? "60000",
+    5_000,
+    86_400_000
+  );
 
   return {
     postgres: {
@@ -133,6 +225,21 @@ export function loadConfig(env: EnvSource = process.env): AppConfig {
     leaderboard: { topK: leaderboardTopK },
     redis: { url: redisUrl },
     websocket: { maxOutboundMessages, maxSubscriptionsPerClient },
-    marketIngest: { symbol: ingestSymbol, timeframes: ingestTimeframes, streamBaseUrl }
+    marketIngest: { symbol: ingestSymbol, timeframes: ingestTimeframes, streamBaseUrl },
+    news: {
+      coinDeskRss: {
+        feedUrl: coinDeskRssUrl,
+        pollIntervalMs: newsPollIntervalMs,
+        requestTimeoutMs: newsRequestTimeoutMs,
+        retryCount: newsRetryCount,
+        retryDelayMs: newsRetryDelayMs
+      },
+      sentimentAnalysis: {
+        leaseSeconds: newsAnalysisLeaseSeconds,
+        maxAttempts: newsAnalysisMaxAttempts,
+        batchSize: newsAnalysisBatchSize,
+        pollIntervalMs: newsAnalysisPollIntervalMs
+      }
+    }
   };
 }

@@ -12,6 +12,16 @@ vi.mock("./api/client.js", () => ({
     checkedAt: 1_700_000_000_000
   })),
   getCandleHistory: vi.fn(async () => ({ candles: [] })),
+  getNewsItems: vi.fn(async () => ({
+    items: [], page: { pageNumber: 1, pageSize: 10, totalCount: 0 }
+  })),
+  getNewsSentimentDistribution: vi.fn(async () => ({
+    window: { startAt: 0, endAt: 0 }, itemCount: 0, positive: 0, neutral: 0, negative: 0
+  })),
+  getNewsHealth: vi.fn(async () => ({
+    collection: [],
+    analysis: { status: "unavailable", pendingCount: 0, degradedCount: 0, checkedAt: 0 }
+  })),
   getStrategies: vi.fn(async () => ({ strategies: [] })),
   listComposites: vi.fn(async () => []),
   getGenerators: vi.fn(async () => ({ generators: [] })),

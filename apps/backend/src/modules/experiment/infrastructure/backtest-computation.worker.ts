@@ -4,7 +4,7 @@ import { parentPort, workerData } from "node:worker_threads";
 import {
   createBuiltInCombinationPolicyRegistry,
   createBuiltInStrategyRegistry,
-  instantiateCompositeStrategy
+  createCompositeExecutionStrategy
 } from "../../strategy/index.js";
 import {
   computeBacktest,
@@ -17,7 +17,7 @@ try {
   const input = workerData as BacktestComputationInput;
   const strategies = createBuiltInStrategyRegistry();
   if (input.compositeDefinition !== undefined) {
-    strategies.register(instantiateCompositeStrategy(
+    strategies.register(createCompositeExecutionStrategy(
       input.compositeDefinition,
       strategies,
       createBuiltInCombinationPolicyRegistry()

@@ -13,6 +13,7 @@ import {
 import { MarketModule } from "../market/index.js";
 import { StrategyModule } from "../strategy/index.js";
 import { ExperimentModule, SearchCoordinator, SearchExperimentHost } from "../experiment/index.js";
+import { NewsModule } from "../news/index.js";
 import { StructuredLogger } from "../../platform/logger.js";
 import { BacktestController } from "./backtest.controller.js";
 import { CandleHistoryController } from "./candle-history.controller.js";
@@ -27,6 +28,7 @@ import { MarketRealtimeGateway } from "./market-realtime.gateway.js";
 import { RealtimeStatusController } from "./realtime-status.controller.js";
 import { ProviderHealthController } from "./provider-health.controller.js";
 import { MarketGapController } from "./market-gap.controller.js";
+import { NewsController } from "./news.controller.js";
 import { RedisLiveNotificationSubscriber } from "../../platform/realtime/redis-live-notifications.js";
 import { loadConfig } from "../../platform/config.js";
 
@@ -57,7 +59,7 @@ class RealtimeLifecycle implements OnApplicationShutdown {
 }
 
 @Module({
-  imports: [MarketModule, ExperimentModule, StrategyModule],
+  imports: [MarketModule, ExperimentModule, StrategyModule, NewsModule],
   controllers: [
     HealthController,
     CandleHistoryController,
@@ -70,7 +72,8 @@ class RealtimeLifecycle implements OnApplicationShutdown {
     LeaderboardController,
     RealtimeStatusController,
     ProviderHealthController,
-    MarketGapController
+    MarketGapController,
+    NewsController
   ],
   providers: [
     {

@@ -3,12 +3,21 @@
 import { Module } from "@nestjs/common";
 import type { Pool } from "pg";
 import { DATASET_SERVICE, MarketModule, type DatasetService } from "../market/index.js";
-import { CompositeStrategyService, StrategyModule, StrategyRegistry } from "../strategy/index.js";
+import {
+  compositeExecutionDescriptor,
+  createBuiltInCombinationPolicyRegistry,
+  CompositeStrategyService,
+  instantiateCompositeStrategy,
+  StrategyModule,
+  StrategyRegistry
+} from "../strategy/index.js";
+import { NewsModule, SENTIMENT_FEATURE, type SentimentFeature } from "../news/index.js";
 import { loadConfig } from "../../platform/config.js";
 import { StructuredLogger } from "../../platform/logger.js";
 import { DurableBacktestResultAcceptor } from "./application/backtest-result-acceptor.js";
 import { BacktestRunnerRuntime } from "./application/backtest-runner-runtime.js";
 import { BacktestRunnerService } from "./application/backtest-runner-service.js";
+import { ExperimentSentimentContextAssembler } from "./application/sentiment-feature-context-assembler.js";
 import { ExperimentSpecificationService } from "./application/experiment-specification-service.js";
 import { LeaderboardProjector } from "./application/leaderboard-projector.js";
 import { RankingPolicyRegistry } from "./application/ranking-policy-registry.js";
@@ -19,7 +28,7 @@ import { PostgresResultAcceptanceStore } from "./infrastructure/postgres-result-
 import { WorkerThreadBacktestComputation } from "./infrastructure/worker-thread-backtest-computation.js";
 
 @Module({
-  imports: [ExperimentModule, MarketModule, StrategyModule],
+  imports: [ExperimentModule, MarketModule, StrategyModule, NewsModule],
   providers: [
     {
       provide: PostgresResultAcceptanceStore,
@@ -55,13 +64,17 @@ import { WorkerThreadBacktestComputation } from "./infrastructure/worker-thread-
     {
       provide: BacktestRunnerService,
       inject: [PostgresBacktestRunStore, ExperimentSpecificationService, DATASET_SERVICE,
-        WorkerThreadBacktestComputation, DurableBacktestResultAcceptor],
+        WorkerThreadBacktestComputation, DurableBacktestResultAcceptor,
+        StrategyRegistry, CompositeStrategyService, SENTIMENT_FEATURE],
       useFactory: (
         queue: PostgresBacktestRunStore,
         specifications: ExperimentSpecificationService,
         datasets: DatasetService,
         computation: WorkerThreadBacktestComputation,
-        acceptor: DurableBacktestResultAcceptor
+        acceptor: DurableBacktestResultAcceptor,
+        strategies: StrategyRegistry,
+        composites: CompositeStrategyService,
+        sentimentFeature: SentimentFeature
       ) => new BacktestRunnerService(
         queue,
         { get: async (specId) => {
@@ -79,7 +92,37 @@ import { WorkerThreadBacktestComputation } from "./infrastructure/worker-thread-
           workerCommit: process.env.WORKER_COMMIT ?? "unavailable",
           deterministicConfigVersion: process.env.DETERMINISTIC_CONFIG_VERSION ?? "unavailable"
         },
-        new StructuredLogger("backtest-runner")
+        new StructuredLogger("backtest-runner"),
+        undefined,
+        {
+          resolve: async (strategy, compositeDefinition) => {
+            // A generated composite carries its definition inline; prefer it over
+            // a saved-store lookup so required-input resolution never depends on
+            // a saved-composite record existing.
+            if (compositeDefinition !== undefined) {
+              const composite = instantiateCompositeStrategy(
+                compositeDefinition, strategies, createBuiltInCombinationPolicyRegistry()
+              );
+              return compositeExecutionDescriptor(
+                composite.descriptor,
+                composite.definition.components.map((reference) => strategies.resolve(reference).descriptor)
+              );
+            }
+            try {
+              return strategies.resolve(strategy).descriptor;
+            } catch (error) {
+              if (!(error instanceof Error) || !error.message.startsWith("STRATEGY_NOT_FOUND:")) {
+                throw error;
+              }
+              const composite = await composites.resolve(strategy.id, strategy.version);
+              return compositeExecutionDescriptor(
+                composite.descriptor,
+                composite.definition.components.map((reference) => strategies.resolve(reference).descriptor)
+              );
+            }
+          }
+        },
+        new ExperimentSentimentContextAssembler({ resolve: () => sentimentFeature })
       )
     },
     {

@@ -24,6 +24,7 @@ import type {
   FreezeProvenance,
   FrozenExperimentSpecification
 } from "../domain/experiment-specification.js";
+import type { SentimentInputConfiguration } from "../domain/sentiment-input.js";
 
 // The dataset window and the strategy a person chooses for a single run.
 export interface CreateSingleBacktestExperimentInput {
@@ -38,6 +39,8 @@ export interface CreateSingleBacktestExperimentInput {
     readonly version: string;
     readonly parameters: StrategyParameters;
   };
+  /** Required by freeze only when the selected descriptor declares sentiment-series. */
+  readonly sentimentInput?: SentimentInputConfiguration;
 }
 
 // Narrow ports this service needs. The concrete Market and Experiment services
@@ -95,6 +98,7 @@ export class SingleBacktestExperimentCreationService {
         version: input.strategy.version,
         parameters: input.strategy.parameters
       },
+      ...(input.sentimentInput === undefined ? {} : { sentimentInput: input.sentimentInput }),
       execution: V1_EXECUTION,
       metricSet: { id: MVP_METRIC_SET.id, version: MVP_METRIC_SET.version }
     };

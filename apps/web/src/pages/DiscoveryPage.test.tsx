@@ -71,7 +71,7 @@ function leaderboard(overrides: Partial<LeaderboardResponse> = {}): LeaderboardR
         resultId: "result-1",
         contentHash: "hash-1",
         score: 0.42,
-        strategy: { kind: "single", id: "rsi", version: "1.0.0", parameters: {} },
+        strategy: { kind: "single", id: "rsi", version: "1.0.0", parameters: { period: 14 } },
         metrics: { totalReturn: 12.5, winRate: 60, maximumDrawdown: 5, numberOfTrades: 8 }
       }
     ],
@@ -107,7 +107,7 @@ beforeEach(() => {
   });
   vi.mocked(getStrategies).mockResolvedValue({
     strategies: [
-      { id: "rsi", version: "1.0.0", name: "RSI", description: "", category: "momentum", capabilities: ["long"], parameterSchema: { properties: {}, required: [] }, requiredInputs: [] }
+      { id: "rsi", version: "1.0.0", name: "RSI", description: "", category: "momentum", capabilities: ["long"], parameterSchema: { properties: { period: { type: "integer", label: "Period" } }, required: ["period"] }, requiredInputs: [] }
     ]
   });
 });
@@ -125,9 +125,19 @@ describe("DiscoveryPage read layer", () => {
 
     await waitFor(() => expect(screen.getByText("Status: running")).toBeDefined());
     expect(source.getProgress).toHaveBeenCalledWith(specId);
-    expect(screen.getByText("Completed: 2")).toBeDefined();
-    expect(screen.getByText("rsi@1.0.0")).toBeDefined();
-    expect(screen.getByText("12.5")).toBeDefined();
+    // The counts are shown as labelled cards and the metrics are formatted for
+    // reading; the values themselves still come straight from the data source.
+    const completed = screen.getByText("Completed").closest("li");
+    expect(completed?.textContent).toBe("Completed2");
+    // A candidate is named the way the catalog names it, and the parameters that
+    // tell two candidates of the same strategy apart are written underneath. The
+    // exact identifier and version stay reachable for traceability.
+    // Scoped to the leaderboard cell on purpose: "RSI" is also the label of the
+    // strategy pool checkbox further up the page.
+    const candidate = screen.getByText("RSI", { selector: ".strategy-title" });
+    expect(screen.getByText("Period: 14")).toBeDefined();
+    expect(candidate.closest(".strategy-label")?.getAttribute("title")).toBe("rsi@1.0.0");
+    expect(screen.getByText("1,250%")).toBeDefined();
   });
 
   it("restores the last run from storage on refresh", async () => {
@@ -215,12 +225,18 @@ describe("DiscoveryPage entry detail", () => {
     vi.mocked(getCandleHistory).mockResolvedValue({ candles: [] });
 
     render(<DiscoveryPage dataSource={fakeSource()} pollMs={100000} />);
-    await waitFor(() => expect(screen.getByText("rsi@1.0.0")).toBeDefined());
+    await waitFor(() =>
+      expect(screen.getByText("RSI", { selector: ".strategy-title" })).toBeDefined()
+    );
 
-    fireEvent.click(screen.getByText("rsi@1.0.0"));
+    fireEvent.click(screen.getByText("RSI", { selector: ".strategy-title" }));
 
     await waitFor(() => expect(getBacktestProvenance).toHaveBeenCalledWith("run-1"));
     expect(getBacktestTrades).toHaveBeenCalledWith("run-1", 1, 20);
-    await waitFor(() => expect(screen.getByText("specification: recorded")).toBeDefined());
+    // The checklist keeps the backend's own status word, written as a label and
+    // the same status chip the rest of the app uses.
+    await waitFor(() => expect(screen.getByText("Specification")).toBeDefined());
+    expect(screen.getByText("Specification").closest("li")?.textContent)
+      .toBe("Specificationrecorded");
   });
 });

@@ -479,9 +479,12 @@ Every request gets an `x-request-id` header on the response: the inbound header'
 
 ## Next phase
 
-Implementation against the frozen baseline is currently authorized through **V2 - Extensible Strategy Engine**. V1 and V2 recovery is being certified before any later-version work is authorized.
+Implementation against the frozen baseline has certified **V1 through V5** at tag
+`v5.0-demo`. A final pre-defense release (`frozen_implementation_plan/`) is closing
+automated composite discovery on top of that certified baseline; it does not move
+the product version past V5 and does not authorize V6.
 
-The original Walking Skeleton was the repository's architecture proof-oriented vertical slice. The current review-ready next phase is the consolidated V1/V2 recovery certification recorded in the tracker; it does not authorize a new product version.
+The original Walking Skeleton was the repository's architecture proof-oriented vertical slice.
 
 All six V1 setup slices are complete. Market Data now has normalized provider
 contracts, Binance history, immutable candle revisions, dataset snapshots, and the

@@ -16,13 +16,18 @@ import {
   ValidationPipe
 } from "@nestjs/common";
 import type { CreateSpecificationResponse } from "@crypto-strategy-lab/api-contracts";
-import { SingleBacktestExperimentCreationService } from "../experiment/index.js";
-import { CreateSpecificationDto } from "./specification.dto.js";
+import {
+  SingleBacktestExperimentCreationService,
+  type CreateSingleBacktestExperimentInput
+} from "../experiment/index.js";
+import { CreateSpecificationDto, type SentimentPolicyActionDto } from "./specification.dto.js";
 
 // Error prefixes that mean the request was invalid rather than the server failing.
 const BAD_REQUEST_PREFIXES = [
   "DATASET_RANGE:",
   "DATASET_RANGE_ALIGNMENT:",
+  "EXPERIMENT_FIELD_",
+  "EXPERIMENT_SENTIMENT_",
   "EXPERIMENT_VERSION:",
   "STRATEGY_NOT_FOUND:",
   "COMPOSITE_NOT_FOUND:",
@@ -30,6 +35,31 @@ const BAD_REQUEST_PREFIXES = [
   "STRATEGY_VERSION_MISMATCH:",
   "STRATEGY_PARAMETER_"
 ];
+
+function mapSentimentPolicyAction(
+  action: SentimentPolicyActionDto
+): NonNullable<CreateSingleBacktestExperimentInput["sentimentInput"]>["policy"]["onMissing"] {
+  if (action.action === "substitute") {
+    if (action.substituteValue === undefined) {
+      throw new Error("EXPERIMENT_SENTIMENT_POLICY: substituteValue is required");
+    }
+    return { action: "substitute", substituteValue: action.substituteValue };
+  }
+  return { action: action.action };
+}
+
+function mapSentimentInput(
+  input: NonNullable<CreateSpecificationDto["sentimentInput"]>
+): NonNullable<CreateSingleBacktestExperimentInput["sentimentInput"]> {
+  return {
+    windowDurationMs: input.windowDurationMs,
+    policy: {
+      maxAgeMs: input.policy.maxAgeMs,
+      onMissing: mapSentimentPolicyAction(input.policy.onMissing),
+      onStale: mapSentimentPolicyAction(input.policy.onStale)
+    }
+  };
+}
 
 @Controller("specifications")
 export class SpecificationController {
@@ -64,7 +94,10 @@ export class SpecificationController {
           id: body.strategy.id,
           version: body.strategy.version,
           parameters: body.strategy.parameters
-        }
+        },
+        ...(body.sentimentInput === undefined ? {} : {
+          sentimentInput: mapSentimentInput(body.sentimentInput)
+        })
       });
     } catch (error) {
       if (

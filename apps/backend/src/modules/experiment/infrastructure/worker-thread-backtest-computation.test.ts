@@ -89,6 +89,47 @@ describe("WorkerThreadBacktestComputation", () => {
       .toBe(true);
   }, 60_000);
 
+  it("executes an inline generated composite without any saved-composite lookup", async () => {
+    const definition: CompositeStrategyDefinition = {
+      id: "generated-composite",
+      version: "1.0.0",
+      name: "Generated composite",
+      description: "Two real strategies, carried inline",
+      components: [
+        {
+          id: "moving-average",
+          version: "1.0.0",
+          parameters: { fastPeriod: 2, slowPeriod: 3, priceSource: "close" }
+        },
+        {
+          id: "rsi",
+          version: "1.0.0",
+          parameters: { period: 2, buyThreshold: 30, sellThreshold: 70, priceSource: "close" }
+        }
+      ],
+      policy: { id: "majority-vote", version: "1.0.0", configuration: {} }
+    };
+    const compositeInput = {
+      ...input,
+      specification: {
+        ...input.specification,
+        content: {
+          ...input.specification.content,
+          strategy: { id: definition.id, version: definition.version, parameters: {} },
+          compositeDefinition: definition
+        }
+      }
+    };
+    // No CompositeStrategyService is passed: the inline path must not need one.
+    const output = await new WorkerThreadBacktestComputation(createBuiltInStrategyRegistry())
+      .compute(compositeInput);
+
+    expect(output.simulation.annotations.some((annotation) => annotation.componentId === "moving-average"))
+      .toBe(true);
+    expect(output.simulation.annotations.some((annotation) => annotation.componentId === "rsi"))
+      .toBe(true);
+  }, 60_000);
+
   it("keeps the orchestration event loop responsive during CPU work", async () => {
     let ticks = 0;
     const timer = setInterval(() => { ticks += 1; }, 1);

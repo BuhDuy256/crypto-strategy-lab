@@ -23,7 +23,8 @@ import type {
   ExperimentDraftContent,
   ExperimentSpecification,
   FreezeProvenance,
-  FrozenExperimentSpecification
+  FrozenExperimentSpecification,
+  StrategyConfiguration
 } from "../domain/experiment-specification.js";
 import type { SearchConfiguration } from "../domain/search-specification.js";
 import type { BacktestRun, BacktestRunStatus } from "./backtest-run-service.js";
@@ -426,22 +427,20 @@ export class SearchCoordinator {
     candidate: CandidateStrategy
   ): Promise<void> {
     const specification = candidate.specification;
-    if (specification.kind !== "single") {
-      // V3's search space is single-strategy; running a composite candidate would
-      // need the computation path to resolve composites, which is out of this
-      // slice's change surface.
-      throw new Error(`SEARCH_COMPOSITE_UNSUPPORTED: ${candidate.contentHash}`);
-    }
+    // The candidate contract governs what shape a specification may be; a
+    // generated composite is carried inline rather than through a saved record,
+    // so nothing here branches on the generator that produced it.
+    const strategy: StrategyConfiguration =
+      specification.kind === "single"
+        ? { id: specification.id, version: specification.version, parameters: specification.parameters }
+        : { id: specification.composite.id, version: specification.composite.version, parameters: {} };
     const derivedContent: ExperimentDraftContent = {
       schemaVersion: baseSpecification.content.schemaVersion,
       datasetRef: baseSpecification.content.datasetRef,
-      strategy: {
-        id: specification.id,
-        version: specification.version,
-        parameters: specification.parameters
-      },
+      strategy,
       execution: baseSpecification.content.execution,
-      metricSet: baseSpecification.content.metricSet
+      metricSet: baseSpecification.content.metricSet,
+      ...(specification.kind === "composite" ? { compositeDefinition: specification.composite } : {})
     };
     const draft = await this.specifications.createDraft(derivedContent);
     await this.specifications.freeze(draft.specId, baseSpecification.content.provenance);

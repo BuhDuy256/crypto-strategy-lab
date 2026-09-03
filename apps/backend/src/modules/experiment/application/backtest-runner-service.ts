@@ -1,11 +1,17 @@
 // Separate-runner orchestration from durable identifiers to an accepted outcome.
 
 import type { DatasetService } from "../../market/index.js";
+import type { StrategyDescriptor } from "../../strategy/index.js";
 import type { BacktestOutput } from "../domain/backtester.js";
 import type { EvaluationResult } from "../domain/evaluator.js";
 import type { FrozenExperimentSpecification } from "../domain/experiment-specification.js";
 import { BACKTEST_CANCELLED_REASON, type ClaimedBacktestJob } from "./backtest-run-service.js";
 import type { BacktestComputation } from "./backtest-computation.js";
+import type { SentimentUsageManifest } from "./sentiment-usage-manifest.js";
+import type {
+  SentimentContextAssembly,
+  SentimentContextAssemblyRequest
+} from "./sentiment-feature-context-assembler.js";
 
 export interface BacktestWorkQueue {
   claimNext(runnerId: string): Promise<ClaimedBacktestJob | undefined>;
@@ -27,6 +33,8 @@ export interface BacktestRunnerOutcome {
   readonly evaluation: EvaluationResult;
   readonly runtimeIdentity: RunnerRuntimeIdentity;
   readonly datasetManifest: Awaited<ReturnType<DatasetService["resolveDataset"]>>["manifest"];
+  /** Present only when the strategy required `sentiment-series`. */
+  readonly sentimentUsage?: SentimentUsageManifest;
 }
 
 export interface RunnerRuntimeIdentity {
@@ -39,6 +47,19 @@ export interface RunnerRuntimeIdentity {
 
 export interface BacktestResultAcceptor {
   accept(outcome: BacktestRunnerOutcome): Promise<void>;
+}
+
+/** Resolves declared inputs without exposing Strategy implementation details to the runner. */
+export interface StrategyInputDescriptorResolver {
+  resolve(
+    strategy: FrozenExperimentSpecification["content"]["strategy"],
+    compositeDefinition?: FrozenExperimentSpecification["content"]["compositeDefinition"]
+  ): Promise<Pick<StrategyDescriptor, "requiredInputs">>;
+}
+
+/** News-aware context assembly is optional at construction and invoked only when declared. */
+export interface RunnerSentimentContextAssembler {
+  assemble(request: SentimentContextAssemblyRequest): Promise<SentimentContextAssembly>;
 }
 
 export interface RunnerEventLogger {
@@ -57,7 +78,9 @@ export class BacktestRunnerService {
     private readonly acceptor: BacktestResultAcceptor,
     private readonly runtimeIdentity: RunnerRuntimeIdentity,
     private readonly logger: RunnerEventLogger = silentLogger,
-    private readonly heartbeatIntervalMs = 10_000
+    private readonly heartbeatIntervalMs = 10_000,
+    private readonly strategyDescriptors?: StrategyInputDescriptorResolver,
+    private readonly sentimentContexts?: RunnerSentimentContextAssembler
   ) {}
 
   async processNext(runnerId: string, signal?: AbortSignal): Promise<boolean> {
@@ -87,6 +110,8 @@ export class BacktestRunnerService {
       const specification = await this.specifications.get(claim.job.specId);
       const dataset = await this.datasets.resolveDataset(specification.content.datasetRef);
       if (await this.cancelled(claim, signal)) return true;
+      const sentiment = await this.assembleSentimentContext(specification, dataset.candles);
+      if (sentiment.entries !== undefined && await this.cancelled(claim, signal)) return true;
 
       stage = "execution";
       const activeController = new AbortController();
@@ -94,7 +119,11 @@ export class BacktestRunnerService {
       const abortComputation = (): void => activeController.abort();
       signal?.addEventListener("abort", abortComputation, { once: true });
       const { simulation, evaluation } = await this.computation.compute(
-        { specification, candles: dataset.candles },
+        {
+          specification,
+          candles: dataset.candles,
+          ...(sentiment.entries === undefined ? {} : { sentimentEntries: sentiment.entries })
+        },
         activeController.signal
       ).finally(() => signal?.removeEventListener("abort", abortComputation));
       if (await this.cancelled(claim, signal)) return true;
@@ -107,7 +136,8 @@ export class BacktestRunnerService {
         simulation,
         evaluation,
         runtimeIdentity: this.runtimeIdentity,
-        datasetManifest: dataset.manifest
+        datasetManifest: dataset.manifest,
+        ...(sentiment.usageManifest === undefined ? {} : { sentimentUsage: sentiment.usageManifest })
       });
       this.logger.log("Backtest run accepted", context);
       return true;
@@ -129,6 +159,40 @@ export class BacktestRunnerService {
     } finally {
       clearInterval(heartbeat);
     }
+  }
+
+  private async assembleSentimentContext(
+    specification: FrozenExperimentSpecification,
+    candles: readonly Awaited<ReturnType<DatasetService["resolveDataset"]>>["candles"][number][]
+  ): Promise<{
+    readonly entries?: Exclude<SentimentContextAssembly, { readonly status: "technical-only" }> ["entries"];
+    readonly usageManifest?: SentimentUsageManifest;
+  }> {
+    if (this.strategyDescriptors === undefined || this.sentimentContexts === undefined) return {};
+    const descriptor = await this.strategyDescriptors.resolve(
+      specification.content.strategy,
+      specification.content.compositeDefinition
+    );
+    if (!descriptor.requiredInputs.includes("sentiment-series")) return {};
+    const sentimentInput = specification.content.sentimentInput;
+    if (sentimentInput === undefined) {
+      throw new Error("BACKTEST_SENTIMENT_INPUT_REQUIRED");
+    }
+    const marketSymbol = specification.content.datasetRef.symbols[0];
+    if (marketSymbol === undefined) {
+      throw new Error("BACKTEST_SENTIMENT_MARKET_SYMBOL_REQUIRED");
+    }
+    const assembly = await this.sentimentContexts.assemble({
+      descriptor,
+      marketSymbol,
+      evaluationTimes: candles.map((candle) => candle.closeTime),
+      sentimentInput
+    });
+    if (assembly.status === "blocked") {
+      throw new Error(`BACKTEST_SENTIMENT_POLICY_BLOCKED: ${assembly.decision.appliedPolicy.state}`);
+    }
+    if (assembly.status === "technical-only") return {};
+    return { entries: assembly.entries, usageManifest: assembly.usageManifest };
   }
 
   private async cancelled(claim: ClaimedBacktestJob, signal?: AbortSignal): Promise<boolean> {

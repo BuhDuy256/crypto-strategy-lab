@@ -1,3 +1,11 @@
+// The Strategy Engine page (UI-02): pick strategies from the catalog, configure
+// each one, choose how their signals combine, and save the result as a reusable
+// composite.
+//
+// The page holds no combination logic. It collects choices and posts them; the
+// backend validates the components, owns the policy semantics, and produces the
+// evaluated action shown after a save.
+
 import { useEffect, useRef, useState } from "react";
 import { createComposite, evaluateComposite, getStrategies } from "../api/client.js";
 import {
@@ -6,6 +14,7 @@ import {
   type ApiTimeframe
 } from "@crypto-strategy-lab/api-contracts";
 import { GenericParameterForm } from "../components/GenericParameterForm.js";
+import { fromDateInputValue, toDateInputValue } from "../format.js";
 
 interface ComponentState {
   uiId: string;
@@ -25,14 +34,14 @@ const TIMEFRAME_MILLISECONDS: Readonly<Record<ApiTimeframe, number>> = {
   "1d": 86_400_000
 };
 
+/** A dataset window is addressed by candle open times, so bounds are snapped. */
 function alignToCandleOpen(epochMs: number, timeframe: ApiTimeframe): number {
   const duration = TIMEFRAME_MILLISECONDS[timeframe];
   return Math.floor(epochMs / duration) * duration;
 }
 
-function toDateInputValue(epochMs: number): string {
-  return new Date(epochMs).toISOString().slice(0, 10);
-}
+/** The minimum a composite needs before the backend will accept it. */
+const MINIMUM_COMPONENTS = 2;
 
 export function StrategyEnginePage() {
   const nextComponentId = useRef(0);
@@ -43,10 +52,10 @@ export function StrategyEnginePage() {
   const [timeframe, setTimeframe] = useState<ApiTimeframe>("1h");
   const [startTime, setStartTime] = useState(() => alignToCandleOpen(Date.now() - 30 * 86_400_000, "1h"));
   const [endTime, setEndTime] = useState(() => alignToCandleOpen(Date.now(), "1h"));
-  
+
   const [compositeName, setCompositeName] = useState("");
   const [compositeDesc, setCompositeDesc] = useState("");
-  
+
   const [combinedSignal, setCombinedSignal] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
@@ -125,262 +134,258 @@ export function StrategyEnginePage() {
     }
   };
 
+  // A saved composite is immutable once it is stored, so an accidental save with
+  // an empty name would leave a nameless row in the strategy list forever. The
+  // button stays disabled until the composite has a name, which is also what the
+  // hint next to it has always said.
+  const missingName = compositeName.trim() === "";
+  const missingComponents = components.length < MINIMUM_COMPONENTS;
+  const saveBlockedReason = missingComponents
+    ? `Add at least ${MINIMUM_COMPONENTS} strategies from the catalog to save a composite.`
+    : missingName
+      ? "Give the composite a name to save it."
+      : null;
+
   return (
-    <div className="p-6 md:p-8 max-w-[1600px] mx-auto min-h-screen bg-gray-950 flex flex-col font-sans">
-      <div className="flex flex-col mb-8 border-b border-gray-800 pb-6">
-        <h1 className="text-3xl font-extrabold text-white tracking-tight">Strategy Engine</h1>
-        <p className="text-gray-400 mt-2 text-lg">Build, combine, and configure algorithms.</p>
+    <section className="engine-page">
+      <div className="page-heading">
+        <div>
+          <h1>Strategy Engine</h1>
+          <p>Build reusable strategy combinations, then use them in Backtest and Discovery.</p>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 flex-1">
-        {/* LEFT COLUMN: CATALOG */}
-        <div className="lg:col-span-1 flex flex-col bg-gray-900 border-2 border-gray-800 rounded-xl shadow-xl overflow-hidden h-fit max-h-[85vh]">
-          <div className="bg-gray-800 px-6 py-4 border-b border-gray-700">
-            <h2 className="text-lg font-bold text-white uppercase tracking-wider">Catalog</h2>
-            <p className="text-sm text-gray-400 mt-1">Available modules</p>
-          </div>
-          <div className="flex flex-col gap-4 overflow-y-auto p-4 custom-scrollbar bg-gray-900">
+      <div className="engine-layout">
+        <section className="panel catalog-panel" aria-labelledby="catalog-heading">
+          <header className="panel-header">
+            <div>
+              <h2 id="catalog-heading">Strategy catalog</h2>
+              <p>Pick the building blocks</p>
+            </div>
+            <span className="pill">{strategies.length}</span>
+          </header>
+          <div className="catalog-list">
             {strategies.length === 0 ? (
-              <div className="text-gray-500 text-center py-8 text-sm">Loading strategies...</div>
+              <p className="empty-note">Loading strategies...</p>
             ) : (
-              strategies.map(s => (
-                <div key={s.id} className="bg-gray-800 border-2 border-gray-700 hover:border-blue-500 rounded-xl p-4 transition-all shadow-md group flex flex-col">
-                  <div className="flex justify-between items-start mb-2">
-                    <h3 className="font-bold text-blue-400 text-base leading-tight">{s.name}</h3>
-                    <span className="text-[10px] uppercase font-bold bg-blue-900/50 text-blue-300 border border-blue-700 px-2 py-1 rounded">{s.category}</span>
-                  </div>
-                  <p className="text-xs text-gray-400 mb-4 leading-relaxed flex-1">{s.description}</p>
-                  <button 
-                    onClick={() => addComponent(s)}
-                    className="w-full bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold py-2 rounded shadow transition-all"
+              strategies.map(s => {
+                const used = components.filter(c => c.strategy.id === s.id).length;
+                return (
+                  <article
+                    key={s.id}
+                    className={used > 0 ? "catalog-item is-selected" : "catalog-item"}
                   >
-                    + ADD STRATEGY
-                  </button>
-                </div>
-              ))
+                    <div className="catalog-item-title">
+                      <h3>{s.name}</h3>
+                      <span className="badge">{s.category}</span>
+                    </div>
+                    <p className="catalog-item-description">{s.description}</p>
+                    <div className="catalog-item-actions">
+                      <button type="button" className="button-primary" onClick={() => addComponent(s)}>
+                        + ADD STRATEGY
+                      </button>
+                      {used > 0 && <span className="catalog-item-count">Added ×{used}</span>}
+                    </div>
+                  </article>
+                );
+              })
             )}
           </div>
-        </div>
+        </section>
 
-        {/* RIGHT COLUMN: BUILDER */}
-        <div className="lg:col-span-3 flex flex-col gap-6">
-          <div className="bg-gray-900 border-2 border-gray-800 rounded-xl shadow-xl flex flex-col overflow-hidden">
-            <div className="bg-gray-800 px-8 py-5 border-b border-gray-700 flex justify-between items-center">
-              <div>
-                <h2 className="text-xl font-bold text-white tracking-wide">Composite Builder</h2>
-                <p className="text-sm text-gray-400 mt-1">Configure your selected strategies below</p>
-              </div>
-              <div className="flex items-center gap-4">
-                {error && <span className="text-red-400 text-sm bg-red-950 px-3 py-1 rounded border border-red-900 font-medium">{error}</span>}
-                {saveSuccess && <span className="text-green-400 text-sm bg-green-950 px-3 py-1 rounded border border-green-900 font-medium">{saveSuccess}</span>}
-                <button 
-                  onClick={handleSave}
-                  disabled={isSaving || components.length < 2}
-                  className="bg-green-600 hover:bg-green-500 disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed text-white px-6 py-2.5 rounded font-bold text-sm tracking-wide transition-colors shadow-lg"
-                >
-                  {isSaving ? "SAVING..." : "SAVE COMPOSITE"}
-                </button>
-              </div>
+        <section className="panel builder-panel" aria-labelledby="builder-heading">
+          <header className="panel-header">
+            <div>
+              <h2 id="builder-heading">Composite builder</h2>
+              <p>Name it, configure the components, choose how their signals combine</p>
             </div>
-            
-            <div className="p-8 flex flex-col gap-8 bg-gray-900">
-              
-              {/* TOP SECTION: META DATA */}
-              <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 shadow-sm">
-                <h3 className="text-sm font-bold text-white uppercase mb-4 tracking-wider flex items-center gap-2">
-                  <span className="bg-blue-600 w-2 h-2 rounded-full inline-block"></span> Basic Details
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest block mb-2">Composite Name</label>
-                    <input 
-                      type="text" 
-                      value={compositeName} 
-                      onChange={e => setCompositeName(e.target.value)}
-                      className="w-full bg-gray-900 border border-gray-600 focus:border-blue-500 rounded-lg px-4 py-3 text-sm text-white outline-none transition-all shadow-inner" 
-                      placeholder="e.g. Alpha Trend 2.0"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest block mb-2">Description</label>
-                    <input 
-                      type="text" 
-                      value={compositeDesc} 
-                      onChange={e => setCompositeDesc(e.target.value)}
-                      className="w-full bg-gray-900 border border-gray-600 focus:border-blue-500 rounded-lg px-4 py-3 text-sm text-white outline-none transition-all shadow-inner"
-                      placeholder="Describe the strategy logic..."
-                    />
-                  </div>
-                </div>
+            <div className="builder-save">
+              <button
+                type="button"
+                className="button-accent"
+                onClick={handleSave}
+                disabled={isSaving || missingComponents || missingName}
+              >
+                {isSaving ? "SAVING..." : "SAVE COMPOSITE"}
+              </button>
+              {saveBlockedReason !== null && <span className="hint">{saveBlockedReason}</span>}
+            </div>
+          </header>
+
+          {(error !== null || saveSuccess !== null) && (
+            <div className="builder-messages">
+              {error !== null && <p className="banner banner-error" role="alert">{error}</p>}
+              {saveSuccess !== null && <p className="banner banner-success" role="status">{saveSuccess}</p>}
+            </div>
+          )}
+
+          <div className="panel-body">
+            <section className="form-section">
+              <h3 className="section-title"><span className="step">1</span> Details</h3>
+              <div className="field-grid">
+                <label className="field">
+                  <span className="field-label">Composite name</span>
+                  <input
+                    type="text"
+                    value={compositeName}
+                    onChange={e => setCompositeName(e.target.value)}
+                    placeholder="e.g. Alpha Trend 2.0"
+                  />
+                </label>
+                <label className="field">
+                  <span className="field-label">Description</span>
+                  <input
+                    type="text"
+                    value={compositeDesc}
+                    onChange={e => setCompositeDesc(e.target.value)}
+                    placeholder="Describe the strategy logic..."
+                  />
+                </label>
               </div>
+            </section>
 
-              {/* MIDDLE SECTION: COMPONENTS */}
-              <div className="flex flex-col gap-4">
-                <div className="flex items-center gap-3">
-                  <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                     <span className="bg-purple-500 w-2 h-2 rounded-full inline-block"></span> Selected Components
-                  </h3>
-                  {components.length > 0 && (
-                    <div className="flex flex-wrap gap-2 ml-2">
-                      {components.map((c, i) => (
-                        <span key={`tag-${c.uiId}`} className="bg-purple-900/40 border border-purple-700 text-purple-300 text-[11px] px-2 py-1 rounded-full font-semibold">
-                          #{i+1} {c.strategy.name}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
+            <section className="form-section">
+              <h3 className="section-title">
+                <span className="step">2</span> Selected components
+                <span className="section-count">{components.length}</span>
+              </h3>
 
-                {components.length === 0 ? (
-                  <div className="text-center py-12 text-gray-500 border-2 border-dashed border-gray-700 rounded-xl bg-gray-800/50">
-                    <p className="font-semibold text-lg mb-1">No strategies selected</p>
-                    <p className="text-sm">Please select a strategy from the catalog on the left to configure it here.</p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 gap-6">
-                    {components.map((c, i) => (
-                      <div key={c.uiId} className="bg-gray-800 border-2 border-gray-600 rounded-xl shadow-lg flex flex-col md:flex-row overflow-hidden relative">
-                        <button onClick={() => removeComponent(c.uiId)} className="absolute top-4 right-4 text-gray-500 hover:text-red-400 text-xl font-bold p-1 bg-gray-900 rounded-full w-8 h-8 flex items-center justify-center transition-colors">✕</button>
-                        
-                        <div className="bg-gray-900/50 p-6 md:w-1/3 border-b md:border-b-0 md:border-r border-gray-700">
-                          <span className="inline-block bg-blue-600 text-white font-bold px-2 py-1 rounded text-xs mb-3 shadow">Component #{i + 1}</span>
-                          <h4 className="font-bold text-white text-lg leading-tight mb-2">{c.strategy.name}</h4>
-                          <p className="text-xs text-gray-400">{c.strategy.description}</p>
-                        </div>
-                        
-                        <div className="p-6 md:w-2/3 flex flex-col gap-6">
-                          <div>
-                            <h5 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 border-b border-gray-700 pb-2">Configuration Parameters</h5>
-                            <GenericParameterForm 
-                              schema={c.strategy.parameterSchema} 
-                              values={c.parameters}
-                              onChange={p => updateComponent(c.uiId, { parameters: p })}
+              {components.length === 0 ? (
+                <p className="empty-state">
+                  No strategies selected yet. Add at least {MINIMUM_COMPONENTS} from the catalog on
+                  the left.
+                </p>
+              ) : (
+                <div className="component-list">
+                  {components.map((c, i) => (
+                    <article key={c.uiId} className="component-card">
+                      <div className="component-identity">
+                        <span className="badge badge-accent">Component #{i + 1}</span>
+                        <h4>{c.strategy.name}</h4>
+                        <p>{c.strategy.description}</p>
+                        <button
+                          type="button"
+                          className="button-quiet"
+                          onClick={() => removeComponent(c.uiId)}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                      <div className="component-configuration">
+                        <h5 className="subsection-title">Parameters</h5>
+                        <GenericParameterForm
+                          schema={c.strategy.parameterSchema}
+                          values={c.parameters}
+                          onChange={p => updateComponent(c.uiId, { parameters: p })}
+                        />
+                        {policyId === "weighted-score" && (
+                          <label className="field weight-field">
+                            <span className="field-label">Weight</span>
+                            <input
+                              type="number"
+                              value={c.weight}
+                              onChange={e => updateComponent(c.uiId, { weight: Number(e.target.value) })}
                             />
-                          </div>
-                          
-                          {policyId === "weighted-score" && (
-                            <div className="bg-gray-900 p-4 rounded-lg border border-gray-700">
-                              <label className="text-xs font-bold text-gray-400 block mb-2">
-                                Weight Score
-                                <input
-                                  type="number"
-                                  value={c.weight}
-                                  onChange={e => updateComponent(c.uiId, { weight: Number(e.target.value) })}
-                                  className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm text-white font-mono outline-none"
-                                />
-                              </label>
-                            </div>
-                          )}
-                        </div>
+                          </label>
+                        )}
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* BOTTOM SECTION: POLICY */}
-              <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 shadow-sm">
-                <h3 className="text-sm font-bold text-white uppercase mb-4 tracking-wider flex items-center gap-2">
-                  <span className="bg-indigo-500 w-2 h-2 rounded-full inline-block"></span> Combination Engine
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="bg-gray-900 p-4 rounded-lg border border-gray-700">
-                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest block mb-2">
-                      Evaluation timeframe
-                      <select
-                        value={timeframe}
-                        onChange={e => setTimeframe(e.target.value as ApiTimeframe)}
-                        className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm font-medium text-white outline-none"
-                      >
-                        {API_TIMEFRAMES.map(option => (
-                          <option key={option} value={option}>{option}</option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
-                  <div className="bg-gray-900 p-4 rounded-lg border border-gray-700">
-                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest block mb-2">
-                      Evaluation start
-                      <input
-                        type="date"
-                        value={toDateInputValue(startTime)}
-                        onChange={e => {
-                          const parsed = Date.parse(`${e.target.value}T00:00:00.000Z`);
-                          if (Number.isFinite(parsed)) setStartTime(alignToCandleOpen(parsed, timeframe));
-                        }}
-                        className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm text-white outline-none"
-                      />
-                    </label>
-                  </div>
-                  <div className="bg-gray-900 p-4 rounded-lg border border-gray-700">
-                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest block mb-2">
-                      Evaluation end
-                      <input
-                        type="date"
-                        value={toDateInputValue(endTime)}
-                        onChange={e => {
-                          const parsed = Date.parse(`${e.target.value}T23:59:59.999Z`);
-                          if (Number.isFinite(parsed)) setEndTime(alignToCandleOpen(parsed, timeframe));
-                        }}
-                        className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm text-white outline-none"
-                      />
-                    </label>
-                  </div>
-                  <div className="bg-gray-900 p-4 rounded-lg border border-gray-700">
-                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest block mb-2">Policy</label>
-                    <select 
-                      value={policyId} 
-                      onChange={e => {
-                        const nextPolicy = e.target.value;
-                        if (nextPolicy === "majority-vote" || nextPolicy === "weighted-score") {
-                          setPolicyId(nextPolicy);
-                        }
-                      }}
-                      className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm font-medium text-white outline-none"
-                    >
-                      <option value="majority-vote">Majority Vote</option>
-                      <option value="weighted-score">Weighted Score</option>
-                    </select>
-                  </div>
-                  
-                  <div className="bg-gray-900 p-4 rounded-lg border border-gray-700">
-                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest block mb-2">Activation Threshold</label>
-                    {policyId === "weighted-score" ? (
-                      <input 
-                        type="number" 
-                        value={threshold} 
-                        onChange={e => setThreshold(Number(e.target.value))}
-                        className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-white outline-none"
-                        step="0.1"
-                      />
-                    ) : (
-                      <div className="h-9 flex items-center text-sm text-gray-500 italic">
-                        Not required for this policy
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="bg-blue-900/20 p-4 rounded-lg border-2 border-blue-500/50 shadow-inner flex flex-col justify-center items-center">
-                    <span className="text-[11px] font-bold text-blue-300 uppercase tracking-widest mb-1">Combined Output</span>
-                    {components.length === 0 ? (
-                      <span className="text-gray-500 font-mono">-</span>
-                    ) : (
-                      <span className={`font-extrabold text-2xl tracking-widest uppercase drop-shadow-md ${
-                        combinedSignal === 'buy' ? 'text-green-400' : 
-                        combinedSignal === 'sell' ? 'text-red-400' : 
-                        'text-gray-300'
-                      }`}>
-                        {combinedSignal || "N/A"}
-                      </span>
-                    )}
-                  </div>
+                    </article>
+                  ))}
                 </div>
+              )}
+            </section>
+
+            <section className="form-section">
+              <h3 className="section-title"><span className="step">3</span> Combination policy</h3>
+              <div className="field-grid">
+                <label className="field">
+                  <span className="field-label">Policy</span>
+                  <select
+                    value={policyId}
+                    onChange={e => {
+                      const nextPolicy = e.target.value;
+                      if (nextPolicy === "majority-vote" || nextPolicy === "weighted-score") {
+                        setPolicyId(nextPolicy);
+                      }
+                    }}
+                  >
+                    <option value="majority-vote">Majority Vote</option>
+                    <option value="weighted-score">Weighted Score</option>
+                  </select>
+                  <span className="field-hint">
+                    {policyId === "majority-vote"
+                      ? "The action most components agree on wins."
+                      : "Component weights are summed and compared to the threshold."}
+                  </span>
+                </label>
+                <label className="field">
+                  <span className="field-label">Activation threshold</span>
+                  {policyId === "weighted-score" ? (
+                    <input
+                      type="number"
+                      value={threshold}
+                      onChange={e => setThreshold(Number(e.target.value))}
+                      step="0.1"
+                    />
+                  ) : (
+                    <span className="field-inert">Not used by Majority Vote</span>
+                  )}
+                </label>
+              </div>
+            </section>
+
+            <section className="form-section">
+              <h3 className="section-title"><span className="step">4</span> Evaluation window</h3>
+              <p className="section-note">
+                After saving, the backend evaluates the composite once over this window and returns
+                its combined action.
+              </p>
+              <div className="field-grid field-grid-3">
+                <label className="field">
+                  <span className="field-label">Evaluation timeframe</span>
+                  <select
+                    value={timeframe}
+                    onChange={e => setTimeframe(e.target.value as ApiTimeframe)}
+                  >
+                    {API_TIMEFRAMES.map(option => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field">
+                  <span className="field-label">Evaluation start</span>
+                  <input
+                    type="date"
+                    aria-label="Evaluation start"
+                    value={toDateInputValue(startTime)}
+                    onChange={e => {
+                      const parsed = fromDateInputValue(e.target.value, "start");
+                      if (parsed !== null) setStartTime(alignToCandleOpen(parsed, timeframe));
+                    }}
+                  />
+                </label>
+                <label className="field">
+                  <span className="field-label">Evaluation end</span>
+                  <input
+                    type="date"
+                    aria-label="Evaluation end"
+                    value={toDateInputValue(endTime)}
+                    onChange={e => {
+                      const parsed = fromDateInputValue(e.target.value, "end");
+                      if (parsed !== null) setEndTime(alignToCandleOpen(parsed, timeframe));
+                    }}
+                  />
+                </label>
               </div>
 
-            </div>
+              <div className="combined-output" data-signal={combinedSignal ?? "none"}>
+                <span className="combined-output-label">Combined action</span>
+                <span className="combined-output-value">{combinedSignal ?? "Not evaluated yet"}</span>
+              </div>
+            </section>
           </div>
-        </div>
+        </section>
       </div>
-    </div>
+    </section>
   );
 }

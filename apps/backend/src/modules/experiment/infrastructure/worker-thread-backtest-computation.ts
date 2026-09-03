@@ -43,7 +43,12 @@ export class WorkerThreadBacktestComputation implements BacktestComputation {
       `)}`
     );
     let workerInput = input;
-    if (this.strategies !== undefined && this.composites !== undefined) {
+    const inlineDefinition = input.specification.content.compositeDefinition;
+    if (inlineDefinition !== undefined) {
+      // A generated composite carries its definition inline; prefer it over a
+      // saved-store lookup so the run never depends on a saved-composite record.
+      workerInput = { ...input, compositeDefinition: inlineDefinition };
+    } else if (this.strategies !== undefined && this.composites !== undefined) {
       try {
         this.strategies.resolve(input.specification.content.strategy);
       } catch (error) {

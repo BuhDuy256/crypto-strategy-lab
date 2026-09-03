@@ -5,6 +5,7 @@ import { RsiStrategy } from "../domain/rsi-strategy.js";
 import { BollingerBandsStrategy } from "../domain/bollinger-strategy.js";
 import { SupportResistanceStrategy } from "../domain/support-resistance-strategy.js";
 import { MACDStrategy } from "../domain/macd-strategy.js";
+import { NewsSentimentStrategy } from "../domain/news-sentiment-strategy.js";
 import { StrategyRegistry } from "./strategy-registry.js";
 
 export function createBuiltInStrategyRegistry(): StrategyRegistry {
@@ -13,6 +14,7 @@ export function createBuiltInStrategyRegistry(): StrategyRegistry {
     new RsiStrategy(),
     new BollingerBandsStrategy(),
     new SupportResistanceStrategy(),
-    new MACDStrategy()
+    new MACDStrategy(),
+    new NewsSentimentStrategy()
   ]);
 }

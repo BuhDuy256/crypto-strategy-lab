@@ -2140,3 +2140,1386 @@ validated by its tests and its browser smoke, and by nothing else.
 **Ending state**
 
 - No V5 code exists. `NEWS-01` is the only `READY` slice.
+
+### 2026-08-30 - V5 validation cadence
+
+**Decision**
+
+- Each required backend News slice (`NEWS-01`, `NEWS-02`, `NEWS-03`, `NEWS-04`,
+  `NEWS-05`, and `NEWS-07`) is accepted from its targeted unit, contract,
+  integration, narrow typecheck/lint, relevant architecture-boundary, and
+  `git diff --check` evidence. A repository-wide Vitest run is not a per-slice
+  requirement during the V5 implementation chain.
+- After all required backend News slices through `NEWS-07` pass their targeted
+  validation, run the repository-wide suite once as the News backend integration
+  gate. If it fails, diagnose and repair through targeted tests before one ready
+  re-run; do not repeat full suites while diagnosing.
+- `UI-07` uses focused News UI/API/degraded-path validation. The final
+  repository-wide V5 certification runs only after `UI-07` and the required V5
+  proof and demo work are complete.
+
+**Current run**
+
+- A repository-wide Vitest run began before this decision while NEWS-01 was stable.
+  Its outcome is incidental V5 baseline evidence only. Do not restart it or use it
+  as a reason to run another full suite at NEWS-01 completion.
+
+### 2026-08-30 - NEWS-01 targeted completion and incidental baseline
+
+**Result**
+
+- NEWS-01 delivered the normalized NewsItem domain contract, UTC timestamp rule,
+  deterministic source-plus-URL identity, first-item-wins deduplication, explicit
+  malformed-content rejection, and 20,000-character content truncation.
+- The reusable NewsProvider contract suite passes with FakeNewsProvider and rejects
+  BrokenFakeNewsProvider duplicate output. NEWS-01 targeted tests, News boundary
+  check, narrow lint/typecheck, and diff check pass.
+- No model, real provider, persistence, collector, scheduling, API, or worker was
+  added. NEWS-02 and NEWS-04 remain blocked on their existing owner decisions.
+
+**Incidental V5 baseline**
+
+- The full Vitest run started before the V5 validation-cadence decision finished
+  with 95/97 files and 555/558 tests passing. It failed only in backtest
+  result-query and backtest-runner-lifecycle integration tests: one queued-result
+  HTTP status mismatch, one hard-kill reclaim timeout, and one graceful-shutdown
+  status mismatch. NEWS-01 does not touch the Experiment module, runner, database,
+  API endpoints, or these tests; all three NEWS-01 files passed in that run. This is
+  recorded as incidental baseline evidence, not attributed to NEWS-01 and not
+  repaired or rerun within this slice.
+
+### 2026-08-30 - NEWS-02 CoinDesk RSS source decision
+
+**Owner decision**
+
+- The owner approved CoinDesk's official RSS feed as the first concrete News source:
+  `https://www.coindesk.com/arc/outboundfeeds/rss/`. This is an owner source
+  decision, not an agent product-scope or version decision.
+- The adapter must receive its endpoint from configuration. It may consume only RSS
+  title, summary/description, canonical link, and published timestamp. It must not
+  scrape article pages, download articles, or reproduce full article content.
+- The owner accepted `6f387d6 implement(v5): finish NEWS-01` as the NEWS-01
+  baseline as-is, including its known PDF render PNG files. NEWS-02 starts from that
+  commit without rewriting or repeating NEWS-01 review.
+
+**Implementation start**
+
+- `NEWS-02` moved from `BLOCKED` to `IN PROGRESS`. C1 adds the News-owned
+  collection tables and an atomic persistence seam. The source is not yet queried;
+  adapter, collector, scheduler, worker role, and real-source demonstration remain
+  in later NEWS-02 milestones.
+
+### 2026-08-30 - NEWS-02 complete: collection worker and CoinDesk RSS adapter
+
+**Delivered**
+
+- The first real provider adapter, `CoinDeskRssNewsProvider`, reaches the approved
+  feed through configuration and maps RSS-only fields through the unchanged NEWS-01
+  normalization contract. It passes the NEWS-01 provider contract suite unmodified.
+- News Intelligence now owns durable collection state: `news.items` and
+  `news.source_health` in migration `0016_create_news_collection.sql`. The item table
+  encodes the deterministic `source|url` identity as a check constraint, enforces a
+  unique `(source, url)`, and permits only the `pending` analysis state.
+- `NewsCollectionService` fetches through the port, deduplicates, and commits one
+  batch through a single `NewsCollectionStore.storeCollectedBatch` transaction that
+  also writes source health. A V6 outbox row can join that transaction without
+  rewriting the collector; no outbox exists now.
+- `NewsWorkerModule`, `main.news-worker.ts`, and the `news-worker` Compose service add
+  the News worker as its own process role, with manual (`pnpm run news:collect`) and
+  scheduled triggers.
+
+**Durable decisions**
+
+- Collection stays strictly RSS-only. No article page is ever requested, and no full
+  article body is stored; observed stored summaries run 37 to 203 characters.
+- Provider failure is caught inside News, persisted as degraded source health, and
+  never raised outside the News boundary. A failing collection exits successfully.
+- The no-analyzer guarantee is enforced by a static proof that pins the collector's
+  import list, not by observing an uncalled mock. It was mutation-tested: adding an
+  analyzer import turned it red, and the change was reverted.
+
+**Isolation evidence**
+
+- With `api`, `web`, `market-ingest`, `redis`, and `runner` stopped, the news worker
+  collected healthily. With the news worker stopped, the backtest runner started and
+  reported `Runner slot ready`. This is targeted NEWS-02 evidence; `PROOF-ISO-001`
+  still needs its own full-topology run after the remaining V5 slices.
+
+**Validation cadence**
+
+- NEWS-02 used targeted validation only: the News module and config tests (8 files,
+  47 tests), backend typecheck, narrow lint, `git diff --check`, and
+  `docker compose config --quiet`. The repository-wide suite was not run and must not
+  be until the V5 News backend integration gate after `NEWS-07`.
+
+**State**
+
+- `NEWS-02` is `DONE` but deliberately uncommitted, awaiting owner review. `NEWS-03`
+  is now `READY`. `NEWS-04` stays `BLOCKED` until the owner selects a sentiment model
+  or service.
+
+### 2026-08-30 - NEWS-03 complete: analyzer lifecycle without a model decision
+
+**Delivered**
+
+- News Intelligence now owns a framework-, library-, vendor-, and language-neutral
+  `SentimentAnalyzer` port plus a versioned `SentimentResult`. The result requires
+  label, bounded score, result schema version, news reference, timestamp, and exact
+  model ID, artefact identity, model version, input version, and preprocessing
+  version. Moving aliases, including `latest`, are rejected at the result boundary.
+- Forward migration `0017_add_news_sentiment_analysis.sql` preserves existing
+  `pending` rows and adds the full state set: `pending` (claimable), `analyzing`
+  (leased and reclaimable), `analyzed` (terminal success), and `degraded` (terminal
+  exhausted retry). It also adds durable News-owned result and immutable attempt
+  history tables.
+- The analyzer stage and its PostgreSQL store reuse the EXP-04 skip-locked lease
+  pattern. A result, attempt closure, and `analyzed` state commit atomically; every
+  failure records its reason and returns the item to `pending` or to visible
+  `degraded` under configured bounded retry policy.
+- Collection and analysis stay independent stages in the news-worker process. They
+  meet only in News-owned durable state. The worker supports scheduled analysis and
+  the manual `pnpm run news:analyze` trigger. The NEWS-02 collector no-analyzer
+  proof remains unchanged and green.
+
+**Validation and live evidence**
+
+- Contract, provenance, migration, repository, lifecycle, retry, lease-recovery,
+  concurrency, binding, runtime, config, and collector-isolation suites pass. The
+  final non-reset focused run passed 8 files and 62 tests; backend typecheck, scoped
+  lint, `git diff --check`, and `docker compose config --quiet` pass. No
+  repository-wide Vitest suite was run or repeated.
+- The rebuilt news-worker processed all 25 existing real CoinDesk items with
+  `FakeLexiconSentimentAnalyzer`: 25 results and 25 successful attempts, all with
+  complete alias-free provenance. One synthetic non-article C5 item exercised the
+  `UnavailableFakeSentimentAnalyzer` three times: two retryable durable failures,
+  then a visible `degraded` state with no result. The 25 real normalized items stayed
+  intact; no article body is reproduced here.
+- No real sentiment model, hosted inference API, model library, or Python runtime
+  was selected, installed, downloaded, or bound. The only worker binding remains a
+  fake. NEWS-04 remains blocked on the owner's model or service decision.
+
+**Durable handoff**
+
+- At handoff, `NEWS-03` was intentionally uncommitted; no push occurred. `NEWS-01`
+  (`6f387d6`), `NEWS-02` (`93958a9`), and NEWS-03 must receive their combined
+  slice-diff review later because the owner explicitly deferred it. Do not run that
+  review or delete `.scratch/checkpoints/NEWS-02.md` before the owner directs it.
+- The existing `resetTestDatabase()` helper resets the database selected by `.env`.
+  In this workspace that is the live Compose database, not a dedicated test database.
+  A first C4 composition test exposed this; its test is now database-free and the
+  exact synthetic row was removed before the real 25-row C5 run. Do not call that
+  helper again in this session. A dedicated test database is an unresolved local
+  environment safeguard, outside NEWS-03 scope.
+
+**Commit boundary**
+
+- After separate owner authorization, NEWS-03 was committed as `c46c2e1`
+  (`feat(news): add analyzer inference lifecycle (NEWS-03)`). It remains unpushed;
+  the owner-deferred combined NEWS-01..NEWS-03 slice-diff review is still outstanding.
+
+### 2026-08-30 - NEWS-04 owner decision: OpenAI Responses adapter
+
+**Owner decision**
+
+- Bind only the OpenAI Responses API to the existing `SentimentAnalyzer` port, using
+  strict structured output and the exact snapshot `gpt-4.1-mini-2025-04-14` at
+  `https://api.openai.com/v1/responses`.
+- The adapter runs only in the Node.js News worker. Python, local models, Transformers.js,
+  ONNX, other providers, and automatic fallback are not authorized.
+- The hosted adapter directly classifies normalized English crypto-news text and avoids a
+  Python runtime, local model, and another container, keeping NEWS-04 inside the existing
+  News adapter boundary.
+- The exact snapshot is the immutable model identity available to this repository.
+  Results are explicitly **not fully reproducible**: the snapshot, prompt, request schema,
+  input/preprocessing versions, SDK version, and application code can be pinned, while the
+  hosted model binary and inference runtime remain vendor-controlled.
+- Prompt version is `openai-crypto-news-sentiment-v1`. The existing port input version
+  remains `news-item.v1`; `news-sentiment-input-v1` identifies deterministic title-plus-
+  content preprocessing. Scores are confidence values in `[0,1]`, not calibrated
+  probabilities.
+
+**Implementation start**
+
+- NEWS-04 moves from `BLOCKED` to `IN PROGRESS`. No API key has been read or used, and no
+  real OpenAI request has been made. The owner will fill the local ignored `.env` only after
+  offline C1-C4 validation is complete.
+
+### 2026-08-30 - NEWS-04 C1-C4 offline adapter and credential gate
+
+**Delivered offline**
+
+- `OpenAiResponsesSentimentAnalyzer` binds the exact selected snapshot only, uses strict
+  two-field structured output, independently validates that output, and has no model or
+  provider fallback. Its client is injected for deterministic no-network tests.
+- The existing `SentimentResult` remains unchanged. Its required five-field provenance
+  records OpenAI model, immutable hosted artefact identity, snapshot, existing input version,
+  and deterministic preprocessing version. Adapter metadata records prompt, SDK, endpoint,
+  and the explicit not-fully-reproducible classification without adding optional data to the
+  frozen result contract.
+- The production News-worker binding now uses the adapter and reads the credential only in
+  that composition root. An absent credential follows the existing retryable failure path;
+  collection, API, Strategy, and Experiment remain isolated.
+
+**Validation and gate**
+
+- Targeted adapter, contract, missing-credential lifecycle, composition, boundary, existing
+  result-provenance, and News isolation tests pass: 10 files, 74 tests. Backend typecheck,
+  scoped lint, Compose configuration, and `git diff --check` pass. No live request or credit
+  was used.
+- The governance validator still reports only three pre-existing obsolete-process findings.
+  They are outside NEWS-04 and were not changed here.
+- C5 is intentionally not run. The local ignored `.env` has an empty `OPENAI_API_KEY` line
+  added by the agent without displaying the file. The owner must fill it locally, then request
+  C5 explicitly; do not inspect or print the credential.
+
+### 2026-08-30 - NEWS-04 C5 partial live validation
+
+**Safe service state**
+
+- The local credential was checked only as a non-empty boolean and `.env` remained ignored.
+  It was never printed, copied, persisted, or inspected through Compose configuration or
+  container inspection.
+- Only `news-worker` was rebuilt and recreated, and it was verified running with batch size
+  one. It was then deliberately paused to prevent an unobserved paid attempt while C5 is
+  blocked. `postgres` stayed healthy and `runner` stayed running; `api`, `web`,
+  `market-ingest`, and `redis` stayed stopped. Compose now passes the existing
+  `NEWS_ANALYSIS_BATCH_SIZE` configuration only to `news-worker` so a proof cannot claim a
+  backlog.
+- Worker-log output was not displayed. A non-disclosing marker scan found no credential marker.
+
+**Hosted labelled sample**
+
+- The three fixed examples from official source section 29 were run through the production
+  `NewsWorkerModule` binding and its `SENTIMENT_ANALYZER` port. The endpoint was
+  `https://api.openai.com/v1/responses`; the model snapshot was
+  `gpt-4.1-mini-2025-04-14`; prompt version was `openai-crypto-news-sentiment-v1`; input and
+  preprocessing versions were `news-item.v1` and `news-sentiment-input-v1`.
+- Three requests were made, once each: positive -> positive (0.90), negative -> negative
+  (0.95), neutral -> neutral (0.50). Accuracy is 3/3 (100%) and is informational only. The
+  score is application-level model confidence, not a calibrated probability.
+
+**Remaining C5 blocker**
+
+- The recreated worker and one explicit collection-only run each found no new CoinDesk item:
+  zero stored and 25 skipped. The protected database therefore remains at 25 analyzed items,
+  one existing degraded fixture, 25 results, and 28 attempts (25 succeeded and 3 failed).
+- No real pending item exists for the worker to claim. The real-item result/provenance proof
+  and the controlled durable-unavailability proof remain incomplete; the existing degraded
+  fixture was inspected only and not altered. No fake result was overwritten, no database was
+  reset, and no fallback was used.
+
+**Targeted checks**
+
+- `docker compose config --quiet` and `git diff --check` pass after the narrow Compose mapping.
+  No full suite, backend integration gate, code review, migration, commit, or push was run.
+
+### 2026-08-31 - NEWS-04 collection-only composition correction
+
+**Root cause and correction**
+
+- `news:collect --once` previously selected `collectOnce()` after creating the full
+  `NewsWorkerModule`, whose graph includes `SENTIMENT_ANALYZER`. Although the method
+  did not invoke analysis, collection-only bootstrap could still resolve the
+  production adapter.
+- `NewsCollectionWorkerModule` is now a separate composition root. It owns only the
+  existing provider, collection repository, collection service, scheduler, logger,
+  database pool lifecycle, and `NewsCollectionWorkerRuntime`. It contains no
+  analyzer token, analyzer adapter, sentiment scheduler, sentiment service, or
+  sentiment repository. `main.news-worker.ts --once` selects this root before
+  Nest bootstraps. The normal worker continues to import the collection root and
+  binds the OpenAI adapter through `SENTIMENT_ANALYZER` unchanged.
+
+**Evidence**
+
+- The new composition test compiles the collection-only root, obtains its collection
+  runtime, and proves both `SENTIMENT_ANALYZER` and `SentimentAnalysisService` are
+  absent. Its static check also proves `--once` selects the collection-only root and
+  that root contains no analyzer implementation or sentiment lifecycle type.
+- The targeted collection-root, full-worker-binding, and worker-topology tests pass:
+  3 files, 8 tests. Backend typecheck, `docker compose config --quiet`, and
+  `git diff --check` pass. No repository-wide suite or review ran.
+- After the authorized `docker compose run --rm news-worker pnpm run news:collect`,
+  collection stored 2 items and skipped 23. The database moved from 26 items
+  (25 analyzed CoinDesk, 1 degraded fixture) to 28 items (27 CoinDesk: 25 analyzed,
+  2 pending; the same 1 degraded fixture). Results remain 25 and attempts remain 28
+  (25 succeeded, 3 failed). The API and normal News worker remained stopped; runner
+  remained running. The collection-only graph cannot issue a hosted request, and
+  the cumulative hosted-request count remains 3.
+
+**Next action**
+
+- Do not analyze either pending item in this continuation. In the next authorized
+  C5 continuation, select exactly one newly collected pending CoinDesk item, run the
+  controlled durable unavailability proof, then perform at most one successful
+  retry through the normal News worker.
+
+### 2026-08-31 - NEWS-04 C5 controlled failure and real-item recovery
+
+**Reconciliation and deterministic boundary**
+
+- Before starting a worker, the live `news` schema matched the protected baseline:
+  28 items; 25 CoinDesk `analyzed`; two CoinDesk `pending`; one unchanged `c5-fake`
+  `degraded` fixture; 25 `sentiment_results`; and 28 attempts (25 `succeeded`, three
+  `failed`). PostgreSQL was healthy and runner was running; API and the persistent
+  normal News worker were stopped.
+- The normal worker claims with `ORDER BY collected_at, id`. Both pending CoinDesk
+  rows had `collected_at` `1788142079381`, so the bounded batch selected the lexically
+  first immutable ID:
+  `coindesk-rss|https://www.coindesk.com/business/2026/08/30/from-hawala-to-swift-inside-the-1-000-year-battle-to-move-money-safely`.
+  The protected control was
+  `coindesk-rss|https://www.coindesk.com/markets/2026/08/30/bitcoin-nears-usd79-000-as-michael-saylor-hints-at-first-bitcoin-purchase-in-two-months`.
+  Both began `pending`, with attempt count 0 and no result.
+- `news:analyze` maps to `--analyze-once`, which invokes only the normal worker's
+  analysis stage. `NEWS_ANALYSIS_BATCH_SIZE=1` and the repository `LIMIT $2` made
+  each authorized run claim at most one item. No collection command was run.
+
+**Controlled unavailability**
+
+- Ran exactly once:
+  `docker compose run --no-deps --rm -e OPENAI_API_KEY= -e NEWS_ANALYSIS_BATCH_SIZE=1 news-worker pnpm run news:analyze`.
+  The empty credential was scoped to that one container; `.env` was not displayed or
+  changed. The normal worker reported one claim, zero analyzed, one retryable failure,
+  zero degraded, and zero lost claims.
+- The selected item kept its immutable ID, returned to `pending`, and recorded attempt
+  1 by `news-worker-47` as `failed` with
+  `ANALYZER_UNAVAILABLE: OpenAI credential is missing` at
+  `2026-08-31 02:19:48.278139+00` through `2026-08-31 02:19:48.308297+00`. It had no
+  result. This is the adapter branch that has no client and throws before
+  `client.create`; therefore no hosted request occurred in this phase.
+- The cumulative hosted-request execution evidence stayed at 3. The control remained
+  `pending` with no attempt or result. The `c5-fake` fixture stayed `degraded` with its
+  original three failed attempts and no result. The intermediate shape was 28 items,
+  25 CoinDesk analyzed, two CoinDesk pending, 25 results, and 29 attempts (25
+  succeeded, four failed).
+
+**Recovery and durable result**
+
+- Ran exactly one recovery retry, with the Compose service's real analyzer configuration
+  restored by omitting the empty-key override:
+  `docker compose run --no-deps --rm -e NEWS_ANALYSIS_BATCH_SIZE=1 news-worker pnpm run news:analyze`.
+  It reported one claim, one analyzed, zero retryable/degraded/lost claims, then exited.
+- The same selected item recorded attempt 2 by `news-worker-47` as `succeeded`, claimed
+  at `2026-08-31 02:21:00.150549+00` and completed at
+  `2026-08-31 02:21:04.628113+00`. Its final state is `analyzed`, attempt count 2, no
+  open lease or failure reason, and exactly one durable result: `neutral`, score `0.6`,
+  `openai-responses`, artifact `openai://responses/gpt-4.1-mini-2025-04-14`, model
+  version `gpt-4.1-mini-2025-04-14`, input `news-item.v1`, preprocessing
+  `news-sentiment-input-v1`, schema version 1, status `succeeded`.
+- This bounded recovery can issue exactly one hosted request: the single-item stage made
+  one successful analyzer call and the SDK client has `maxRetries: 0`. Therefore the
+  cumulative execution evidence is 3 -> 3 -> 4 (labelled sample -> unavailable ->
+  recovery). This is execution evidence rather than an external billing-ledger query.
+- Final shape: 28 items; 26 CoinDesk `analyzed`; one CoinDesk `pending` (the untouched
+  control); one unchanged `c5-fake` `degraded`; 26 results; and 30 attempts (26
+  `succeeded`, four `failed`).
+
+**Exact read-only database queries**
+
+- Each statement below ran against the `news` schema through
+  `docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U crypto_strategy_lab -d crypto_strategy_lab -P pager=off -c`.
+  Before the worker, the aggregate query returned 28 items, 25 results, and attempts
+  of 25 `succeeded` plus three `failed`; the grouped item query returned 25 CoinDesk
+  `analyzed`, two CoinDesk `pending`, and one `c5-fake` `degraded`.
+
+```sql
+SELECT count(*) AS total_items FROM news.items;
+SELECT source, analysis_state, count(*) AS item_count
+FROM news.items GROUP BY source, analysis_state ORDER BY source, analysis_state;
+SELECT count(*) AS total_results FROM news.sentiment_results;
+SELECT outcome, count(*) AS attempt_count
+FROM news.sentiment_analysis_attempts GROUP BY outcome ORDER BY outcome;
+SELECT i.id, i.url, i.collected_at, i.analysis_state, i.analysis_attempt_count,
+       count(DISTINCT a.attempt_number) AS durable_attempts,
+       count(DISTINCT r.news_item_id) AS durable_results
+FROM news.items i
+LEFT JOIN news.sentiment_analysis_attempts a ON a.news_item_id = i.id
+LEFT JOIN news.sentiment_results r ON r.news_item_id = i.id
+WHERE i.source = 'coindesk-rss' AND i.analysis_state = 'pending'
+GROUP BY i.id, i.url, i.collected_at, i.analysis_state, i.analysis_attempt_count
+ORDER BY i.collected_at, i.id;
+```
+
+- During unavailable mode, the selected query returned state `pending`, count 1,
+  zero results, and its single `failed` attempt with the exact missing-credential
+  reason. The control query returned state `pending`, count 0, zero attempts, and
+  zero results. Aggregates became 25 results and 29 attempts (25 succeeded, four
+  failed).
+
+```sql
+SELECT i.id, i.analysis_state, i.analysis_attempt_count, i.analysis_failure_reason,
+       count(DISTINCT r.news_item_id) AS result_count, a.attempt_number,
+       a.analyzer_id, a.outcome, a.failure_reason, a.claimed_at, a.completed_at
+FROM news.items i
+LEFT JOIN news.sentiment_results r ON r.news_item_id = i.id
+LEFT JOIN news.sentiment_analysis_attempts a ON a.news_item_id = i.id
+WHERE i.id = 'coindesk-rss|https://www.coindesk.com/business/2026/08/30/from-hawala-to-swift-inside-the-1-000-year-battle-to-move-money-safely'
+GROUP BY i.id, i.analysis_state, i.analysis_attempt_count, i.analysis_failure_reason,
+         a.attempt_number, a.analyzer_id, a.outcome, a.failure_reason, a.claimed_at,
+         a.completed_at
+ORDER BY a.attempt_number;
+SELECT i.id, i.analysis_state, i.analysis_attempt_count, i.analysis_failure_reason,
+       count(DISTINCT a.attempt_number) AS attempt_count,
+       count(DISTINCT r.news_item_id) AS result_count
+FROM news.items i
+LEFT JOIN news.sentiment_analysis_attempts a ON a.news_item_id = i.id
+LEFT JOIN news.sentiment_results r ON r.news_item_id = i.id
+WHERE i.id = 'coindesk-rss|https://www.coindesk.com/markets/2026/08/30/bitcoin-nears-usd79-000-as-michael-saylor-hints-at-first-bitcoin-purchase-in-two-months'
+GROUP BY i.id, i.analysis_state, i.analysis_attempt_count, i.analysis_failure_reason;
+```
+
+- After recovery, the query below returned selected state `analyzed`, attempt count
+  2, null lease/failure fields, attempt 1 `failed`, attempt 2 `succeeded`, and the
+  one result described above. The aggregate query returned 28 items, 26 results,
+  26 CoinDesk `analyzed`, one CoinDesk `pending`, one `c5-fake` `degraded`, and 30
+  attempts (26 succeeded, four failed).
+
+```sql
+SELECT id, analysis_state, analysis_attempt_count, analysis_failure_reason,
+       analysis_claimed_by, analysis_lease_expires_at
+FROM news.items
+WHERE id = 'coindesk-rss|https://www.coindesk.com/business/2026/08/30/from-hawala-to-swift-inside-the-1-000-year-battle-to-move-money-safely';
+SELECT news_item_id, attempt_number, analyzer_id, outcome, failure_reason,
+       claimed_at, completed_at
+FROM news.sentiment_analysis_attempts
+WHERE news_item_id = 'coindesk-rss|https://www.coindesk.com/business/2026/08/30/from-hawala-to-swift-inside-the-1-000-year-battle-to-move-money-safely'
+ORDER BY attempt_number;
+SELECT news_item_id, schema_version, label, score, model_id, model_artifact_id,
+       model_version, input_version, preprocessing_version, analyzed_at, status
+FROM news.sentiment_results
+WHERE news_item_id = 'coindesk-rss|https://www.coindesk.com/business/2026/08/30/from-hawala-to-swift-inside-the-1-000-year-battle-to-move-money-safely';
+```
+
+**Validation and process state**
+
+- The focused NEWS-04 and bounded-worker suite passed: 12 files, 83 tests. Backend
+  typecheck, scoped ESLint over every changed News TypeScript file, `docker compose
+  config --quiet`, and `git diff --check` passed. No full suite was run.
+- The one-off containers were removed. `docker compose ps -a` confirms persistent
+  `news-worker` and API are stopped; PostgreSQL is healthy; runner remains running;
+  web, market ingest, Redis, and migrate are stopped. No collection, unrelated service,
+  full-suite test, migration, commit, or push ran during this continuation.
+
+**Final diff review**
+
+- Two-axis review of the full working diff against
+  `f8ed5bfc93808604024db6477cf38b8dc017f709` passed after correcting worker-topology
+  comments and wrapping three long lines. The Standards axis found no documented
+  breach or Fowler baseline smell. The Spec axis found no missing C5 evidence, scope
+  creep, or incorrect behavior. The final targeted suite and narrow checks were then
+  rerun successfully.
+
+**NEWS-04 acceptance mapping**
+
+1. Real item classification: the selected durable CoinDesk item is `neutral` with score
+   `0.6`.
+2. Provenance: its one result stores exact model, artifact, model version, input, and
+   preprocessing versions.
+3. Hosted reproducibility: the existing static metadata/test declares the selected
+   hosted snapshot not fully reproducible; the persisted result identifies its exact
+   configured snapshot.
+4. Narrow change surface: the full working diff remains limited to News adapter and
+   worker composition, configuration, tests, the pinned SDK lock, and NEWS-04 records.
+5. Unavailability: the selected real item has one durable failed attempt, stays
+   retryable rather than lost, and has no result during the unavailable phase.
+6. Worker-only execution: both live stages ran through the normal News worker while
+   API remained stopped.
+
+### 2026-08-31 - NEWS-05 Product Owner feature-contract decisions
+
+**Decisions**
+
+- The News sentiment-feature interface accepts a canonical uppercase base-asset code
+  such as `BTC`, `ETH`, or `SOL`. News owns these codes and queries
+  `NewsItem.relatedCoins`; Market/Experiment maps a market pair before crossing the
+  News port. News does not parse Market symbols or depend on Market types.
+- Every sentiment-dependent candidate or experiment declares its own positive
+  `maxAge`, missing-data action, stale-data action, and an explicit signed substitute
+  in `[-1, 1]` whenever either action is `substitute`. `block` returns an explicit
+  blocked decision and no value; `degrade` retains a real stale aggregate but returns
+  no value for missing data; `substitute` returns only the configured value and is
+  always visibly substituted/degraded. Exact freshness equality is current.
+- A query is evaluated at caller-supplied `asOf` over the inclusive rolling interval
+  `[asOf - windowDuration, asOf]`. It includes only published items in that interval;
+  ingestion and analysis completion times cannot admit future news. Each snapshot has
+  a deterministic identity over the canonical asset, bounds, `signed-mean-v1`, and
+  the included sentiment-result identities. A sentiment-dependent durable result
+  records a deduplicated manifest of the actual rolling snapshots used, including
+  bounds, contributing result identities, exact stored model-version sets, and
+  policy/quality state.
+- Normalized sentiment is `positive -> +score`, `neutral -> 0`, and
+  `negative -> -score`. Every included result contributes once to the unweighted
+  arithmetic mean; an empty set is missing, not neutral. Freshness is the age of the
+  latest included item publication relative to `asOf`; model versions come only from
+  included stored results.
+
+**Scope and data-quality limit**
+
+- CoinDesk's present collector intentionally persists an empty `relatedCoins` array.
+  This means its current stored data cannot yield asset-specific feature values until
+  a later provider/data-quality slice supplies canonical codes. NEWS-05 uses explicit
+  deterministic fixtures and does not add title parsing, NLP, backfill, or a NEWS-02
+  rewrite.
+
+### 2026-08-31 - NEWS-05 implementation complete (seam level, uncommitted)
+
+**What was built, across 14 TDD cycles from the Product Owner decisions above**
+
+- `news/application/sentiment-feature.ts`: `SentimentFeatureService`, the only News
+  query seam Experiment may use. It normalizes a canonical asset code, filters the
+  inclusive caller-timed rolling window, validates every included stored result,
+  computes the unweighted `signed-mean-v1` aggregate, and evaluates the missing/stale
+  policy (`block`, `degrade`, `substitute`) before returning a response that carries
+  window, item count, freshness, and quality but never a model, artifact, or provider
+  detail. A separately carried `SentimentFeatureProvenance` (result IDs, model
+  versions) exists only for Experiment's durable result boundary.
+- `news/infrastructure/postgres-sentiment-feature-store.ts`: the read-only adapter
+  behind that seam, joining analyzed/succeeded results to items inside the requested
+  asset and window.
+- `news/index.ts`: exports the feature, its request/response/policy types, and the
+  window-identity helper as the module's public surface.
+- `experiment/domain/sentiment-input.ts` and `experiment-specification.ts`/
+  `experiment-specification-service.ts`: `SentimentInputConfiguration` is now a typed,
+  validated, optional field of frozen experiment content. Freezing a descriptor that
+  requires `sentiment-series` requires and validates it (positive window duration, a
+  valid News policy); freezing a technical-only descriptor forbids it.
+- `experiment/application/sentiment-feature-context-assembler.ts` and
+  `sentiment-usage-manifest.ts`: `ExperimentSentimentContextAssembler` returns
+  immediately for a technical-only descriptor without ever touching the News port; for
+  a sentiment-required descriptor it resolves one rolling snapshot per evaluation time,
+  builds cumulative `sentiment-series` inputs, and produces a deduplicated
+  `sentiment-feature-usage.v1` manifest of the actual snapshots used (window, result
+  IDs, model versions, quality, applied policy). An unusable snapshot returns a typed
+  `blocked` assembly result rather than throwing.
+- `experiment/application/backtest-result-acceptor.ts` and `backtest-runner-service.ts`:
+  `BacktestRunnerOutcome` gained an optional `sentimentUsage` field; when supplied, the
+  provenance checklist's `newsInput` records the manifest itself and `sentimentModel`
+  records the deduplicated, sorted model-version set, replacing the previous
+  unconditional `not-applicable` for both. No migration was needed - the checklist is
+  stored as JSONB and the API contract's `isProvenanceResponse` already accepts any
+  `recorded` value for any checklist key.
+- Fixed two pre-existing defects surfaced by a full backend typecheck (not run since an
+  earlier cycle): `strategy/index.ts` was missing the `SentimentSeriesInput` export
+  that the context assembler already depended on, and a Postgres adapter test's
+  zero-argument mock made TypeScript infer an empty-tuple call signature.
+
+**NEWS-05 acceptance-criteria mapping**
+
+1. Windowed query: `SentimentFeatureService.resolve()` returns aggregate sentiment,
+   item count, window bounds, and freshness together.
+2. No model/artifact/provider leakage: a dedicated response-shape test enumerates the
+   response's fields and asserts none of them exist; provenance is a separately
+   carried, never-merged structure.
+3. Missing sentiment: `block`, `degrade`, and `substitute` each have an independent
+   test and each is visibly the applied policy in the response.
+4. Stale sentiment: the same three actions have independent stale-path tests; a stale
+   value is never reported as current.
+5. Result provenance: the multi-window usage-manifest test and the provenance-checklist
+   test together prove that a sentiment-dependent result records window identity and
+   the exact contributing model versions.
+6. Technical-only isolation: a spy/failing-fake resolver test proves zero News calls
+   for a descriptor without `sentiment-series`.
+
+**Deliberately deferred, not a gap**
+
+- `ExperimentSentimentContextAssembler` and `BacktestRunnerOutcome.sentimentUsage` are
+  fully tested seams but are not yet wired into `backtest-computation.ts` or any
+  NestJS module. No strategy today declares `requiredInputs: ["sentiment-series"]` -
+  NEWS-06 (sentiment as a strategy) is optional and out of scope for this slice - so
+  wiring them into the live composition root now would be unreachable code. The wiring
+  becomes live work for whichever slice first adds a sentiment-dependent candidate.
+
+**Validation and process state**
+
+- `pnpm --filter @crypto-strategy-lab/backend run typecheck` passes for the whole
+  backend. `pnpm exec eslint` passes for every file touched across the 14 cycles.
+  `pnpm exec vitest run` across the six deterministic NEWS-05 test files (sentiment
+  feature, its Postgres adapter, the context assembler, the frozen sentiment-input
+  configuration, the provenance checklist mapping, and the specification service) ->
+  37 tests passed. `git diff --check` shows only pre-existing CRLF warnings. No
+  database-backed test, migration, hosted request, collection, analysis, container
+  lifecycle operation, full suite, commit, or push ran this session.
+- The owner explicitly deferred the usual `implement`-skill code-review, full-suite,
+  and commit steps for NEWS-05 in this session. At this point the complete NEWS-05
+  diff remained uncommitted working-tree state.
+
+**Commit**
+
+- The owner then explicitly asked for the slice to be committed as-is, without the
+  deferred code-review or full-suite run. Committed as `9a44b10` on
+  `v5-news-and-sentiment`: `feat(news): add sentiment feature query and degradation
+  policy (NEWS-05)`, 18 files (9 new, 9 modified), matching exactly the file set
+  described above. A follow-up edit to this file and `TRACKING.md` then replaced the
+  "uncommitted" language with the real commit hash.
+
+### 2026-08-31 - NEWS-07 implementation complete (uncommitted)
+
+**What was built**
+
+- Three new News-owned read ports in `news/application/`: `NewsItemQuery` (paginated
+  item list), `SentimentDistributionQuery` (windowed positive/neutral/negative
+  proportions, asset-agnostic - the whole feed, unlike NEWS-05's per-asset
+  `SentimentFeature`), and `NewsHealthQuery` (collection health plus analysis health).
+  Collection health reads the existing `news.source_health` table, one entry per
+  configured provider, shaped as an array so a second source needs no response-shape
+  change later. Analysis has no equivalent table, so `deriveAnalysisHealth` is a pure
+  function computed from `news.items` state counts plus the latest completed attempt
+  in `news.sentiment_analysis_attempts`: `unavailable` when no attempt has ever
+  completed, `degraded` with a count-bearing reason when any item exhausted its
+  retries, otherwise `healthy`.
+- `news/infrastructure/postgres-news-query-repository.ts`: one adapter implementing
+  all three read ports against the existing schema (no new migration - `NEWS-01`'s
+  `news.items`/`news.source_health` and `NEWS-03`'s `0017` lease/result/attempt
+  tables already carry everything these reads need), mirroring how
+  `PostgresCandleRepository` backs three Market query ports from one class.
+- `news.module.ts` (previously the empty composition-boundary stub from `SETUP-03`)
+  now wires a database pool and the three query tokens, following `MarketModule`'s
+  exact DI pattern (`useFactory` pool, `useExisting` port bindings, an
+  `OnApplicationShutdown` pool-close lifecycle). `ApiModule` imports `NewsModule` and
+  a new `NewsController` (`GET /news/items`, `GET /news/sentiment`, `GET
+  /news/health`), each backed by a `class-validator` DTO at the transport edge
+  (`news.dto.ts`), matching `CandleHistoryController`'s pattern.
+- `packages/api-contracts`: `NewsItemListResponse`, `NewsSentimentDistributionResponse`,
+  `NewsHealthResponse` and their runtime type guards, next to
+  `BacktestAnnotationsResponse`. `apps/web/src/api/client.ts` gained `getNewsItems`,
+  `getNewsSentimentDistribution`, and `getNewsHealth`, following the existing
+  `getJson`/guard pattern used by every other read endpoint; per the established
+  convention in this file, they were not given their own dedicated tests (the generic
+  `getJson` wrapper they call is already covered by `getHealth`'s tests, the same way
+  `getProviderHealth`/`getCandleHistory`/`getLeaderboard` are not separately tested).
+
+**Design decisions surfaced during implementation, not obvious from the acceptance
+criteria alone**
+
+- The sample News-page mockup (via a research pass over the official source and
+  `docs/requirements/sample-ui`) shows a single stacked sentiment bar for one chosen
+  window (24h in the mockup), an analyzed-item count, and a "source coverage" ratio
+  (healthy/total sources). The 24h window is the page's choice, not a backend
+  default - `GET /news/sentiment` takes explicit `startAt`/`endAt`, like
+  `CandleHistoryController`. The analyzed count needs no separate endpoint: it is the
+  distribution response's `itemCount`. "Source coverage" is why collection health is
+  an array rather than one aggregate value - the ratio is a `UI-07` computation over
+  that array, not something this slice computes for it.
+- AC1 lists five item fields (title, source, publishedAt, relatedCoins,
+  analysisState); the response adds `id` on top of that literal list because a
+  paginated list has no stable per-row key without one. No other field (url,
+  content/summary) was added - `UI-07` can extend the port later if the page needs
+  them.
+- AC4 ("degrade gracefully... rather than an error") is proven as: none of the three
+  reads throw against an empty `news` schema (equivalent to a news worker that has
+  never run), and each returns a well-formed zero/`unavailable` payload instead - not
+  that every field always literally reads `"degraded"`. This is a judgment call, not
+  a certainty; it is recorded here so it can be revisited if `UI-07` disagrees with
+  what "graceful" should look like on screen.
+
+**NEWS-07 acceptance-criteria mapping**
+
+1. Paginated item list with the five required fields: `PostgresNewsQueryRepository
+   .list()` + `NewsController.listItems()`, `count(*) OVER ()` windowed pagination
+   mirroring `PostgresBacktestResultQuery.getTrades()`.
+2. Windowed distribution with proportions, item count, and window bounds:
+   `computeSentimentProportions` (pure, unit-tested for the zero-item case
+   separately from the SQL) plus the adapter's `getDistribution()`.
+3. Collection and analysis health with degraded states and reasons:
+   `deriveAnalysisHealth` (pure, three states unit-tested independently of SQL) plus
+   the adapter's `getHealth()`.
+4. Graceful degradation with no worker running: two of the six
+   `postgres-news-query-repository.test.ts` cases and one of the three
+   `news-health-query.test.ts` cases exercise the empty-schema path directly.
+5. No model/provider internal detail: the three response shapes carry only
+   transport-safe fields (item summary fields, proportions, provider name and health
+   status/reason strings) - no model id, artifact id, or analyzer identity anywhere,
+   matching NEWS-05's precedent.
+6. Isolation: `news-endpoint-isolation.test.ts` composes `NewsController` and
+   `CandleHistoryController` into one real NestJS module instance (as `ApiModule`
+   does), makes every News port reject, and proves the Market controller still
+   resolves normally in the same instance.
+
+**Validation and process state**
+
+- Targeted only, per this session's owner instruction (no repository-wide Vitest
+  run): `pnpm run typecheck` passes for all three workspace packages (`api-contracts`,
+  `backend`, `web`). Scoped ESLint over every file touched this slice passes clean.
+  `pnpm exec vitest run` across the News module, the API module (all controllers,
+  not just News, to catch cross-controller regressions), the architecture boundary
+  test, `api-contracts`, and the web API client -> 40 test files, 234 tests, all
+  passing. `git diff --check` shows only pre-existing CRLF warnings. The
+  architecture boundary test (`apps/backend/src/architecture/boundary.test.ts`)
+  passing confirms the new `NewsModule`/`ApiModule` wiring introduces no forbidden
+  edge. Per the 2026-08-30 "V5 validation cadence" decision above, the
+  repository-wide suite is the News backend integration gate that runs once now that
+  every required backend News slice through `NEWS-07` is done - that full run has
+  not happened yet and is deliberately left for a session the owner directs to it.
+- `.scratch/checkpoints/NEWS-07.md` was written and kept current through the session
+  as the owner-requested continuous checkpoint, then deleted once this entry and the
+  `TRACKING.md` update landed, per the normal end-of-slice checkpoint rule.
+
+**State**
+
+- `NEWS-07` is `DONE` but deliberately uncommitted - no commit request was made this
+  session. `UI-07` is now `READY` (`SETUP-06` and `NEWS-07` are both `DONE` in code).
+  `NEWS-06` (optional) remains `TODO` and out of V5's exit criteria.
+
+**Commit**
+
+- The owner then explicitly asked for the slice to be committed as-is, without the
+  deferred code-review or full-suite run - the same pattern as `NEWS-05`. Committed
+  as `b5e5f12` on `v5-news-and-sentiment`: `feat(news): add news list, health, and
+  sentiment query surface (NEWS-07)`, 20 files (12 new, 8 modified), matching exactly
+  the file set described above. Correction to the line above this one: the checkpoint
+  was kept, not deleted, while the diff was still uncommitted (see its own "kept only
+  because commit and code-review are still owner-gated" note); it is deleted now that
+  the commit has landed, per the normal end-of-slice checkpoint rule.
+
+### 2026-08-31 - UI-07 browser validation blocked by News worker liveness
+
+**What is implemented and validated**
+
+- UI-07 replaces the News placeholder with independently loaded item, sentiment, and
+  health panels. It uses only the existing NEWS-07 web client calls, displays a fixed
+  explicit 24-hour sentiment window, pages only the item list, and never exposes a
+  health provider identifier, health reason, model, artifact, or analyzer detail.
+- Component coverage passes for healthy, collection-degraded, analysis-degraded, and
+  page-two item states. The route test passes with the News client isolated from the
+  application shell. Web typecheck and scoped lint pass.
+- A real Vite browser run against the rebuilt Compose API showed the healthy state:
+  collected items, 24-hour distribution, analyzed count, and healthy collection and
+  analysis statuses all rendered without page errors.
+- With the real `news-worker` stopped, a browser Realtime run still showed `Backend:
+  ok`, `Market data: live`, and four live chart subscriptions. This is the required
+  failure-domain behavior outside News.
+
+**Blocking evidence**
+
+- Immediately after stopping the real `news-worker`, `GET /news/health` still
+  returned `collection[0].status = "healthy"`, and the browser News page displayed
+  `Collection: healthy`. The endpoint records source collection health, not worker
+  liveness or expiry of the last healthy report.
+- UI-07 cannot turn that stale response into `degraded` itself: deciding a maximum
+  report age or inferring a stopped worker would be a News health aggregation and a
+  new frontend business rule, directly conflicting with UI-07's endpoint-only,
+  no-aggregation constraint and ADR-007's isolation ownership.
+- The real model-unavailable browser state is also not provable from the current
+  healthy data without first choosing how News reports liveness/degradation. The
+  component test proves the page renders an API-provided analysis-degraded response;
+  it is not substituted for the required real browser proof.
+
+**Required owner decision**
+
+- Decide whether to extend NEWS-07 with a News-owned worker heartbeat/freshness policy
+  and a transport-safe expired/degraded collection status, then add the corresponding
+  contract, migration if needed, tests, and browser proof; or revise UI-07's AC4/AC5
+  evidence expectation to the existing source/model health semantics. No frontend
+  workaround was added.
+
+**Local environment repair during proof setup**
+
+- The existing local database had `strategy.composites` matching migration 0009 but
+  its `public._migrations` ledger stopped at 0008, so Compose could not start its
+  migration gate. After a read-only schema comparison, only the matching 0009 ledger
+  ID was recorded. The standard migration runner then applied 0010 through 0017
+  successfully. No schema reset or data deletion occurred.
+
+### 2026-08-31 - UI-07 complete: endpoint-only page and News worker liveness
+
+**Resolution of the liveness block**
+
+- The owner selected the News-owned heartbeat direction rather than weakening the
+  UI acceptance criteria or placing a liveness rule in the frontend. The previously
+  considered `news.source_health.checked_at` is written only after an RSS request,
+  retry, parsing, and persistence complete. It therefore cannot distinguish a
+  stopped worker from a live worker with its next collection request in flight.
+- Migration `0018_create_news_collection_worker_heartbeat.sql` adds one
+  News-owned, single-row `news.collection_worker_heartbeat` record. The normal
+  News worker writes it once at start and every half of the existing configured
+  collection interval. The health query keeps provider source state intact, but
+  changes a healthy collection entry to generic `degraded` once no heartbeat has
+  arrived for one full configured collection interval. This leaves enough time for
+  an in-flight provider request without inventing an arbitrary threshold or adding
+  a general observability system.
+- Analysis health also now notices the existing durable retryable state: a `pending`
+  item with `analysis_failure_reason` makes it generic `degraded`; a successful retry
+  clears that state and returns health to `healthy`. Neither the API presentation nor
+  the page exposes the stored failure reason, model identity, artefact, analyzer, or
+  provider-health detail.
+
+**UI and tests**
+
+- `NewsPage` replaces the placeholder with three route-local, independently fetched
+  NEWS-07 client reads: paginated collected items, an explicit 24-hour sentiment
+  distribution and item count, and collection/analysis health. It does no data
+  aggregation and no liveness inference. A failure in any News read stays local to
+  this route; paging refetches only the item list.
+- TDD covered each seam red then green: page rendering and paging, heartbeat expiry
+  versus an in-flight heartbeat, heartbeat persistence/runtime lifecycle, and
+  retryable-analysis degradation/recovery. The final targeted runs passed 21 backend
+  tests and 7 web tests; backend and web typechecks, scoped ESLint, and `git diff
+  --check` pass. No repository-wide Vitest run was started, per the owner-deferred
+  News backend integration gate.
+- Final two-axis review of the uncommitted diff against `3e04567` found no spec
+  issue. Standards review requested only moving the page purpose comment to the
+  top of the file and making two new PostgreSQL row fields `readonly`; both fixes
+  were rechecked with focused tests and ESLint, and the reviewer found no remaining
+  standards issue.
+
+**Browser proof**
+
+- With the normal worker running at the existing 60-second collection interval, the
+  real News page showed `Collection: healthy`, `Analysis: healthy`, and ten collected
+  rows. After the worker stopped, the page was still healthy before the full interval
+  elapsed, then the API and page correctly became `Collection: degraded` after the
+  heartbeat expired while the same ten rows remained visible. Restarting the normal
+  worker restored `Collection: healthy` in both API and browser.
+- During the collection-degraded state, Realtime still showed `Backend: ok`, `Market
+  data: live`, and four live chart subscriptions. This is the UI-visible News failure
+  isolation required by AC4.
+- In isolated temporary database `ui07_news_proof`, genuine collected RSS items were
+  retained while the normal worker ran with an explicit whitespace OpenAI credential.
+  The real adapter treated it as missing, recorded a retryable unavailable failure,
+  and the browser showed `Collection: healthy`, `Analysis: degraded`, and ten item
+  rows without a reason. Restarting the worker with the normal credential retried
+  successfully, cleared the retryable state, and returned both API and browser health
+  to healthy. This did not reset the main database; the temporary database is removed
+  during the completion cleanup.
+
+**State**
+
+- `UI-07` is `DONE` and committed as `65110ec` (`feat(ui): add News page and worker
+  liveness (UI-07)`) after the owner explicitly requested a commit. `NEWS-06` remains
+  optional and out of V5 exit criteria. V5 is not declared demoable: its separate
+  owner-deferred News backend integration/full-suite, final Compose, and proof gates
+  remain unchanged.
+
+### 2026-08-31 - V5 certification pre-proof review reconciliation
+
+**Git and document truth**
+
+- `65110ec` is the committed UI-07 implementation. `d02318b` is its later
+  documentation record, so earlier V5 Journal statements that described UI-07 as
+  uncommitted are historical states, not the current status. No earlier Journal entry
+  was rewritten.
+- The V5 roadmap counted its slices incorrectly. It contains six required News slices
+  plus required UI-07, so its summary now says "7 required slices, plus 1 optional".
+
+**Deferred two-axis reviews**
+
+- NEWS-01 through NEWS-03 were reviewed as `c20d7f9...c46c2e1`; NEWS-05 as
+  `e777b1c...9a44b10`; and NEWS-07 as `956afb7...b5e5f12`. Each review inspected
+  current HEAD `d02318b` before classifying a finding.
+- The reviews found persistent V5 repair candidates: expired sentiment leases can
+  permit duplicate external inference; scheduled collection and analysis omit an
+  in-flight guard and an explicit rejected-promise path; the historical migration test
+  bypasses the shared test-database helper; the News health API exposes provider IDs
+  and raw stored reasons; and NEWS-07 isolation coverage does not exercise all News
+  reads against chart, backtest, and discovery consumers. Smaller NEWS-07 test-name
+  and assertion gaps were also recorded.
+- The NEWS-05 reviewers also flagged the public sentiment snapshot/provenance surface
+  for conformance review. Its response object excludes model data, while the separate
+  Experiment provenance carrier contains result references and model versions. This
+  must be resolved together with the proof-scope decision below, not silently changed.
+
+**Certification blocker**
+
+- V5 demo step 8 and `PROOF-ISO-002` require a sentiment-dependent candidate that
+  applies the missing/stale policy. However no required V5 strategy declares
+  `sentiment-series`; the Journal records the runner wiring as intentionally
+  unreachable; and `NEWS-06`, the only planned sentiment strategy, is explicitly
+  optional and outside V5 exit criteria. The owner prohibited implementing NEWS-06
+  merely to create proof evidence. This is a scope conflict, not a documentation gap.
+- No proof, full-suite certification, final Compose gate, migration, reset, seed,
+  commit, or tag was run after this blocker was identified. The main Compose database
+  remained intact after read-only preflight inspection.
+
+**Next action**
+
+- Obtain an owner decision that either authorizes a minimal required V5 consumer path,
+  removes the candidate demonstration from V5 proof/demo obligations, or changes V5
+  scope through the architecture review procedure. Then repair the review findings
+  with targeted red-green tests before resuming `PROOF-ISO-001` and `PROOF-ISO-002`.
+
+### 2026-09-01 - V5 scope correction: NEWS-06 is required
+
+**Owner decision and scope rationale**
+
+- The owner selected the first resolution: retain the existing V5 demo and proof
+  obligation, and make `NEWS-06` a required V5 slice. `VERSIONS.md` demo step 8 and
+  `PROOF-ISO-002` already require a real sentiment-dependent candidate that applies a
+  missing-or-stale policy. `NEWS-06` is the sole planned slice that owns that consumer.
+  This corrects an inconsistent plan boundary; it does not add a new strategy system,
+  model, source, UI feature, or V6 mechanism.
+- The V5 count is consequently eight required slices: seven News slices and `UI-07`.
+  The former optional wording and the claim that V5 was demoable without `NEWS-06`
+  were corrected in the live plan and tracker. Earlier Journal entries remain a record
+  of their then-current state and are not rewritten.
+
+**Execution seam and preserved architecture**
+
+- `NEWS-05` already provides the public `SentimentFeature` port, explicit policy,
+  `ExperimentSentimentContextAssembler`, and a durable result-provenance field. The
+  minimal V5 completion is a registered `NewsSentimentStrategy`, public News feature
+  binding, and runner-side context assembly before worker-thread computation. A
+  technical-only descriptor continues to resolve no News port.
+- No frozen Strategy, Backtester, Evaluator, RankingPolicy, BacktestExecutor,
+  SentimentAnalyzer, or SentimentFeature contract changes. Strategy remains isolated
+  from concrete News infrastructure; the runner consumes only the public News port.
+  The worker thread receives assembled immutable inputs and does not call News.
+
+**Next action**
+
+- Implement `NEWS-06` and the persistent Phase A review repairs using focused
+  red-green tests. Proofs, the final repository-wide gate, and Compose certification
+  remain deferred until a fixed-point two-axis review is clean.
+
+### 2026-09-01 - Owner clarification: NEWS-06 remains optional
+
+**Decision**
+
+- This entry supersedes the current exit-scope effect of the preceding scope-correction
+  entry; it does not rewrite the historical record of that decision. `NEWS-06` remains
+  an optional V5 bonus slice and is not a V5 certification, Definition of Demoable, or
+  `PROOF-ISO-002` prerequisite.
+- The normative V5 plan explicitly states that `NEWS-05` directly supports
+  `PROOF-ISO-002`, and the proof plan permits direct use of the existing NEWS-05
+  sentiment feature/context assembly when the optional strategy slice is skipped.
+  `PROOF-ISO-002` will therefore be demonstrated through that existing consumer seam,
+  not through the optional registered strategy.
+- The in-progress `NEWS-06` implementation may continue only as an optional bonus
+  against its original acceptance criteria. It must not change existing strategies,
+  `CompositeStrategy`, Backtester, Evaluator, ranking, or combination policy.
+
+**Consequences**
+
+- The live V5 count is restored to seven required slices plus one optional slice.
+  `VERSIONS.md` and `TRACKING.md` again identify `NEWS-06` as optional and remove it
+  from all exit criteria.
+- The registered sentiment strategy and runner-side declared-input assembly remain an
+  allowed optional implementation surface. Any composite input declaration needed for
+  its execution must be assembled outside `CompositeStrategy` from existing component
+  descriptors.
+- The required V5 proof and final certification remain blocked only by their actual
+  repairs, runtime evidence, and integration gates; they do not depend on completion
+  of the optional bonus.
+
+### 2026-09-01 - V5 Phase A repairs and checkpoint
+
+**Scope truth**
+
+- The V5 demo scenario now names the required NEWS-05 direct context consumer for the
+  missing-or-stale policy demonstration. `NEWS-06` may demonstrate it as an optional
+  bonus only. This removes the remaining implication that an optional strategy is an
+  exit requirement; `PROOF-ISO-002` remains independent of it.
+
+**Repairs and validation**
+
+- The deferred NEWS-01..03, NEWS-05, and NEWS-07 reviews were closed with focused
+  repairs: a session advisory lock fences normal live inference across nominal lease
+  expiry without holding a transaction during model I/O; schedulers contain rejection,
+  serialize ticks, and stop new work on shutdown; destructive tests fail closed unless
+  their connected database is a marker-verified `csl_test_*` database; public News
+  health is generic; and all News reads have independent failure coverage while Market,
+  backtest, and discovery remain usable.
+- The optional `NEWS-06` implementation is present with a registered descriptor,
+  configured thresholds/window, NEWS-05 policy and provenance wiring, composite
+  required-input assembly outside `CompositeStrategy`, and a zero-call technical path.
+  It did not change an existing strategy, `CompositeStrategy`, Backtester, Evaluator,
+  ranking, or combination policy.
+- Provenance now retains frozen feature freshness, window, and applied policy. The
+  result acceptor rejects both missing sentiment usage for a sentiment-dependent
+  frozen specification and false sentiment usage for a technical-only specification.
+- On the isolated `csl_test_v5_certification` database, the lifecycle suite passed
+  8 tests, the repository suite passed 8 tests, the migration suite passed 4 tests,
+  and the database guard suite passed 4 tests. A read-only post-test query found no
+  remaining client sessions or advisory locks. The protected demo database was never
+  reset, reseeded, or modified.
+- The final shutdown repair stops collection, analysis, and heartbeat timers before
+  it releases News-owned inference sessions and before Nest closes the shared pool.
+  The runtime ordering and active-claim pool-close regressions, backend typecheck,
+  scoped lint, and `git diff --check` pass.
+
+**Residual boundary and next action**
+
+- Durable result/attempt completion is exactly-once for a live claim. External model
+  invocation is deliberately not claimed as exactly-once: process/session loss,
+  graceful shutdown after request dispatch, or an uncertain network response can leave
+  an external request in flight while a later recovery retries. The session lock removes
+  the normal lease-expiry concurrent-call race only.
+- The two independent fixed-point reviews found and drove the repairs above. The
+  final narrow re-review request of the heartbeat-ordering delta could not run because
+  the review agents exhausted their usage limit. Repeat that narrow two-axis review
+  first on resume, then start `PROOF-ISO-001`. No proof, repository-wide V5 gate,
+  final Compose gate, commit, or tag has run in this session.
+
+### 2026-09-01 - V5 Phase A fixed point and optional NEWS-06 completion
+
+**Result**
+
+- The narrow two-axis re-review of the final shutdown delta is clean. Standards found no
+  documented-rule or baseline-smell finding. Spec/architecture found that collection, analysis,
+  and heartbeat timers stop before `NewsWorkerAnalysisLifecycle.close()` is awaited; the local
+  `PostgresSentimentAnalysisRepository` seam releases held advisory-lock clients before
+  `main.news-worker.ts` closes Nest's shared pool.
+- Optional `NEWS-06` is complete in the certification working tree. Its registered
+  `news-sentiment` descriptor declares `sentiment-series`; thresholds and window are descriptor
+  parameters; the existing composite/policy types remain unchanged; NEWS-05 supplies missing and
+  stale policy plus durable provenance; and technical-only execution makes no News feature call.
+  No existing strategy, `CompositeStrategy`, Backtester, Evaluator, ranking, or combination
+  policy changed.
+
+**Validation**
+
+- The refreshed NEWS-06/fixed-point batch passed 10 files / 58 tests, including signal cases,
+  strategy catalog, technical composite, missing-policy provenance, runner input transport and
+  technical-only zero-call behavior, API DTO/controller mapping, runner composition, contracts,
+  and shutdown order. Backend and API-contract typechecks, scoped ESLint, and `git diff --check`
+  pass.
+
+**Next action**
+
+- Phase A is closed. Phase B remains unstarted: first verify Docker Desktop read-only, then run
+  `PROOF-ISO-001`. `NEWS-06` remains an optional bonus and never gates V5, its Definition of
+  Demoable, or `PROOF-ISO-002`; that proof uses the NEWS-05 direct context-assembly seam. No
+  proof, repository-wide gate, Compose/demo gate, commit, push, or tag has run.
+
+### 2026-09-01 - V5 PROOF-ISO-001 passes on Compose
+
+**Result**
+
+- `PROOF-ISO-001` passes on the source-built V5 Compose topology. The separate News worker was
+  stopped gracefully, its health changed to the public `worker-stale` degraded state after the
+  configured heartbeat interval, and restarting only that worker returned collection health to
+  healthy. The real source recovered through normal deduplication.
+- A Socket.IO monitor held four `BTCUSDT` chart subscriptions (`5m`, `15m`, `1h`, `4h`) for
+  seventeen minutes across the failure and recovery. It received every snapshot, stayed connected,
+  and recorded no errors. API, runner, market ingest, Redis, and web remained available.
+- During the outage, a technical-only backtest completed with `newsInput` marked not applicable.
+  A discovery run on existing durable one-minute data stopped by its valid `exhausted` condition
+  with four completed candidates and four leaderboard entries. No reset, seed, migration-ledger
+  change, or temporary test-database use occurred.
+
+**Investigation note**
+
+- An initial short discovery fixture produced no leaderboard row. This was not a projection defect:
+  the applied-version ledger proved projection ran, and the result had one closed trade while the
+  frozen ranking policy requires five. The final longer fixture was eligible and ranked.
+
+**Evidence and next action**
+
+- Complete commands, runtime identities, dataset windows, result IDs, timestamps, and recovery
+  logs are recorded in [`PROOF-ISO-001.md`](../docs/validation/evidence/PROOF-ISO-001.md).
+- The temporary `csl_test_v5_certification` database still has no active sessions or advisory
+  locks, but its expected guard-marker schema was missing at this preflight. Do not use or alter it
+  without a separate marker-safe decision. The protected Compose database remains untouched except
+  for normal proof application operations.
+- Next: run `PROOF-ISO-002` through the required NEWS-05 direct context-assembly seam. `NEWS-06`
+  remains optional and is not part of that proof. The repository-wide V5 gate still waits for both
+  ISO proofs.
+
+### 2026-09-01 - V5 PROOF-ISO-002 passes through NEWS-05
+
+**Result**
+
+- `PROOF-ISO-002` passes through the required direct NEWS-05
+  `ExperimentSentimentContextAssembler` seam, not through optional NEWS-06. A temporary
+  source-built News worker with an empty model credential recorded an
+  `ANALYZER_UNAVAILABLE` attempt and returned its item to `pending`; a later normal worker
+  recorded the successful retry and exact hosted-model provenance.
+- The guarded `csl_test_v5_certification` database was rechecked immediately before use. Its
+  exact durable marker and token were present, all 18 migrations matched source, and it had zero
+  other sessions and zero advisory locks. A deterministic BTC fixture was persisted only through
+  the real News collection service/repository, never by direct SQL. The protected Compose
+  database and migration ledger were not reset, reseeded, dropped, or changed outside normal
+  proof operations.
+- Direct context assembly produced a current BTC usage manifest with durable result/model
+  provenance, stale observed sentiment with explicit `degrade` policy, and missing ETH sentiment
+  with explicit `block` policy. A technical-only descriptor made zero News feature calls.
+
+**Evidence and next action**
+
+- Commands, timestamps, attempt outcomes, provenance, policy results, and cleanup state are in
+  [`PROOF-ISO-002.md`](../docs/validation/evidence/PROOF-ISO-002.md). The source Compose
+  topology stayed running; the temporary worker containers exited cleanly with no held client or
+  advisory-lock session.
+- Both required V5 isolation proofs now pass. Next: run the repository-wide V5 gate exactly once,
+  then run the final Compose Definition of Demoable/cleanup gate. `NEWS-06` remains optional and
+  never becomes an exit condition.
+
+### 2026-09-01 - V5 repository gate hand-off is not certifiable
+
+- Repository typecheck passed. The first lint run found only two unused callback parameters in an
+  untracked V5 lease-renewal regression test; the test-only parameters/import were removed and a
+  second lint run passed. `git diff --check` passed without whitespace errors.
+- Before the suite, the guarded test database marker/token, zero other sessions, and zero advisory
+  locks were verified. The one authorized `pnpm test` process inherited the explicit test database
+  name and guard token, ran database resets only there, and later exited with zero remaining test
+  sessions or advisory locks.
+- The terminal tool yielded part-way through that long-running process and did not retain the
+  process session identifier or final exit code/summary. The process subsequently exited, but its
+  pass/fail result cannot be recovered from the available evidence. Do not claim a repository-wide
+  V5 gate pass or begin final Compose/demo cleanup. A replacement full-suite run requires an owner
+  decision because the certification instruction limited it to one run.
+
+### 2026-09-01 - Unguarded manual `pnpm test` is an invalid gate attempt, not 26 regressions
+
+- A manually run `pnpm test` (Git Bash, no injected `POSTGRES_DB`/`TEST_DATABASE_GUARD_TOKEN`)
+  reported 26 failed / 108 passed test files and 643 passed / 129 skipped tests, with nearly
+  every failed suite's `beforeAll` throwing `TEST_DATABASE_GUARD_DATABASE: configured database is
+  not a dedicated test database`, plus one secondary `TypeError: Cannot read properties of
+  undefined (reading 'end')` in `integration/market-live-ingest.e2e.test.ts`'s `afterAll`.
+- Root cause confirmed by reading `.env` (`POSTGRES_DB=crypto_strategy_lab`, the protected main
+  database, no `TEST_DATABASE_GUARD_TOKEN`) and `vitest.setup.ts` (loads root `.env` only for
+  variables not already in the process environment). The plain invocation therefore resolved
+  `loadConfig()` to the protected main database name, which fails
+  `TEST_DATABASE_NAME.test(database)` in `assertTestDatabaseGuard`
+  (`apps/backend/src/platform/test-database.ts`) before any reset is attempted — exactly
+  reproduced in isolation on `apps/backend/src/modules/news/infrastructure/news-sentiment-migration.test.ts`.
+  The `market-live-ingest.e2e.test.ts` `TypeError` is a direct downstream symptom: its
+  module-level `pool` stays `undefined` when `beforeAll` throws first, so `afterAll`'s
+  `pool.end()` fails on `undefined` — not an independent product bug.
+- This was an invalidly configured gate attempt, not 26 application regressions. No product or
+  test code was faulted for it and none was changed for it.
+- The guarded temporary database `csl_test_v5_certification` was reverified read-only before any
+  further action: exact durable marker/token present, zero other sessions, zero advisory locks,
+  distinct from and never confused with the protected `crypto_strategy_lab` database.
+- The same file passed cleanly (4/4) once run with the correct guarded configuration
+  (`POSTGRES_DB=csl_test_v5_certification TEST_DATABASE_GUARD_TOKEN=v5-certification-test-guard-token`),
+  confirming the diagnosis before spending the one authorized full-suite run.
+
+### 2026-09-01 - Correctly guarded full-suite run finds and fixes one pre-existing defect
+
+- The one authorized full `pnpm test` run under the correct guarded configuration completed with
+  exit code 1: **1 failed / 133 passed test files, 1 failed / 771 passed tests, 250.51s**
+  (`Start at 19:18:03`). The guard/session/lock state was reverified clean before and after.
+- The single failure, `apps/backend/src/platform/database.test.ts > database schemas > creates
+  only the tables currently owned by each module`, expected the `news` schema to own zero tables
+  and received the 5 real tables (`collection_worker_heartbeat`, `items`,
+  `sentiment_analysis_attempts`, `sentiment_results`, `source_health`).
+- This is a genuine, pre-existing defect unrelated to the V5 certification diff: `database.test.ts`
+  was last committed at the V4 freeze (`5f2f7af`), before migrations `0016`-`0018` created any News
+  table. Its hardcoded `news: []` expectation was simply never updated across NEWS-01 through
+  NEWS-07/UI-07; the actual schema is correct per the frozen architecture's News module boundary.
+- Fix: updated only the stale `expectedTables.news` array in `database.test.ts` to the five real,
+  intentional News-owned table names (alphabetical, matching the query's `ORDER BY table_name`).
+  No product code changed. Targeted re-run of the corrected file passes (2/2). Guard/session/lock
+  state on `csl_test_v5_certification` remained clean after.
+- The one full-suite run authorized for that session is spent. A second full run to obtain a
+  clean, complete repository-wide gate result is recommended but requires explicit owner
+  authorization before it is run. Final Compose/demo cleanup, commit, push, and tag remain
+  pending regardless.
+
+### 2026-09-01 - V5 repository gate is green
+
+- The owner authorized a second guarded full-suite run plus iterate-until-clean repair authority.
+  Preflight reconfirmed `csl_test_v5_certification`'s guard marker/token, zero sessions, and zero
+  advisory locks. The correctly guarded `pnpm test` run is fully clean: **exit code 0, 134/134
+  test files, 772/772 tests, 178.06s** (`Start at 19:39:59`). No further defects were found; the
+  database guard/session/lock state remained clean after.
+- Independently cross-checked the official assignment spec (`docs/requirements/Crypto Strategy
+  Lab – Đồ án cuối kỳ.pdf`, previously rendered pages 27-29 and the MVP minimum section 37/38) against
+  the implemented code. News module fields (`news.items`: id, title, content, source,
+  published_at, collected_at, related_coins, url) match section 27's required `News` shape
+  exactly. The News Provider port (`news-provider.ts`) with a swappable `coindesk-rss-news-provider.ts`,
+  a fake, and a shared reusable contract test satisfies section 28's "must not be hard-coded to
+  one crawler" requirement. Sentiment analysis (analyzer port + OpenAI-based analyzer,
+  POSITIVE/NEGATIVE-shaped classification) satisfies section 29 (Module 11). The MVP minimum
+  checklist in section 37 (Market: Binance data/candlestick/realtime/4 timeframes; Strategy: at
+  least MA, RSI, Bollinger, Support/Resistance; Combination: composite strategy; Backtest;
+  Evaluation: totalReturn/winRate/maximumDrawdown/numberOfTrades; Search: random search;
+  Leaderboard: Top-K; Visualization: buy/sell/entry/exit; News: collect -> store -> analyze
+  sentiment pipeline) is present in code with matching field/module names. V1-V4 items were spot-
+  checked, not re-audited from scratch, since that scope carries its own prior `v4.0-demo`
+  certification.
+- The repository-wide V5 gate is now genuinely green. Next: the Compose/demo integration cleanup
+  gate (`DEMO-01`), then commit and push (owner pre-authorized the push).
+
+### 2026-09-01 - DEMO-01 recertified for V5
+
+- `docker compose up --build -d` rebuilt every backend image from the current source (including
+  the uncommitted V5 certification diff) and brought up the topology in dependency order:
+  `postgres` healthy -> `migrate` exit 0 -> `api` healthy, `market-ingest`, `news-worker`,
+  `runner` started -> `web` up. `docker compose config --services` lists exactly `api
+  market-ingest migrate news-worker postgres redis runner web`, matching `VERSIONS.md`'s V5 role
+  table (V4's roles plus the news worker) with no later-version role (no BullMQ, outbox, or
+  worker-pool scaling).
+- Live smoke against the rebuilt stack (not a full browser walkthrough, since the two isolation
+  proofs already drove that scenario in depth): `GET /health` -> `{"status":"ok"}`; `GET
+  /news/health` -> collection `healthy`, analysis `healthy` with zero pending/degraded; `GET
+  /news/items` -> real analyzed CoinDesk RSS items with title/source/publishedAt/relatedCoins;
+  `GET /strategies` -> the descriptor catalog including `moving-average` with its parameter
+  schema; the web SPA responded `200` at `:8080`.
+- `docs/demo-script.md` gained a "V5 News and Sentiment walkthrough" section (collect/store/
+  analyze, stop/restart the news worker, unreachable-model degradation, technical-only zero
+  sentiment call, the architecture isolation point), referencing `PROOF-ISO-001.md` and
+  `PROOF-ISO-002.md` for full command-level evidence rather than duplicating it. The "Before you
+  start" expected-service list was corrected: it previously said a news service was absent
+  (stale, predating NEWS-02); it now lists `news-worker`. `docker-compose.yml`'s header comment
+  was corrected from "V4's current MKT-06 state" to V5's state. The document's own certified-
+  baseline header is untouched (still V1-V4) since freezing V5 remains an explicit owner decision.
+- `DEMO-01`'s V5 Compose integration gate PASS. Combined with the green repository-wide test
+  suite, both ISO proofs, and the requirements cross-check, every condition in V5's Definition of
+  Demoable (`VERSIONS.md`) now has direct evidence except the owner's own freeze decision.
+
+### 2026-09-01 - V5 frozen at `v5.0-demo`
+
+- The owner explicitly authorized the freeze and the temporary-database cleanup in the same
+  instruction. Committed the certification work as three commits on `v5-news-and-sentiment` and
+  pushed: `392cbeb` (isolated stale-test fix), `ac7fa9b` (NEWS-06 + Phase A fixed-point repairs,
+  53 files), `2b751f0` (certification evidence + DEMO-01 recert docs, 7 files).
+- Before dropping the temporary database, its guard marker/token and zero active sessions were
+  reverified read-only, and its identity was reconfirmed distinct from the protected
+  `crypto_strategy_lab` database. `DROP DATABASE csl_test_v5_certification` ran against the
+  `postgres` maintenance database; the protected main database and its migration ledger were not
+  touched.
+- Created the annotated safety tag `git tag -a v5.0-demo` on `2b751f0` per `VERSIONS.md`'s V5 Git
+  checkpoint instruction, and pushed it to origin.
+- `TRACKING.md` is updated: implementation status is now `V1-V5 BASELINE CERTIFIED`, the last tag
+  is `v5.0-demo`, and `NEWS-06` is recorded as committed rather than uncommitted. The current
+  target version remains V5 — moving the target to V6 is a separate owner decision, not made here,
+  and no coding agent advances it.
+- V5 is frozen. Everything after `v5.0-demo` is V6 architecture evolution (BullMQ, transactional
+  outbox, idempotent consumers, operational telemetry); this tag must remain demoable no matter
+  how V6 goes.
+
+### 2026-09-03 - Final pre-defense release: composite discovery closure and truthfulness sync
+
+**Decisions**
+- Owner closed the automated-discovery ambiguity: single-strategy search plus a separately saved
+  manual composite is not the accepted reading. Automated discovery must itself generate composite
+  candidates and carry them through execution, evaluation, ranking, and leaderboard projection.
+  Tracked as `frozen_implementation_plan/` (`FIN-01` through `FIN-06`), separate from this V1-V6
+  roadmap and not a new product version.
+- `FIN-01` rejected persisting every generated composite through `CompositeStrategyService`: a
+  generated candidate is an immutable, experiment-scoped proposal, not a durable object a person
+  owns, and collapsing the two would create ownerless data once accounts exist.
+
+**Deviations / debt**
+- Deferred account/login requirement and the frontend combination-policy catalog gap are recorded
+  as known limitations in `docs/final-defense-notes.md`, not fixed this release.
+
+**Validation**
+- `FIN-01` through `FIN-04` done: composite candidate execution, minimal Discovery UI exposure,
+  demo-surface presentation hardening, and the canonical demo script. Each used its own targeted
+  validation; the repository-wide gate has not re-run since `v5.0-demo` and is `FIN-06` work.
+
+**Problems worth remembering**
+- `VERSIONS.md`'s V5 "MVP list is fully satisfied" line was true only under the single-strategy
+  reading at the `v5.0-demo` commit; a stated Definition-of-Demoable condition can silently depend
+  on which reading of a requirement is accepted. Made explicit in `VERSIONS.md` and `TRACKING.md`.
+
+**Ending state**
+- Working tree carries `FIN-01` through `FIN-04` uncommitted on top of `2b751f0` (`v5.0-demo`).
+  `FIN-05` (this entry) is in progress. `FIN-06` (repository-wide gate, Compose rehearsal, freeze)
+  has not run. No tag moved; the target version remains V5.
+
+### 2026-09-03 - FIN-06 final gate: freeze readiness reached
+
+**Decisions**
+- Ran the final pre-defense release gate once, in the order `frozen_implementation_plan/04-final-
+  certification-and-freeze.md` defines. Committed `FIN-03` through `FIN-05`'s prior uncommitted work
+  first (release-state hygiene) so the gate ran against a real, final tree rather than a mix of
+  committed and uncommitted state.
+
+**Validation**
+- Governance: 3 known local-only failures from the untracked, git-ignored discarded-material
+  directory; no other failure.
+- Repository-wide gate, run against a disposable PostgreSQL container isolated from both the live
+  Compose stack and the protected main database (`fin06-disposable-postgres`, host port 5544,
+  database `csl_test_fin06`, dropped after use): typecheck green, lint clean, `135/135` test files,
+  `777/777` tests, exit 0.
+- `PROOF-REP-001` re-run against a real generated composite, once (`integration/leaderboard-
+  reproducibility-composite.proof.test.ts`, new — it lives outside every module because it wires
+  `market`, `strategy`, and `experiment` together directly, same as the existing runner-lifecycle
+  e2e test). A real `SearchCoordinator` generated a composite candidate (`rsi` + `moving-average`,
+  `majority-vote`), the real `BacktestRunnerService` executed and accepted it, the real
+  `LeaderboardProjector` placed it at leaderboard rank 1, and a second, independent worker-thread
+  computation reproduced the exact same canonical trade hash from the same frozen specification and
+  candles. No `CompositeStrategyService` and no saved-composite row were used anywhere. Evidence
+  appended to `docs/validation/evidence/PROOF-REP-001.md` (the original single-strategy PASS record
+  is unchanged). One pre-existing, unrelated scope limit was found and recorded, not fixed: the
+  reproducibility checklist types `combinationPolicy`/`generatorAndSearch`/`rankingPolicy` as always
+  `not-applicable`, for a composite result exactly as for a single-strategy one; the data itself
+  (composite definition, generator, ranking policy) is still fully traceable through the frozen
+  specification and the parent search specification, just not surfaced as a checklist field. This
+  predates `FIN-01` and is out of `FIN-06`'s no-new-features scope.
+- Compose: `docker compose up --build -d` from current source brought up the unchanged V5 topology
+  (`postgres`, `redis`, one-shot `migrate` exit 0, `api`, `runner`, `market-ingest`, `news-worker`,
+  `web`) with no V6-only role. Seeded 30 days of BTCUSDT candles at `5m`/`15m`/`1h`/`4h`, then drove
+  the canonical demo flow over HTTP against the live stack: strategy catalog served from the
+  registry; a saved manual composite created and backtested to completion; a live automated search
+  with `compositeSizes: [2]` generated 30/30 candidates with 0 failures, producing a 10-entry,
+  all-composite leaderboard (rank 1: `rsi + moving-average`, 17 trades, positive return) whose
+  provenance resolved back to the frozen specification's inline composite definition; news-worker
+  stopped and restarted with the API, backtest path, and existing result all unaffected the whole
+  time (`PROOF-ISO-001`'s property, observed live, not re-proved as a distinct proof run). No other
+  proof was re-run; none of `PROOF-PROVIDER-001`/`PROOF-EXT-001`/`PROOF-REPLACE-001`/
+  `PROOF-CONTROL-001`/`PROOF-RT-001`/`PROOF-ISO-001`/`PROOF-ISO-002` had a regression exposed by the
+  gate or the Compose run.
+- Not independently observed this session: pixel-level visual rendering of the SPA. No browser or
+  screenshot tool was available; the SPA's root document was confirmed served (HTTP 200) and every
+  canonical-flow screen's underlying data contract was exercised directly against the Compose API
+  instead. A brief human visual pass before the live defense is recommended but did not block this
+  gate, since no functional or architectural defect was found anywhere else.
+
+**Ending state**
+- All FIN-06 changes (the new composite `PROOF-REP-001` evidence and this synchronization) are
+  committed together with this entry, on top of the commit that finalized `FIN-03` through `FIN-05`.
+  `git log` is authoritative for the exact hash. Working tree clean at that commit. No tag created;
+  the target version remains V5. `FREEZE READINESS: READY` — see the freeze-readiness report in this
+  session for the full gate-by-gate breakdown. Next: the owner decides whether to freeze and tag, and
+  separately whether to authorize `V6`.
+
+### 2026-09-04 - Presentation pass on the five demo pages
+
+**Why this happened**
+The `FIN-06` entry above closed the functional and architectural gate but recorded one
+thing it could not observe: "pixel-level visual rendering of the SPA. No browser or
+screenshot tool was available." The owner reopened the presentation layer only, after
+that certification, and a browser was available this time. Nothing functional or
+architectural was in scope.
+
+**What the browser found**
+`StrategyEnginePage` and the shared `GenericParameterForm` were written entirely in
+Tailwind utility classes, but Tailwind is not installed in `apps/web`. Those two
+surfaces therefore rendered as an unstyled document. The Backtest result area had no
+CSS rules at all, so it printed backend values raw: `Total Return: 0.013565077721999842`,
+`Win Rate: 0.375`, `2026-08-28T08:00:00.000Z`. Discovery asked a human to type epoch
+milliseconds. The Discovery leaderboard identified every candidate as
+`moving-average@1.0.0`, so four rows of a random search were indistinguishable.
+
+No interaction defect was found. "Add Strategy" was reported as not working; it worked,
+but the single-column layout put "Selected Components" below the entire six-strategy
+catalog, so the result of a click landed off-screen. That is a layout defect, not a
+handler defect, and it was fixed as one.
+
+**Decisions**
+- Tailwind was not adopted and no build spike was run. Adding it to a certified release
+  would introduce a build dependency and a dark-themed island inside a light
+  semantic-CSS application. The two Tailwind surfaces were rewritten in the CSS
+  vocabulary the other pages already use.
+- `apps/web/src/format.ts` is the single place that turns a backend value into readable
+  text. It formats and never derives: no metric is computed, nothing is re-ranked, no
+  stored value changes. All calendar formatting is UTC, because dataset windows, candle
+  open times, and trade timestamps are UTC in this system.
+- Discovery's date inputs convert to and from the existing epoch-millisecond request
+  shape in the browser, and snap to candle open times. The API contract is unchanged.
+- Discovery raised a red error whenever a stored run id no longer resolved. A missing
+  run is an absence, not a failure, so the page now forgets the id and opens on its
+  normal empty state.
+- Strategy Engine's save button was enabled while the hint beside it said the composite
+  still needed a name. A stored composite is immutable, so an empty name would be
+  permanent. The button now waits for the name.
+- Two usability gaps were closed rather than left for the defense: the Discovery detail
+  panel read the first twenty trades with no way to reach the rest (a candidate with
+  forty-three trades silently showed twenty), and it dropped the ranking metrics from
+  view once a row was opened.
+
+**Scope and validation**
+Every change is under `apps/web/src/`. No backend, no `api-contracts`, no migration, no
+ADR, no proof definition, and no architecture document was touched. `tsc --noEmit`
+exits 0; the web suite is `12/12` files and `85/85` tests. All five pages were driven in
+a real Chromium against the Compose stack on `:8080`, with the browser emulating a dark
+system theme, which is how the original defect reports were produced: zero page errors,
+zero alerts, and a light surface on every page.
+
+**Ending state**
+Four commits on `v5-news-and-sentiment`. No tag was created and the target version
+remains V5. The `.scratch/ui-rescue/` probe area was swept into the repository by a
+repository-wide `git add` during the session and has been untracked and ignored again.

@@ -34,7 +34,6 @@ export function ChartWidget({ id, initialTimeframe, symbol = "BTCUSDT" }: ChartW
 
   const durableLastOpenTime = durableCandles[durableCandles.length - 1]?.openTime;
   const liveUpdateCount = tickCount + closedCount;
-  const isLive = connection === "connected" && !isLoading && errorMessage === null;
   const subscriptionState = errorMessage !== null
     ? "error"
     : connection === "disconnected"
@@ -45,7 +44,7 @@ export function ChartWidget({ id, initialTimeframe, symbol = "BTCUSDT" }: ChartW
 
   return (
     <div
-      className="flex flex-col border border-gray-700/50 rounded-xl bg-gray-900 shadow-xl overflow-hidden h-[500px]"
+      className="chart-widget"
       data-chart-id={id}
       data-closed-count={closedCount}
       data-connection={connection}
@@ -60,40 +59,26 @@ export function ChartWidget({ id, initialTimeframe, symbol = "BTCUSDT" }: ChartW
       data-tick-count={tickCount}
       data-timeframe={timeframe}
     >
-      <div className="flex justify-between items-center px-6 py-4 border-b border-gray-700/50 bg-[#1e222d]/80">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <div
-              className={`w-2 h-2 rounded-full ${
-                isLive ? "bg-green-500 animate-pulse"
-                  : subscriptionState === "error" ? "bg-red-500" : "bg-yellow-500 animate-pulse"
-              }`}
-            />
-            <span className="text-gray-100 font-bold text-base tracking-wide">BTC/USDT</span>
+      <div className="chart-widget-header">
+        <div className="chart-widget-info">
+          <div className="chart-widget-symbol">
+            <span className="health-dot" />
+            <span>BTC/USDT</span>
           </div>
-          <span className="text-xs text-blue-400 font-mono bg-blue-900/20 border border-blue-800/30 px-2 py-1 rounded-md">
-            {id}
-          </span>
-          <span
-            className="text-xs text-gray-400"
-            aria-label={`Subscription state for ${id}`}
-          >
-            {subscriptionState}
-          </span>
-          <span className="text-xs text-green-400" aria-label={`Live updates for ${id}`}>
-            Live updates: {liveUpdateCount}
-          </span>
+          <div className="chart-widget-meta">
+            <span>{id}</span>
+            <span aria-label={`Subscription state for ${id}`}>
+              {subscriptionState}
+            </span>
+            <span aria-label={`Live updates for ${id}`}>
+              Live updates: {liveUpdateCount}
+            </span>
+          </div>
         </div>
-        <div className="flex items-center gap-3">
-          <label
-            className="text-xs text-gray-500 font-semibold uppercase tracking-widest"
-            htmlFor={selectId}
-          >
-            Timeframe
-          </label>
+        <div className="chart-widget-controls">
+          <label htmlFor={selectId}>Timeframe</label>
           <select
             aria-label={`Timeframe for ${id}`}
-            className="bg-[#2a2e39] hover:bg-[#363a45] text-gray-200 border-none rounded px-3 py-1.5 text-sm font-medium outline-none transition-colors cursor-pointer shadow-inner"
             id={selectId}
             value={timeframe}
             onChange={(event) => setTimeframe(event.target.value as ApiTimeframe)}
@@ -108,29 +93,20 @@ export function ChartWidget({ id, initialTimeframe, symbol = "BTCUSDT" }: ChartW
         </div>
       </div>
 
-      <div className="flex-1 relative w-full h-full bg-[#131722]">
+      <div className="chart-widget-body">
         {isLoading && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-[#131722]/90 backdrop-blur-sm">
-            <div className="animate-pulse flex flex-col items-center gap-4">
-              <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
-              <span className="text-blue-400 text-sm font-semibold tracking-wide">
-                Loading market data...
-              </span>
-            </div>
-          </div>
+          <div className="chart-state">Loading market data...</div>
         )}
 
         {!isLoading && errorMessage !== null && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-[#131722]">
-            <div className="text-center p-8 bg-red-950/20 rounded-xl border border-red-900/30">
-              <p className="text-red-400 font-bold mb-2 text-lg">Failed to load market data</p>
-              <p className="text-red-500/60 text-sm">{errorMessage}</p>
-            </div>
+          <div className="chart-state chart-error">
+            <p>Failed to load market data</p>
+            <p>{errorMessage}</p>
           </div>
         )}
 
         {!isLoading && errorMessage === null && displayedCandles.length === 0 && (
-          <div className="absolute inset-0 flex items-center justify-center text-gray-400">
+          <div className="chart-state">
             No candle data is available for this timeframe.
           </div>
         )}
