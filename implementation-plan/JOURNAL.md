@@ -3408,3 +3408,60 @@ criteria alone**
 - Working tree carries `FIN-01` through `FIN-04` uncommitted on top of `2b751f0` (`v5.0-demo`).
   `FIN-05` (this entry) is in progress. `FIN-06` (repository-wide gate, Compose rehearsal, freeze)
   has not run. No tag moved; the target version remains V5.
+
+### 2026-09-03 - FIN-06 final gate: freeze readiness reached
+
+**Decisions**
+- Ran the final pre-defense release gate once, in the order `frozen_implementation_plan/04-final-
+  certification-and-freeze.md` defines. Committed `FIN-03` through `FIN-05`'s prior uncommitted work
+  first (release-state hygiene) so the gate ran against a real, final tree rather than a mix of
+  committed and uncommitted state.
+
+**Validation**
+- Governance: 3 known local-only failures from the untracked, git-ignored discarded-material
+  directory; no other failure.
+- Repository-wide gate, run against a disposable PostgreSQL container isolated from both the live
+  Compose stack and the protected main database (`fin06-disposable-postgres`, host port 5544,
+  database `csl_test_fin06`, dropped after use): typecheck green, lint clean, `135/135` test files,
+  `777/777` tests, exit 0.
+- `PROOF-REP-001` re-run against a real generated composite, once (`integration/leaderboard-
+  reproducibility-composite.proof.test.ts`, new — it lives outside every module because it wires
+  `market`, `strategy`, and `experiment` together directly, same as the existing runner-lifecycle
+  e2e test). A real `SearchCoordinator` generated a composite candidate (`rsi` + `moving-average`,
+  `majority-vote`), the real `BacktestRunnerService` executed and accepted it, the real
+  `LeaderboardProjector` placed it at leaderboard rank 1, and a second, independent worker-thread
+  computation reproduced the exact same canonical trade hash from the same frozen specification and
+  candles. No `CompositeStrategyService` and no saved-composite row were used anywhere. Evidence
+  appended to `docs/validation/evidence/PROOF-REP-001.md` (the original single-strategy PASS record
+  is unchanged). One pre-existing, unrelated scope limit was found and recorded, not fixed: the
+  reproducibility checklist types `combinationPolicy`/`generatorAndSearch`/`rankingPolicy` as always
+  `not-applicable`, for a composite result exactly as for a single-strategy one; the data itself
+  (composite definition, generator, ranking policy) is still fully traceable through the frozen
+  specification and the parent search specification, just not surfaced as a checklist field. This
+  predates `FIN-01` and is out of `FIN-06`'s no-new-features scope.
+- Compose: `docker compose up --build -d` from current source brought up the unchanged V5 topology
+  (`postgres`, `redis`, one-shot `migrate` exit 0, `api`, `runner`, `market-ingest`, `news-worker`,
+  `web`) with no V6-only role. Seeded 30 days of BTCUSDT candles at `5m`/`15m`/`1h`/`4h`, then drove
+  the canonical demo flow over HTTP against the live stack: strategy catalog served from the
+  registry; a saved manual composite created and backtested to completion; a live automated search
+  with `compositeSizes: [2]` generated 30/30 candidates with 0 failures, producing a 10-entry,
+  all-composite leaderboard (rank 1: `rsi + moving-average`, 17 trades, positive return) whose
+  provenance resolved back to the frozen specification's inline composite definition; news-worker
+  stopped and restarted with the API, backtest path, and existing result all unaffected the whole
+  time (`PROOF-ISO-001`'s property, observed live, not re-proved as a distinct proof run). No other
+  proof was re-run; none of `PROOF-PROVIDER-001`/`PROOF-EXT-001`/`PROOF-REPLACE-001`/
+  `PROOF-CONTROL-001`/`PROOF-RT-001`/`PROOF-ISO-001`/`PROOF-ISO-002` had a regression exposed by the
+  gate or the Compose run.
+- Not independently observed this session: pixel-level visual rendering of the SPA. No browser or
+  screenshot tool was available; the SPA's root document was confirmed served (HTTP 200) and every
+  canonical-flow screen's underlying data contract was exercised directly against the Compose API
+  instead. A brief human visual pass before the live defense is recommended but did not block this
+  gate, since no functional or architectural defect was found anywhere else.
+
+**Ending state**
+- All FIN-06 changes (the new composite `PROOF-REP-001` evidence and this synchronization) are
+  committed together with this entry, on top of the commit that finalized `FIN-03` through `FIN-05`.
+  `git log` is authoritative for the exact hash. Working tree clean at that commit. No tag created;
+  the target version remains V5. `FREEZE READINESS: READY` — see the freeze-readiness report in this
+  session for the full gate-by-gate breakdown. Next: the owner decides whether to freeze and tag, and
+  separately whether to authorize `V6`.
