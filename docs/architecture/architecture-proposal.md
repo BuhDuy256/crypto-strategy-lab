@@ -1,5 +1,14 @@
 # Crypto Strategy Lab Architecture Proposal
 
+> **This is a historical design record, not a description of the delivered system.**
+> It was accepted on 2026-08-21, before implementation began, and it is deliberately
+> not updated to match the code. It describes a *target* architecture: some elements
+> here, notably BullMQ, the transactional outbox, and the idempotent broker consumer,
+> are **V6 and are not implemented**.
+>
+> For the architecture as actually delivered, including realization status, read
+> [`architecture-report.md`](architecture-report.md) instead.
+
 Architecture Status: ACCEPTED FOR FROZEN BASELINE v1.1
 
 Baseline v1.2 later accepted only the staged realization timing recorded by

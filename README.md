@@ -1,18 +1,43 @@
 # Crypto Strategy Lab
 
-Crypto Strategy Lab is an architecture-first platform for crypto market data, strategy experimentation, backtesting, candidate search/evaluation, and leaderboard analysis. It also includes an isolated news/sentiment capability and is designed around extensibility, failure isolation, and reproducible experiment results. The repository contains the accepted architecture and validation plan, plus the implementation built against it so far.
+An architecture-first platform for crypto market data, trading-strategy experimentation,
+backtesting, automated candidate search, and leaderboard analysis, with an isolated
+news and sentiment capability alongside it.
 
-## Current project status
+The project is built around three properties that are hard to add later: **extensibility**
+(a new strategy, search method, or data provider does not ripple downstream),
+**failure isolation** (news or sentiment breaking must not stop charts or backtests), and
+**reproducibility** (any leaderboard row resolves back to the exact frozen inputs that
+produced it).
+
+This README is the front door. It orients you and points at the real documents; it is
+not the architecture report.
+
+## Current status
 
 - **Architecture:** `FROZEN v1.2`
 - **Validation:** `PENDING IMPLEMENTATION PROOFS`
 - **Implementation:** `IN PROGRESS`
 - **Current product version:** `V5`
-- **Last frozen release:** `V4 at v4.0-demo`
+- **Last frozen release:** `V5 at v5.1-demo`
 
-`FROZEN ≠ PROVEN`: the baseline is normative for implementation, but its proof obligations still require implementation evidence.
+`FROZEN` is not `PROVEN`. The baseline is normative for implementation, but its proof
+obligations are discharged by recorded evidence, and four of them deliberately are not.
+See [Current realization and scope](#current-realization-and-scope).
 
-Implementation status and current product version are separate facts. The first says whether application work has begun; the second names the only product version anyone is authorized to build right now. Both are set by the team, never advanced by a coding agent. Live slice state is in [`implementation-plan/TRACKING.md`](implementation-plan/TRACKING.md).
+## What the system does today
+
+| Area | Capability |
+|---|---|
+| Market data | Binance adapter behind a provider port; normalized, append-only candle history with immutable revisions; dataset snapshots resolved by manifest hash |
+| Realtime | Live candle streaming over WebSocket; four independent chart subscriptions, each retimeframable on its own; reconnect with backoff, missing-interval computation, and REST gap recovery |
+| Strategies | Six built-in strategies through one pure contract: moving average, RSI, Bollinger Bands, support/resistance, MACD, and news sentiment |
+| Composition | Composite strategies from any component set, combined by a versioned policy (majority vote or weighted score) |
+| Backtesting | Deterministic backtester with fees and slippage, run in a separate process and a worker thread, never on the API path |
+| Evaluation | Total return, win rate, maximum drawdown, and trade count, behind a versioned metric set |
+| Search | Two search methods behind one `StrategyGenerator` port (random and grid); three stop conditions; pause, resume, and cancel that survive a restart |
+| Leaderboard | Top-K ranking projected from accepted results, with full provenance for every row |
+| News and sentiment | RSS collection and model-backed sentiment analysis in a separate worker process, isolated so its failure degrades nothing else |
 
 ## Architecture at a glance
 
@@ -21,13 +46,15 @@ Implementation status and current product version are separate facts. The first 
 | Architecture style | Modular Monolith with selectively separated process roles |
 | Core backend | Node.js + TypeScript + NestJS |
 | Frontend | React + TypeScript |
-| Durable storage | PostgreSQL |
-| Async processing | BullMQ + persistence-configured Redis |
+| Durable storage | PostgreSQL, the single authoritative truth |
+| Backtest execution (V1-V5) | PostgreSQL-backed durable claim/lease queue in a separate runner process (ADR-010) |
+| Backtest execution (V6 target) | BullMQ on persistence-configured Redis, **not implemented** |
 | Realtime client transport | NestJS WebSocket Gateway |
-| Best-effort live fan-out | Redis Pub/Sub after authoritative state/projection updates |
-| Optional ML runtime | Python only behind `SentimentAnalyzer` when a selected model/library justifies it |
+| Live fan-out | Redis Pub/Sub, best-effort notification only, never durable truth |
+| Optional ML runtime | Python only behind `SentimentAnalyzer`, if a model justifies it |
 
-PostgreSQL is authoritative durable truth. BullMQ/Redis carries correctness-relevant asynchronous work; Redis Pub/Sub is only ephemeral notification.
+Five logical modules own their own data and expose ports to each other. A logical module
+is not automatically a deployment boundary.
 
 ### Sentiment analyzer selection
 
@@ -40,438 +67,215 @@ The local analyzer is deterministic, free, and intended for development and demo
 
 ## High-level project structure
 
-```text
-crypto-strategy-lab/
-├── README.md
-├── AGENTS.md
-├── CLAUDE.md
-├── CODING_STANDARDS.md
-├── implementation-plan/
-│   ├── README.md
-│   ├── VERSIONS.md
-│   ├── TRACKING.md
-│   ├── JOURNAL.md
-│   └── 00-... to 07-... (slices, by architectural area)
-├── apps/
-│   ├── backend/
-│   └── web/
-├── packages/
-│   └── api-contracts/
-├── .agents/
-│   ├── architecture-freeze.yaml
-│   ├── skill-manifest.yaml
-│   ├── skill-lock.yaml
-│   └── skills/            (canonical skills)
-├── .claude/
-│   ├── settings.json
-│   └── skills/            (mirror, loaded by Claude Code)
-├── .codex/
-│   ├── config.toml
-│   └── skills/            (mirror, loaded by Codex)
-├── docs/
-│   ├── architecture/
-│   │   ├── architecture-baseline.md
-│   │   ├── architecture-baseline-v1.md
-│   │   └── architecture-proposal.md
-│   ├── adr/
-│   │   └── ADR-001 ... ADR-010
-│   ├── diagrams/
-│   │   ├── README.md
-│   │   └── 01 ... 10 architecture views
-│   ├── requirements/
-│   └── validation/
-│       └── architecture-proof-plan.md
-└── scripts/
-    └── check-repo-governance.ps1
-```
+- **ARC-API** — HTTP/WebSocket transport, DTO validation, subscriptions, query composition. No strategy, backtest, ranking, or provider logic.
+- **ARC-MARKET** — provider adapters, normalized candles, ingestion, deduplication, gap recovery, datasets, provider health.
+- **ARC-STRATEGY** — strategy contracts and implementations, registry metadata, signals, composition policies, `StrategyGenerator` contracts.
+- **ARC-EXPERIMENT** — immutable specifications, run control, candidate lifecycle, backtesting, evaluation, ranking, provenance, leaderboard projection.
+- **ARC-NEWS** — news collection and normalization, sentiment adapters, inference lifecycle, versioned results.
 
-## Recommended review order
+These boundaries are enforced by a test, not by convention. See
+[`evidence-module-boundaries.md`](docs/evidence/evidence-module-boundaries.md).
 
-1. [Diagram index](docs/diagrams/README.md)
-2. [Problem Tree](docs/diagrams/01-problem-tree.md)
-3. [Decision Tree](docs/diagrams/02-decision-tree.md)
-4. [System Context](docs/diagrams/03-system-context.md)
-5. [Container / Runtime View](docs/diagrams/04-container-runtime-view.md)
-6. [Module Boundaries](docs/diagrams/05-module-boundaries.md)
-7. [Frozen architecture baseline v1.2](docs/architecture/architecture-baseline.md) — normative source
-8. The ADRs relevant to the area under review
-9. [Architecture Proof Plan](docs/validation/architecture-proof-plan.md)
-10. [Architecture Proposal](docs/architecture/architecture-proposal.md) for deeper reasoning and trade-offs
+## Current realization and scope
 
-The diagrams are the quick entry point, the baseline defines what implementation must obey, and the ADRs/proposal explain why those decisions were made.
+**V1 through V5 are realized and frozen at `v5.1-demo`.** That covers everything in
+[What the system does today](#what-the-system-does-today), assembled and demonstrated
+through the documented Docker Compose path.
 
-## Main logical modules
+**V6 is deliberately not implemented.** It is the final asynchronous realization:
+BullMQ-based execution, the transactional outbox, inbox deduplication, and the four
+proofs that depend on them (`PROOF-SCALE-001`, `PROOF-RETRY-001`, `PROOF-DUP-001`,
+`PROOF-OBS-001`). Diagrams and the baseline describe V6 as the target architecture and
+label it as such. Nothing about queue scalability, broker retry, duplicate-delivery
+safety, or outbox reliability is claimed.
 
-- **ARC-API — API / Presentation:** Owns HTTP/WebSocket transport, DTO validation, client subscription/session state, push behavior, and query composition. It contains no strategy, backtest, ranking, or provider business logic.
-- **ARC-MARKET — Market Data:** Owns provider adapters, normalized candles, ingestion, validation, deduplication, gap recovery, datasets, persistence, and provider health.
-- **ARC-STRATEGY — Strategy:** Owns strategy contracts/implementations, registry metadata, normalized signals, composition policies, and `StrategyGenerator` contracts/implementations.
-- **ARC-EXPERIMENT — Experiment:** Owns immutable experiment specifications, run control, candidate/job lifecycle, backtesting, evaluation, ranking, result acceptance, provenance, and leaderboard projection.
-- **ARC-NEWS — News Intelligence:** Owns news collection/normalization, sentiment analysis adapters, inference lifecycle, versioned results, and sentiment-feature queries.
+The complete list of what must not be claimed is in
+[`docs/final-defense-notes.md`](docs/final-defense-notes.md).
 
-Cross-module access uses exported application/domain ports. A logical module is not automatically a deployment boundary.
-
-## Key runtime flows
-
-- [Experiment / Backtest Flow](docs/diagrams/06-experiment-backtest-flow.md)
-- [Realtime Market Flow](docs/diagrams/07-realtime-market-flow.md)
-- [News / Sentiment Flow](docs/diagrams/08-news-sentiment-flow.md)
-- [Reproducibility / Provenance Map](docs/diagrams/09-reproducibility-provenance-map.md)
-- [Proof Coverage Map](docs/diagrams/10-proof-coverage-map.md)
+The original Walking Skeleton was the repository's architecture proof-oriented vertical slice.
+The roadmap and each version's Definition of Demoable are in
+[`implementation-plan/VERSIONS.md`](implementation-plan/VERSIONS.md).
+[`implementation-plan/README.md`](implementation-plan/README.md) explains how the plan
+works, and [`implementation-plan/TRACKING.md`](implementation-plan/TRACKING.md) is the
+authoritative current-state view.
 
 ## Architecture decisions
 
-- [ADR-001 — Modular Monolith with Process-Role Separation](docs/adr/ADR-001-modular-monolith-process-roles.md)
-- [ADR-002 — Strategy Extensibility and Search Replaceability Contracts](docs/adr/ADR-002-strategy-and-search-contracts.md)
-- [ADR-003 — Provider Adapters and Normalized Contracts](docs/adr/ADR-003-provider-adapters.md)
-- [ADR-004 — Asynchronous Experiment Processing](docs/adr/ADR-004-asynchronous-experiment-processing.md)
-- [ADR-005 — Transactional Results and Derived Leaderboard](docs/adr/ADR-005-transactional-results-leaderboard.md)
-- [ADR-006 — Immutable Experiment Specification and Provenance](docs/adr/ADR-006-immutable-experiment-provenance.md)
-- [ADR-007 — News Collection and Sentiment Isolation](docs/adr/ADR-007-news-sentiment-isolation.md)
-- [ADR-008 — Realtime Delivery and Market Recovery](docs/adr/ADR-008-realtime-delivery-recovery.md)
-- [ADR-009 — Technology Realization for Baseline v1.1](docs/adr/ADR-009-technology-realization.md)
-- [ADR-010 — Realization Sequencing for Asynchronous Backtest Execution](docs/adr/ADR-010-realization-sequencing-for-asynchronous-backtest-execution.md)
+**Reading the architecture for the first time? Start with
+[`docs/architecture/architecture-report.md`](docs/architecture/architecture-report.md).**
+It describes the architecture as delivered, marks what is and is not implemented, and
+answers the eight central architecture questions in one place.
 
-## Development workflow
+The frozen normative source is
+[`docs/architecture/architecture-baseline.md`](docs/architecture/architecture-baseline.md).
+Ten accepted decisions record why it looks the way it does:
 
-Work follows a gated path from research/problem evidence to specification, architecture conformance, TDD implementation, two-axis code review, and architecture proof. Architecture constraints apply throughout rather than as a one-time design step.
-
-The [Development Workflow](docs/agents/development-workflow.md) identifies the repository-local skill, authoritative inputs, artifact, validation or human gate, next phase, and freeze constraint for each step. [`CODING_STANDARDS.md`](CODING_STANDARDS.md) says how the code itself is written. The [Architecture Proof Plan](docs/validation/architecture-proof-plan.md) remains authoritative for implementation evidence: `FROZEN` is not `PROVEN`.
-
-## How implementation work is organized
-
-The plan is **organized by architectural area, not one file per version**. A product version is a set of slices spread across several area files.
-
-| File | What it tells you |
+| ADR | Decision |
 |---|---|
-| [`implementation-plan/README.md`](implementation-plan/README.md) | How the plan works, and how to pick and finish work. **Start here.** |
-| [`implementation-plan/VERSIONS.md`](implementation-plan/VERSIONS.md) | What V1 to V6 must achieve, which slices belong to each, and each version's Definition of Demoable |
-| [`implementation-plan/TRACKING.md`](implementation-plan/TRACKING.md) | The one authoritative current-state view: target version, per-slice status, blockers, next allowed action |
-| [`implementation-plan/JOURNAL.md`](implementation-plan/JOURNAL.md) | Durable history: decisions taken, deviations and debt handed forward, validation results worth remembering |
-| `implementation-plan/00-...` to `07-...` | Slice definitions, grouped by architectural area |
-| `.scratch/checkpoints/<slice-id>.md` | Where an unfinished slice stopped. **Local and git-ignored**: it never reaches another team member |
+| [ADR-001](docs/adr/ADR-001-modular-monolith-process-roles.md) | Modular monolith with process-role separation |
+| [ADR-002](docs/adr/ADR-002-strategy-and-search-contracts.md) | Strategy extensibility and search replaceability contracts |
+| [ADR-003](docs/adr/ADR-003-provider-adapters.md) | Provider adapters and normalized contracts |
+| [ADR-004](docs/adr/ADR-004-asynchronous-experiment-processing.md) | Asynchronous experiment processing |
+| [ADR-005](docs/adr/ADR-005-transactional-results-leaderboard.md) | Transactional results and derived leaderboard |
+| [ADR-006](docs/adr/ADR-006-immutable-experiment-provenance.md) | Immutable experiment specification and provenance |
+| [ADR-007](docs/adr/ADR-007-news-sentiment-isolation.md) | News collection and sentiment isolation |
+| [ADR-008](docs/adr/ADR-008-realtime-delivery-recovery.md) | Realtime delivery and market recovery |
+| [ADR-009](docs/adr/ADR-009-technology-realization.md) | Technology realization |
+| [ADR-010](docs/adr/ADR-010-realization-sequencing-for-asynchronous-backtest-execution.md) | Realization sequencing for asynchronous backtest execution |
 
-Owning a version means owning that version's slices, wherever they live. Someone assigned V2 owns V2's slices, not the whole of `02-strategy-and-composition.md`.
+Ten diagrams cover the problem tree, decision tree, context, runtime, boundaries, and
+flows: [`docs/diagrams/README.md`](docs/diagrams/README.md). Longer reasoning and
+trade-offs are in
+[`architecture-proposal.md`](docs/architecture/architecture-proposal.md).
 
-Two rules that keep sequential work honest:
+## Architecture evidence
 
-- **Being assigned V(N+1) does not authorize starting V(N+1).** The previous version must actually have passed its slices, Definition of Demoable, demo scenario, and required proofs, verified in Git and code, not just in the tracker.
-- **No agent creates a version tag or advances the current product version.** Those stay explicit human decisions.
+**[`docs/evidence/README.md`](docs/evidence/README.md) is the index for reviewers.** It
+maps each architecture claim to a recorded proof, a test, or the code, and it also lists
+the four proofs that have no evidence and may not be claimed.
 
-## Taking over the project
-
-1. Clone, run `corepack enable`, then `pnpm install`. The repository pins pnpm in
-   `package.json`, so every member uses the same package-manager release.
-2. Nothing to set up for skills: they are committed for both Claude Code and Codex.
-3. Tell your AI assistant:
-
-   > Read the repository AI/development instructions and continue the current authorized product version.
-
-`AGENTS.md` (which `CLAUDE.md` imports) is the entry point, and it routes to the plan, the tracker, the journal, and the coding standards. You should not have to paste project context from a previous member's chat.
-
-`AGENTS.md` is deliberately the only place shared policy lives, so it works for any assistant, not just Claude Code and Codex. If your tool reads its own instruction file instead, point that file at `AGENTS.md` rather than copying rules into it. A second copy drifts, and then two members' assistants follow different rules, which is the failure this whole setup exists to prevent.
-
-If you end a session with a slice unfinished, the checkpoint file stays on your machine, so leave the part others need in tracked state: the slice marked `IN_PROGRESS` in `TRACKING.md` with one line on where it stopped, and any lasting decision or problem in `JOURNAL.md`.
-
-### Project skills
-
-Skills are committed, so there is **no setup step**. `git clone` gives Claude Code and
-Codex the same set:
-
-| Directory | Role |
-|---|---|
-| `.agents/skills/` | Canonical. Edit a skill here. |
-| `.claude/skills/` | Mirror that Claude Code loads |
-| `.codex/skills/` | Mirror that Codex loads |
-
-Every skill is plain Markdown at `<root>/<name>/SKILL.md`, so an assistant with no
-skill system of its own can simply open the file the workflow router names.
-
-Changing a skill means changing all three copies in one commit, then updating that
-skill's `treeSha256` in `.agents/skill-lock.yaml`. You do not have to remember this:
-the governance validator hashes each mirror against the canonical tree and fails on
-drift or a missing mirror, naming the skill and the directory.
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-repo-governance.ps1
-```
-
-The hash is computed over LF-normalized content, so a Windows checkout and a macOS or
-Linux checkout of the same skill agree.
-
-## What the team should review now
-
-- [ ] Are module responsibilities and data ownership clear?
-- [ ] Are the allowed dependency directions acceptable?
-- [ ] Does the NestJS module/composition mapping preserve the logical boundaries?
-- [ ] Are PostgreSQL, BullMQ/Redis, and Redis Pub/Sub responsibilities distinct and acceptable?
-- [ ] Is the transactional outbox → BullMQ durable delivery path acceptable?
-- [ ] Is optional Python sufficiently isolated behind `SentimentAnalyzer`?
-- [ ] Are the immutable provenance and reproducibility requirements realistic?
-- [ ] Do any unresolved product policies block the first implementation slice?
-
-Open product/configuration choices remain intentionally undecided: ranking weights
-and tie-breaking; concrete news providers and sentiment model; measurable performance
-targets and test hardware; authentication; and retention. V1 execution-model defaults
-were accepted on 2026-08-23 and are recorded in `implementation-plan/JOURNAL.md`.
-
-## Development commands
-
-The repository is a pnpm workspace (`apps/*`, `packages/*`) with TypeScript in strict mode, ESLint, and Vitest. Run these from the repository root:
-
-| Command | Purpose |
-|---|---|
-| `pnpm install` | Install dependencies for all workspace packages. |
-| `pnpm run typecheck` | Type-check every workspace package with `tsc --noEmit`. |
-| `pnpm run lint` | Lint the repository with ESLint. |
-| `pnpm run test` | Run the Vitest test suite. |
-| `pnpm run migrate` | Apply every pending database migration (safe to run twice). |
-| `pnpm run migrate:reset` | Drop the module-owned schemas and return the database to empty. |
-| `pnpm run market:backfill -- --symbol BTCUSDT --timeframe 1h --startTime <ms> --endTime <ms>` | Load a closed Binance candle range into append-only Market storage. |
-| `pnpm run demo:seed` | Load the recent candle windows every demo page opens on (30 days of BTCUSDT at 5m, 15m, 1h, 4h). Wraps `market:backfill`. |
+Eight architecture proofs have recorded PASS evidence under
+[`docs/validation/evidence/`](docs/validation/evidence/). The proofs themselves are
+defined in
+[`docs/validation/architecture-proof-plan.md`](docs/validation/architecture-proof-plan.md).
 
 ## Two run paths
 
-This repository has two ways to run, and they answer different questions. Neither replaces the other.
+There are two ways to run the project, and they answer different questions. Neither
+replaces the other.
 
 | Path | Use it for | What it starts |
 |---|---|---|
-| **Host development** (below) | Coding, testing, debugging, hot reload, focused slice work | Infrastructure in Docker; the API and the SPA as `pnpm` commands on your machine |
-| **Full-system integration and demo** | Proving a whole product version, and running its demo | Every process role that version requires, through one documented Docker Compose command |
+| **Full-system** | Proving or demonstrating a whole version | Every process role, through one Compose command |
+| **Host development** | Coding, testing, debugging, hot reload | Infrastructure in Docker; app processes as `pnpm` commands |
 
-Host development is the normal way to build a slice. **Nothing requires a command, a test, or a coding session to run inside a container.** Docker Compose is what proves a whole version: before a version is declared demoable, its required topology must come up from a clean checkout through Compose and its demo scenario must be walked there. Host tests passing is not that gate.
+Docker Compose is what proves a version. Host tests passing is not that gate. The rule
+lives in [`AGENTS.md`](AGENTS.md); the per-version condition is the
+[Compose integration gate](implementation-plan/VERSIONS.md#compose-integration-gate-every-version).
 
-The rule itself is not repeated here. It lives in [`AGENTS.md`](AGENTS.md) under "Local development and full-system integration", and the per-version condition is the [Compose integration gate](implementation-plan/VERSIONS.md#compose-integration-gate-every-version), which also lists which process roles each version needs. Read those two before completing a version.
-
-### Status of the full-system path
-
-`docker-compose.yml` brings up the full V4 topology: PostgreSQL, Redis, a one-shot
-migration step, the API process, the separate backtest runner, the separate
-market-ingest process, and the SPA. One `docker compose up --build` command builds
-the topology through `DEMO-01`. See [Full-system integration and demo
-path](#full-system-integration-and-demo-path) below for the command and service roles.
-
-The topology grows with the roadmap and never ahead of it: Redis and the market ingest process arrive in V4, the news worker in V5, and the outbox dispatcher and BullMQ backtest workers in V6.
-
-## Local setup (host development path)
-
-V4 development needs PostgreSQL, and realtime work also needs Redis. Both run through Docker Compose on this path; the API, runner, market-ingest, and SPA processes then run on the host.
-
-### 1. Configure environment variables
+### Full-system path (start here)
 
 ```powershell
-cp .env.example .env
-```
-
-`.env.example` lists every variable the system reads, with a safe placeholder for each — no real secret. Edit `.env` if you want different local values; `.env` is git-ignored and never committed.
-
-Host commands load this repository-root `.env` automatically. Variables already set
-in the shell or CI environment retain precedence, and a missing `.env` remains valid
-for commands that do not need PostgreSQL.
-
-`POSTGRES_HOST=localhost` is correct for this path, where the backend runs on your machine and reaches the container through a published port. A backend running *inside* Compose reaches PostgreSQL by its service name instead, so the full-system path supplies its own value for that variable rather than expecting you to edit `.env`. `DEMO-01` wires this up.
-
-### 2. Start the backing services
-
-```powershell
-docker compose up -d postgres redis
-```
-
-This starts PostgreSQL and Redis only (services `postgres` and `redis` in `docker-compose.yml`), using the variables from `.env`, with a named volume (`postgres_data`) so data survives container restarts. Name the two services explicitly: since V4 a bare `docker compose up -d` starts the whole topology, which is the full-system path below, not this one. Leave `redis` out when the work does not touch realtime delivery.
-
-### 3. Check health
-
-```powershell
-docker compose ps
-```
-
-The `postgres` service should show `healthy` once its healthcheck (`pg_isready`) passes, and `redis` once its `PING` healthcheck passes. `docker compose logs postgres` shows startup output if it does not.
-
-### 4. Stop the topology
-
-```powershell
-docker compose down
-```
-
-Data persists in the `postgres_data` volume across `docker compose down` / `up`. Add `-v` only if you intend to permanently delete local data.
-
-### 5. Run database migrations
-
-```powershell
-pnpm run migrate
-```
-
-This applies every pending migration under `apps/backend/migrations/` in filename
-order, tracking what it has applied in a `public._migrations` table so re-running the
-command is a no-op for migrations already applied. The first migration creates one
-PostgreSQL schema per data-owning module; later migrations add tables only to the
-schema of the slice that owns that data.
-
-| Schema | Owning module |
-|---|---|
-| `market` | Market Data (`ARC-MARKET`) |
-| `strategy` | Strategy (`ARC-STRATEGY`) |
-| `experiment` | Experiment (`ARC-EXPERIMENT`) |
-| `news` | News Intelligence (`ARC-NEWS`) |
-
-Only the owning module writes to its schema; see `docs/architecture/architecture-baseline.md`,
-sections "Data ownership" and "Persistence rules".
-
-To return the database to an empty state (drops the four schemas and the migrations
-tracking table):
-
-```powershell
-pnpm run migrate:reset
-```
-
-Database-backed tests use the same reset-then-migrate sequence through
-`apps/backend/src/platform/test-database.ts`, so each test run gets isolated, clean
-schema state with no manual steps. Point `.env` at a dedicated test database before
-running `pnpm run test` if you do not want tests touching your local dev database.
-
-### How the backend config loader works
-
-`apps/backend/src/platform/root-env.ts` loads the optional root `.env`, then
-`apps/backend/src/platform/config.ts` exports `loadConfig()`, a typed loader that reads
-the PostgreSQL values from `process.env`. It is fully typed (no `any`, no silent
-`undefined`) and fails fast: a missing or blank required variable, or an invalid port,
-throws an error naming that exact variable instead of letting the app start with a bad
-config. See the adjacent tests for the expected loading and validation behavior.
-
-### Starting the API process
-
-The API process is a NestJS HTTP server exposing health and normalized candle-history
-endpoints. PostgreSQL must be running because Market Data supplies the candle query
-port.
-
-```powershell
-pnpm run start:api
-```
-
-This runs `apps/backend/src/main.api.ts` (the entry command for the API/WebSocket process role) via `tsx`. Once it logs that it is listening, check it:
-
-```powershell
-curl http://localhost:3000/health
-```
-
-After loading a closed range with `market:backfill`, read it through:
-
-```powershell
-curl "http://localhost:3000/market/candles?provider=binance&symbol=BTCUSDT&timeframe=1h&startTime=<ms>&endTime=<ms>"
-```
-
-Every request gets an `x-request-id` header on the response: the inbound header's value if the request sent one, otherwise a freshly generated one. Log lines are structured records with a timestamp, level, process role, and that request identifier; they print pretty in development and as raw JSON when `NODE_ENV=production`. Stop the process with Ctrl+C (`SIGINT`) or `SIGTERM`; it shuts down cleanly.
-
-## Next phase
-
-Implementation against the frozen baseline has certified **V1 through V5** at tag
-`v5.0-demo`. A final pre-defense release (`frozen_implementation_plan/`) is closing
-automated composite discovery on top of that certified baseline; it does not move
-the product version past V5 and does not authorize V6.
-
-The original Walking Skeleton was the repository's architecture proof-oriented vertical slice.
-
-All six V1 setup slices are complete. Market Data now has normalized provider
-contracts, Binance history, immutable candle revisions, dataset snapshots, and the
-typed candle endpoint; Strategy has its pure contract, descriptor, registry, and
-annotation vocabulary. The tracker below remains the authoritative next-work view.
-
-[`implementation-plan/TRACKING.md`](implementation-plan/TRACKING.md) is authoritative for what is done and what may be started next. This section is a summary and can lag; the tracker cannot.
-
-## Full-system integration and demo path
-
-The full-system path brings up the whole process topology the current product
-version needs, from a clean checkout, with one Docker Compose command. It is how
-a version is proven demoable; it does not replace the host development path above.
-
-The topology is defined in [`docker-compose.yml`](docker-compose.yml). V4 adds Redis
-and the separate market-ingest process to the V1-V3 roles. It contains no
-later-version service: no BullMQ, outbox dispatcher, or news worker.
-
-| Service | Role |
-|---|---|
-| `postgres` | PostgreSQL, the authoritative durable store |
-| `migrate` | One-shot: applies every pending migration, then exits. `api` and `runner` wait for it |
-| `api` | The NestJS API/HTTP process |
-| `runner` | The separate PostgreSQL-backed backtest runner process |
-| `market-ingest` | The Binance stream and REST recovery process; commits closed candles before best-effort notification |
-| `redis` | Best-effort live notification fan-out only; never durable truth |
-| `web` | The built React SPA served by Nginx, which proxies `/api` to `api` |
-
-### 1. Configure environment variables
-
-```powershell
-cp .env.example .env
-```
-
-Compose reads this repository-root `.env` for `${VAR}` values. The backend
-services reach PostgreSQL by its service name on the Compose network, so they set
-`POSTGRES_HOST=postgres` and the internal `POSTGRES_PORT=5432` in
-`docker-compose.yml` rather than the host values in `.env` — you do not edit
-`.env` to switch paths. Set real `DEPENDENCY_LOCK_HASH`, `APPLICATION_COMMIT`,
-and `WORKER_COMMIT` values in `.env`; the runner requires explicit build identity.
-
-### 2. Start the topology
-
-```powershell
+cp .env.example .env          # every variable the system reads, with safe placeholders
 docker compose up --build -d
-```
-
-This builds the images and starts every service in dependency order: PostgreSQL and
-Redis become healthy, `migrate` applies the schema and exits, `api` starts and passes
-its health check, then `runner`, `market-ingest`, and `web` come up. Migrations run
-automatically as the `migrate` service; there is no manual migration step. `-d` runs
-it detached so the next steps use the same terminal; drop `-d` to watch the logs in
-the foreground and use a second terminal for the commands below.
-
-### 3. Load candle history
-
-Every page opens on a window derived from the current time, so the stack needs
-candles for a recent range before anything is visible. One command loads what all
-four pages ask for (30 days of BTCUSDT at 5m, 15m, 1h, and 4h, fetched from
-Binance and stored append-only):
-
-```powershell
 docker compose exec api pnpm run demo:seed
 ```
 
-Skipping this does not break the app: each page correctly reports that it has no
-candles for the window it asked for. To load one specific range instead, the
-underlying CLI still takes an explicit window:
+`.env` is git-ignored and holds no real secret by default. Compose reads it for `${VAR}`
+values; backend services override `POSTGRES_HOST` to the service name themselves, so you
+do not edit `.env` to switch paths. Set real `DEPENDENCY_LOCK_HASH`,
+`APPLICATION_COMMIT`, and `WORKER_COMMIT` values: the runner requires explicit build
+identity.
+
+`demo:seed` loads the recent candle windows every page opens on (30 days of BTCUSDT at
+5m, 15m, 1h, and 4h). Without it the pages correctly report that they have no candles.
+
+The V5 topology is eight services: seven long-running roles plus a one-shot migration.
+
+| Service | Role |
+|---|---|
+| `postgres` | The authoritative durable store |
+| `redis` | Best-effort live notification fan-out only; never durable truth |
+| `migrate` | One-shot: applies every pending migration, then exits. `api` and `runner` wait for it |
+| `api` | The NestJS HTTP and WebSocket process |
+| `runner` | The separate PostgreSQL-backed backtest runner. Scale it with `--scale runner=N` |
+| `market-ingest` | The Binance stream and REST recovery process |
+| `news-worker` | News collection and sentiment analysis, isolated from everything above |
+| `web` | The built React SPA on Nginx, proxying `/api` to `api` |
+
+The SPA is at <http://localhost:8080>, the API at <http://localhost:3000>. Stop with
+`docker compose down`; data survives in the `postgres_data` volume unless you add `-v`.
+
+### Host development path
+
+Start infrastructure in containers, run the app on your machine:
 
 ```powershell
-docker compose exec api pnpm run market:backfill -- --symbol BTCUSDT --timeframe 1h --startTime <ms> --endTime <ms>
+docker compose up -d postgres redis    # name them explicitly: a bare `up` starts everything
+pnpm install                           # after `corepack enable`
+pnpm run migrate
+pnpm run start:api                     # plus start:ui, start:backtest-runner, start:market-ingest, start:news-worker
 ```
 
-### 4. Walk the demo scenario
+`POSTGRES_HOST=localhost` in `.env` is correct for this path. Migrations are tracked in
+`public._migrations`, so re-running is a no-op; `pnpm run migrate:reset` returns the
+database to empty.
 
-Open the SPA at <http://localhost:8080> and follow the numbered walkthrough in the
-[demo script](docs/demo-script.md). The API is also reachable directly at
-<http://localhost:3000> and through the SPA proxy at <http://localhost:8080/api>.
+Each data-owning module owns exactly one schema, and only that module writes to it:
+`market`, `strategy`, `experiment`, `news`.
 
-### 5. Stop the topology
+### Commands
 
-```powershell
-docker compose down
+| Command | Purpose |
+|---|---|
+| `pnpm run typecheck` | Type-check every workspace package |
+| `pnpm run lint` | ESLint |
+| `pnpm run test` | The Vitest suite, including the architecture boundary rules |
+| `pnpm run migrate` / `migrate:reset` | Apply / drop migrations |
+| `pnpm run demo:seed` | Load the candle windows the demo pages need |
+| `pnpm run market:backfill -- --symbol BTCUSDT --timeframe 1h --startTime <ms> --endTime <ms>` | Load one explicit closed range |
+| `powershell -File scripts/check-repo-governance.ps1` | Governance, link, and skill-mirror validation |
+
+Database-backed tests require a dedicated test database (`csl_test_*`) and an explicit
+guard token; the guard refuses to reset anything else.
+
+## Demo
+
+[`docs/demo-script.md`](docs/demo-script.md) is the canonical walkthrough: realtime
+charts, the strategy catalog, a manual composite, a backtest, automated composite
+discovery, the leaderboard, provenance, and a live news-failure isolation step.
+
+Read it together with [`docs/final-defense-notes.md`](docs/final-defense-notes.md),
+which lists the known limitations and every claim that evidence does **not** support.
+
+## Known limitations
+
+- **Single operator.** No registration, login, session, token, user entity, or
+  role-based access exists anywhere, and none should be implied. Account ownership
+  arrived as a late requirement and was deliberately not built.
+- **Combination-policy options in the frontend are not metadata-driven.** The backend
+  registry is versioned and extensible; what is missing is a policy catalog endpoint, so
+  adding a policy currently also needs a frontend change. This is a UI integration
+  limitation, not a domain architecture limitation.
+- **Sentiment as a strategy is not reachable from the Backtest page.** The page can only
+  supply price bars, so it offers only strategies whose declared inputs it can satisfy.
+  The capability is exercised over the API and in tests.
+- **Performance is measured once, on one laptop, at small scale.** No throughput figure,
+  no scaling factor, and no latency target. See
+  [`evidence-performance-and-scale.md`](docs/evidence/evidence-performance-and-scale.md).
+
+## Repository guide
+
+```text
+crypto-strategy-lab/
+├── apps/backend/          NestJS backend: modules/, platform/, architecture/, migrations/
+├── apps/web/              React SPA
+├── packages/api-contracts/  Shared request/response contracts
+├── docs/
+│   ├── architecture/      Frozen baseline (normative), proposal, comparisons
+│   ├── adr/               ADR-001 … ADR-010
+│   ├── diagrams/          Ten architecture views
+│   ├── evidence/          Reviewer evidence index  <- start here for claims
+│   ├── validation/        Proof plan and recorded PROOF-* evidence
+│   ├── demo-script.md     The canonical walkthrough
+│   └── final-defense-notes.md   Limitations and unsupported claims
+├── implementation-plan/   Roadmap, per-version scope, live tracker, journal
+├── frozen_implementation_plan/  The final pre-defense release plan (closed)
+└── scripts/               Governance, seeding, smoke, and measurement scripts
 ```
 
-Candle and result data persist in the `postgres_data` volume across
-`down` / `up`. Add `-v` only to permanently delete local data.
-# Realtime delivery in V4
+### Working on the project
 
-The API exposes Socket.IO WebSocket transport at `/ws`. Each market subscription
-has its own identifier, symbol, and timeframe. The server reads a PostgreSQL
-snapshot first, then forwards matching Redis Pub/Sub notifications. Redis is
-ephemeral and is never proof that a candle was stored or delivered.
+1. `corepack enable`, then `pnpm install`. The package manager is pinned in `package.json`.
+2. Skills are committed for both Claude Code and Codex, so there is no setup step.
+3. [`AGENTS.md`](AGENTS.md) is the single entry point for shared project policy;
+   `CLAUDE.md` imports it. It routes to the plan, the tracker, the journal, and the
+   coding standards.
 
-`GET /realtime/subscriptions` reports how many client subscriptions the API is
-holding right now. It reports what exists rather than an expected number, and it
-is how per-subscription isolation is checked from outside a unit test.
+[`docs/agents/development-workflow.md`](docs/agents/development-workflow.md) routes each
+phase of work to a skill, its authoritative inputs, and its gate.
+[`CODING_STANDARDS.md`](CODING_STANDARDS.md) says how the code itself is written.
 
-`WS_OUTBOUND_BUFFER_MAX` defaults to 32 messages per subscription, and
-`WS_SUBSCRIPTION_MAX` defaults to 32 subscriptions per client. Both are resource
-bounds, not a count of charts: the page decides how many charts it opens, and the
-API holds however many subscriptions it is asked for up to the bound. When a client
-cannot accept messages and the bound is exceeded, the API disconnects that client.
-Socket.IO reconnects it and every active subscription requests a new PostgreSQL
-snapshot before live delivery resumes. This prevents unbounded memory use and
-repairs missed notifications without Redis persistence.
+Skills live canonically in `.agents/skills/`, mirrored byte-identically into
+`.claude/skills/` and `.codex/skills/`. Change all three in one commit and update
+`treeSha256` in `.agents/skill-lock.yaml`; the governance validator fails on drift.

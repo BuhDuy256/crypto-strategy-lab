@@ -8,7 +8,7 @@ that governs both.
 
 ## FIN-01 - Composite candidate execution path
 
-**Status:** NOT STARTED · **Priority:** MUST · **Risk:** highest in the release
+**Status:** DONE · **Priority:** MUST · **Risk:** highest in the release
 · **Reasoning level:** XHigh (the only task that earns it)
 
 ### Problem
@@ -236,7 +236,7 @@ throws during the demo is strictly worse than a clean documented limitation.
 
 ## FIN-02 - Minimal composite discovery UI exposure
 
-**Status:** NOT STARTED · **Priority:** MUST (minimal form) · **Reasoning
+**Status:** DONE · **Priority:** MUST (minimal form) · **Reasoning
 level:** High
 
 ### Problem

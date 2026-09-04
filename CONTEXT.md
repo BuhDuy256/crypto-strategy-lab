@@ -1,7 +1,10 @@
-# Crypto Strategy Lab
+# Domain glossary
 
-This glossary fixes the project-specific language used to describe reproducible
-market datasets and executable trading strategies.
+Project-specific vocabulary for Crypto Strategy Lab. It fixes the language used to
+describe reproducible market datasets and executable trading strategies, so the same
+idea has one name in code, documents, and conversation.
+
+For what the project is and how to run it, see [`README.md`](README.md).
 
 ## Language
 

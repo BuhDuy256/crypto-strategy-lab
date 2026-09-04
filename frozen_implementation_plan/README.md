@@ -33,7 +33,11 @@ is claimed during the defense.
 
 ---
 
-## Current certified baseline
+## The certified baseline this release started from
+
+Historical: these were the facts when this plan was written, not the current state.
+This release has since completed and been frozen at `v5.1-demo`; see the Status table
+at the end and `implementation-plan/TRACKING.md`.
 
 | Fact | Value |
 |---|---|
@@ -546,11 +550,17 @@ stop, say so, and correct the task file before writing code.
 
 ## Status
 
+This release is complete. It was executed on 2026-09-04 and frozen at `v5.1-demo`.
+
 | Task | Status | Note |
 |---|---|---|
-| `FIN-01` | NOT STARTED | Next task to execute. |
-| `FIN-02` | NOT STARTED | |
-| `FIN-03` | NOT STARTED | |
-| `FIN-04` | NOT STARTED | |
-| `FIN-05` | NOT STARTED | |
-| `FIN-06` | NOT STARTED | |
+| `FIN-01` | DONE | Composite candidates generate, execute, evaluate, rank, and project end to end. |
+| `FIN-02` | DONE | Minimal composite discovery exposure on the Discovery page. |
+| `FIN-03` | DONE | Demo-surface presentation hardening. |
+| `FIN-04` | DONE | Canonical demo flow, `docs/demo-script.md`. |
+| `FIN-05` | DONE | Truthfulness synchronization, `docs/final-defense-notes.md`. |
+| `FIN-06` | DONE | Final gate passed; frozen at `v5.1-demo`. |
+
+A presentation pass over the five demo pages was reopened by the owner after `FIN-06`
+and is recorded in `implementation-plan/JOURNAL.md`. `implementation-plan/TRACKING.md`
+remains the authoritative current-state view.

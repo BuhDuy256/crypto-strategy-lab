@@ -3523,3 +3523,153 @@ zero alerts, and a light surface on every page.
 Four commits on `v5-news-and-sentiment`. No tag was created and the target version
 remains V5. The `.scratch/ui-rescue/` probe area was swept into the repository by a
 repository-wide `git add` during the session and has been untracked and ignored again.
+
+### 2026-09-04 - Repository gate re-run and V5.1 presentation freeze
+
+**Why this happened**
+The presentation pass changed only `apps/web/src/`, two plan documents, and one
+ESLint ignore, so the certified `FIN-06` gate was not invalidated by it. The owner
+asked for the repository-wide gate to be re-run anyway before freezing, so the
+freeze would stand on a gate taken at the exact commit being tagged.
+
+**First attempt: invalid, not a set of regressions**
+The first guarded run reported `6` failed test files and `2` failed tests. Every
+failure was `ECONNREFUSED 127.0.0.1:6379`, a `Test timed out`, or a `Hook timed out`
+in `redis-live-notifications.test.ts`. The cause was environmental: the Compose stack
+was killed by memory pressure (`web` exited `137`, `api` exited `143`) at the moment
+the gate started, taking Redis with it. The run is recorded here as an invalid gate
+attempt, in the same sense as the unguarded `pnpm test` attempt recorded on
+2026-09-01. It is not evidence of a regression, and it was not counted as a pass.
+
+**Second attempt: green**
+Redis was started first and confirmed answering `PONG`. The gate then ran against a
+disposable PostgreSQL container isolated from both the Compose stack and the protected
+main database (`csl-freeze-gate-postgres`, host port `5544`, database
+`csl_test_freeze`, guard marker provisioned explicitly, container removed afterwards):
+`136/136` test files, `787/787` tests, exit `0`, in `129.82s`.
+
+The counts moved from the `FIN-06` gate by exactly the work of this pass: `135` to
+`136` test files and `777` to `787` tests, which is `apps/web/src/format.test.ts` and
+its ten formatter tests. Nothing else changed shape.
+
+**Compose recertification**
+`docker compose up -d --build` from `main` brought up the unchanged V5 topology with
+no V6-only role: `postgres` and `redis` healthy, one-shot `migrate` exit `0`, then
+`api` (healthy), `runner`, `market-ingest`, `news-worker`, and `web`. All five pages
+were then driven in a real browser against that stack: zero page errors, zero alerts,
+a light surface on every page, and Realtime still four independent charts at
+`5m`/`15m`/`1h`/`4h`.
+
+**Freeze**
+Tagged `v5.1-demo` on `main`, on the owner's explicit instruction. `AGENTS.md` reserves
+version tags for the owner precisely so the decision is theirs; it was made explicitly
+and is recorded as theirs. The tag marks the presentation-hardened V1-V5 baseline.
+`v5.0-demo` remains untouched on `v5-news-and-sentiment` as the functional and
+architectural certification point. This does not advance `CURRENT PRODUCT VERSION` and
+does not authorize V6.
+
+## Repository completion pass for submission (2026-09-04)
+
+A documentation, evidence, and truthfulness pass over the repository as a submission
+package. It changed no architecture, added no feature, and did not advance the product
+version. The one behavioral change is a four-line frontend filter described below.
+
+**Why it was needed**
+
+An audit of the repository against the grading rubric found the repository was
+implementation-rich and evidence-poor *at its public surface*. Capabilities that are
+built, tested, and proven were not discoverable by a reader who did not build them, and
+several current-state documents had drifted into stating things that were no longer
+true.
+
+**Documents that were false and are now true**
+
+- `README.md` contained roughly 140 duplicated lines of V1-era text asserting that
+  `docker-compose.yml` starts PostgreSQL only, directly contradicting the V4/V5 text
+  above it. The status line still read `V4 at v4.0-demo`, and the Compose service table
+  omitted `news-worker`. The file was restructured as a front door: overview, current
+  capabilities, architecture, realized-versus-V6 scope, decisions, evidence, both run
+  paths, demo, known limitations, and a repository guide.
+- `frozen_implementation_plan/` reported `FIN-01` through `FIN-06` as `NOT STARTED` in
+  twelve places, while `TRACKING.md` and Git recorded them all done and frozen at
+  `v5.1-demo`. Statuses corrected; the plan's opening baseline table was reframed as
+  the historical starting point rather than the current state, with its recorded facts
+  left intact.
+- `VERSIONS.md` carried the whole "Compose integration gate" section twice. The second
+  copy was the stale one: it referenced an open architecture question that ADR-010 had
+  already closed, through an anchor that no longer resolved. Removed.
+- `TRACKING.md` described the same V5 topology as both 7-role and 8-role. Verified
+  against the live stack and stated once: eight services, seven long-running roles plus
+  the one-shot `migrate`.
+- `docs/diagrams/04-container-runtime-view.md` labelled its BullMQ edges `V6` but left
+  the outbox dispatcher and idempotent-consumer edges unlabelled, which reads as though
+  the outbox exists. All V6 edges and nodes are now marked, with an explicit note.
+
+**Evidence layer**
+
+`docs/evidence/` is new and is the reviewer entry point. It reuses existing proofs
+rather than restating them: `docs/evidence/README.md` maps each architecture claim to
+its strongest existing evidence and, deliberately, also lists the four proofs that have
+none. Three evidence documents were added only where no single existing document made
+the claim visible: module boundaries, performance and scale, and work beyond the
+minimum. The eight `PROOF-*` records were not renamed; their identifiers are
+traceability keys used across the baseline, ADRs, diagrams, and tracker, and the portal
+solves discoverability without breaking that.
+
+**Performance measured for the first time**
+
+Per-attempt backtest duration has been stored in `experiment.backtest_attempts` since
+V1 and had never been read. It is now recorded: 218 successful attempts across the
+project's history at p50 `1024ms` and p95 `3321ms`.
+
+Horizontal scaling was exercised rather than asserted. `docker compose up -d --scale
+runner=3` added two runner replicas with no source change, and three independent runner
+processes then claimed work from the same PostgreSQL queue (`61`/`12`/`11` attempts).
+The same 24-candidate workload finished in a median `9802ms` on three replicas against
+`14548ms` on one, over three runs each. No run produced more than one successful
+attempt, and all `302` backtest runs have distinct content-derived idempotency keys.
+
+The speedup is roughly 1.5x, not 3x, and the two configurations' timing ranges overlap.
+That is recorded as a direction, not a scaling factor. `PROOF-SCALE-001` remains open
+and unclaimed: it is a V6 proof requiring BullMQ queue metrics and a bottleneck
+analysis, and `docs/evidence/evidence-performance-and-scale.md` says so in its own text.
+`scripts/measure-backtest-scale.mjs` makes the comparison reproducible.
+
+One historical `BACKTEST_LEASE_EXPIRED` attempt surfaced while querying: a runner
+stopped holding a claim, the lease expired, and the work was reclaimed and closed with
+an explicit reason 80 minutes later. That is the durable executor's recovery path
+visible in real data, and it is cited as such.
+
+**The one behavioral change**
+
+`BacktestPage.tsx` loaded the full strategy catalog, including `news-sentiment`, whose
+descriptor declares `requiredInputs: ["sentiment-series"]`. The page collects a dataset
+window only, so it can supply price bars and never sent `sentimentInput`; selecting
+that strategy would have failed at freeze with `EXPERIMENT_FIELD_REQUIRED`. The page now
+offers only strategies whose declared inputs it can satisfy. The filter reads the
+descriptor rather than naming a strategy, so a new price-bar strategy still appears with
+no change to that file, and the API still exposes all six strategies unchanged. The
+limitation is recorded in `final-defense-notes.md` and the demo script as a deliberate
+boundary rather than a missing feature.
+
+**Validation**
+
+Repository-wide gate green at this state against a disposable `csl_test_repo_completion`
+database, dropped afterwards: `136/136` test files, `787/787` tests, exit `0`. The
+counts are unchanged from the `v5.1-demo` gate, which is the point: this pass added no
+test and broke none.
+
+An earlier attempt in the same session reported one failure in a Redis Pub/Sub test that
+received a live `candle.tick` from the running `market-ingest` container instead of its
+own fixture. It is recorded as environmental interference, not a regression: the same
+suite passed on re-run, and the definitive gate was taken with the live publishers
+stopped.
+
+Typecheck green across all three workspace projects. ESLint green, after declaring
+`fetch` and `setTimeout` for `scripts/**/*.mjs`, which previously declared only
+`console` and `process`. Governance passes except the three known local-only failures
+from the untracked, git-ignored discarded-material directory, which no clone has. The full Compose
+topology was brought up and a 12-candidate discovery run completed end to end on it
+after every change, producing nine ranking-eligible leaderboard entries.
+
+This does not advance `CURRENT PRODUCT VERSION` and does not authorize V6.

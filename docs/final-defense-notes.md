@@ -29,6 +29,18 @@ This is a UI integration limitation, not a domain architecture limitation. The
 `CombinationPolicyRegistry` itself is already versioned and extensible; only
 the transport that would let the frontend discover a policy is missing.
 
+### 3. Sentiment as a strategy is not reachable from the Backtest page
+
+`news-sentiment` is a real strategy and declares
+`requiredInputs: ["sentiment-series"]`. The Backtest page collects a dataset window
+only, so it can supply price bars and nothing else, and it therefore offers only
+strategies whose declared inputs it can satisfy.
+
+This is a deliberate boundary, not a defect to apologise for: a control that cannot
+satisfy its own contract would fail at freeze with `EXPERIMENT_FIELD_REQUIRED`. The
+capability is exercised through the API and in tests. Do not demonstrate it by
+clicking, and do not claim a sentiment configuration UI exists.
+
 ## Claims not supported by evidence
 
 Only the eight rows in
@@ -38,7 +50,7 @@ explicitly **not** supported by current evidence — that means it has not been
 measured or proven, not that the architecture could never support it:
 
 - Queue scalability, including the 100,000-candidate target.
-- Measured candidate throughput of any kind.
+- Any candidate throughput figure, scaling factor, or capacity projection.
 - BullMQ as the final execution realization — V6 is not implemented.
 - Transactional-outbox reliability.
 - Broker retry correctness.
@@ -47,3 +59,22 @@ measured or proven, not that the architecture could never support it:
   target in its own text).
 - Any other V6 property (operational telemetry, the scale/retry/duplicate/
   observability proofs) as implemented or certified.
+
+### The one performance thing that *is* measured
+
+Backtest duration and a one-versus-three runner-replica comparison were measured on a
+single developer laptop at small scale, and recorded in
+[`evidence-performance-and-scale.md`](evidence/evidence-performance-and-scale.md).
+
+What that permits saying: worker count is a deployment change rather than a code
+change; several runner processes share one PostgreSQL queue without producing a
+duplicate result; per-backtest duration is stored durably and can be queried.
+
+What it does **not** permit saying: any of the bullets above. The observed speedup was
+roughly 1.5x on three replicas, the two configurations' timing ranges overlap, and the
+largest workload measured was 24 candidates. `PROOF-SCALE-001` remains open.
+
+## Where the evidence is
+
+[`docs/evidence/README.md`](evidence/README.md) indexes every architecture claim, its
+evidence, and the four proofs that have none.
