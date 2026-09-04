@@ -90,10 +90,15 @@ describe("StrategyEnginePage", () => {
       fireEvent.click(button);
     }
     expect(screen.queryByText("Simulated Output")).toBeNull();
+    expect(screen.getByRole("button", { name: "SAVE COMPOSITE" }).hasAttribute("disabled"))
+      .toBe(true);
+    expect(screen.getByText("Give the composite a name before saving.")).toBeDefined();
 
     fireEvent.change(screen.getByPlaceholderText("e.g. Alpha Trend 2.0"), {
       target: { value: "Real composite" }
     });
+    expect(screen.getByRole("button", { name: "SAVE COMPOSITE" }).hasAttribute("disabled"))
+      .toBe(false);
     fireEvent.click(screen.getByRole("button", { name: "SAVE COMPOSITE" }));
 
     await waitFor(() => expect(createComposite).toHaveBeenCalledTimes(1));

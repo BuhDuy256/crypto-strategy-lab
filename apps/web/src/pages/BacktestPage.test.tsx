@@ -168,18 +168,8 @@ async function renderPageWithCatalog(): Promise<void> {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  window.history.replaceState({}, "", "/");
 });
-
-/**
- * Reads the number a metric card shows, by its visible label. Scoped to the
- * metric cards on purpose: "Trades" is also a section heading further down.
- */
-function metricValue(label: string): string | undefined {
-  const card = [...document.querySelectorAll(".metric-card")].find(
-    (element) => element.querySelector(".metric-label")?.textContent === label
-  );
-  return card?.querySelector(".metric-value")?.textContent ?? undefined;
-}
 
 describe("buildRecentCandleRequest", () => {
   it("requests 200 fully closed one-hour candles", () => {
@@ -273,7 +263,102 @@ describe("BacktestPage strategy catalog", () => {
 });
 
 describe("BacktestPage specification request", () => {
+  it("includes the accepted sentiment policy for a single sentiment strategy", async () => {
+    window.history.replaceState({}, "", "/backtest?strategyId=news-sentiment");
+    vi.mocked(getCandleHistory).mockResolvedValue({ candles: [] });
+    vi.mocked(getStrategies).mockResolvedValue({ strategies: [{
+      id: "news-sentiment",
+      version: "1.0.0",
+      name: "News sentiment",
+      description: "Trades a normalized sentiment feature.",
+      category: "sentiment",
+      capabilities: ["long", "short"],
+      parameterSchema: {
+        properties: {
+          positiveThreshold: { type: "number", label: "Positive threshold", default: 0.2 },
+          negativeThreshold: { type: "number", label: "Negative threshold", default: -0.2 },
+          windowDurationMs: { type: "integer", label: "Sentiment window", default: 3_600_000 }
+        },
+        required: ["positiveThreshold", "negativeThreshold", "windowDurationMs"]
+      },
+      requiredInputs: ["price-bars", "sentiment-series"]
+    }] });
+    vi.mocked(listComposites).mockResolvedValue([]);
+    vi.mocked(createSpecification).mockResolvedValue({ specId: "spec-news" });
+    vi.mocked(startBacktest).mockResolvedValue(run("queued"));
+
+    await renderPageWithCatalog();
+    await waitFor(() => expect(screen.getByDisplayValue("3600000")).toBeDefined());
+    fireEvent.click(screen.getByRole("button", { name: "Start Backtest" }));
+
+    await waitFor(() => expect(createSpecification).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(createSpecification).mock.calls[0]?.[0]).toEqual(expect.objectContaining({
+      strategy: {
+        id: "news-sentiment",
+        version: "1.0.0",
+        parameters: {
+          positiveThreshold: 0.2,
+          negativeThreshold: -0.2,
+          windowDurationMs: 3_600_000
+        }
+      },
+      sentimentInput: {
+        windowDurationMs: 3_600_000,
+        policy: {
+          maxAgeMs: 1_800_000,
+          onMissing: { action: "substitute", substituteValue: 0 },
+          onStale: { action: "degrade" }
+        }
+      }
+    }));
+  });
+
+  it("includes the accepted sentiment policy for a saved sentiment composite", async () => {
+    window.history.replaceState({}, "", "/backtest?strategyId=composite-news");
+    mockHealthyCatalogAndChart();
+    vi.mocked(listComposites).mockResolvedValue([{
+      id: "composite-news",
+      version: "1.0.0",
+      name: "News composite",
+      description: "Technical and sentiment signals.",
+      components: [{
+        id: "news-sentiment",
+        version: "1.0.0",
+        parameters: { positiveThreshold: 0.2, negativeThreshold: -0.2, windowDurationMs: 3_600_000 }
+      }],
+      policy: { id: "majority-vote", version: "1.0.0", configuration: {} },
+      descriptor: {
+        id: "composite-news",
+        version: "1.0.0",
+        name: "News composite",
+        description: "Technical and sentiment signals.",
+        category: "composite",
+        capabilities: ["long", "short"],
+        parameterSchema: { properties: {}, required: [] },
+        // Regression fixture: the current catalog descriptor omits the input,
+        // while the immutable composite definition still exposes the component.
+        requiredInputs: ["price-bars"]
+      }
+    }]);
+    vi.mocked(createSpecification).mockResolvedValue({ specId: "spec-news" });
+    vi.mocked(startBacktest).mockResolvedValue(run("queued"));
+
+    await renderPageWithCatalog();
+    fireEvent.click(screen.getByRole("button", { name: "Start Backtest" }));
+
+    await waitFor(() => expect(createSpecification).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(createSpecification).mock.calls[0]?.[0].sentimentInput).toEqual({
+      windowDurationMs: 3_600_000,
+      policy: {
+        maxAgeMs: 1_800_000,
+        onMissing: { action: "substitute", substituteValue: 0 },
+        onStale: { action: "degrade" }
+      }
+    });
+  });
+
   it("lists a saved composite and submits its immutable id and version", async () => {
+    window.history.replaceState({}, "", "/backtest?strategyId=composite-real");
     mockHealthyCatalogAndChart();
     vi.mocked(listComposites).mockResolvedValue([{
       id: "composite-real",
@@ -297,9 +382,8 @@ describe("BacktestPage specification request", () => {
     vi.mocked(startBacktest).mockResolvedValue(run("queued"));
 
     await renderPageWithCatalog();
-    fireEvent.change(screen.getByLabelText("Strategy"), {
-      target: { value: "composite-real" }
-    });
+    expect((screen.getByLabelText("Strategy") as HTMLSelectElement).value)
+      .toBe("composite-real");
     fireEvent.click(screen.getByRole("button", { name: "Start Backtest" }));
 
     await waitFor(() => expect(createSpecification).toHaveBeenCalledTimes(1));
@@ -415,21 +499,18 @@ describe("BacktestPage run lifecycle", () => {
     await waitFor(() => expect(screen.getByText("Status: queued")).toBeDefined());
     await waitFor(() => expect(screen.getByText("Status: running")).toBeDefined(), { timeout: 5_000 });
     await waitFor(() => expect(screen.getByText("Status: completed")).toBeDefined(), { timeout: 5_000 });
-    // The backend still owns every number; the page only writes each one in a
-    // readable form next to its label.
-    await waitFor(() => expect(metricValue("Total return")).toBe("12.5%"));
+    await waitFor(() => expect(screen.getByText("Total Return: 0.125")).toBeDefined());
 
-    expect(metricValue("Win rate")).toBe("60%");
-    expect(metricValue("Max drawdown")).toBe("5%");
-    expect(metricValue("Trades")).toBe("10");
-    expect(screen.getByText("Fill rule").parentElement?.textContent)
-      .toBe("Fill rulenext-open");
-    expect(screen.getByText("Initial capital").parentElement?.textContent)
-      .toBe("Initial capital10,000.00");
-    // The full hash stays reachable; only its rendering is shortened.
-    const hash = screen.getByText("Specification hash").parentElement
-      ?.querySelector(".provenance-value");
-    expect(hash?.getAttribute("title")).toBe("a".repeat(64));
+    expect(screen.getByText("Win Rate: 0.6")).toBeDefined();
+    expect(screen.getByText("Max Drawdown: 0.05")).toBeDefined();
+    expect(screen.getByText("Trades: 10")).toBeDefined();
+    expect(screen.getByText("Fill Rule: next-open")).toBeDefined();
+    expect(screen.getByText("Initial Capital: 10000")).toBeDefined();
+    expect(screen.getByText("Allowed Directions: long, short")).toBeDefined();
+    expect(screen.getByText("Position Sizing: available-equity")).toBeDefined();
+    expect(screen.getByText("Stop Loss: disabled")).toBeDefined();
+    expect(screen.getByText("Take Profit: disabled")).toBeDefined();
+    expect(screen.getByText(`Specification hash: ${"a".repeat(64)}`)).toBeDefined();
   });
 
   it("renders an empty state for a result with zero trades", async () => {
@@ -452,7 +533,7 @@ describe("BacktestPage run lifecycle", () => {
     fireEvent.click(screen.getByRole("button", { name: "Start Backtest" }));
 
     await waitFor(() => expect(screen.getByText("No trades executed.")).toBeDefined());
-    expect(metricValue("Trades")).toBe("0");
+    expect(screen.getByText("Trades: 0")).toBeDefined();
   });
 
   it("shows the failure reason instead of hanging on running", async () => {
@@ -506,7 +587,7 @@ describe("BacktestPage trade table and selection", () => {
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
 
     await waitFor(() => expect(vi.mocked(getBacktestTrades).mock.calls[1]).toEqual([RUN_ID, 2, 20]));
-    await waitFor(() => expect(screen.getByText("Page 2 of 2")).toBeDefined());
+    await waitFor(() => expect(screen.getByText("2 / 2")).toBeDefined());
   });
 
   it("selects a trade row, replaces the selection, and clears it", async () => {

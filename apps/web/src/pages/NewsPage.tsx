@@ -20,13 +20,13 @@ function statusLabel(status: string): string {
   return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
-function percentage(value: number): string {
-  return `${Math.round(value * 100)}%`;
-}
-
 function pageCount(list: NewsItemListResponse): number {
   if (list.page.pageSize <= 0) return 1;
   return Math.max(1, Math.ceil(list.page.totalCount / list.page.pageSize));
+}
+
+function percentage(value: number): string {
+  return `${Math.round(value * 100)}%`;
 }
 
 export function NewsPage() {
@@ -173,7 +173,7 @@ export function NewsPage() {
           <p>No collected items in this page.</p>
         ) : (
           <>
-            <table className="data-table">
+            <table>
               <thead>
                 <tr>
                   <th>Title</th>
@@ -186,12 +186,12 @@ export function NewsPage() {
               <tbody>
                 {items.items.map((item) => (
                   <tr key={item.id}>
-                    <td className="news-title" title={item.title}>{item.title}</td>
+                    <td>{item.title}</td>
                     <td>{item.source}</td>
-                    <td className="news-published">{formatDateTime(item.publishedAt)}</td>
+                    <td>{formatDateTime(item.publishedAt)} UTC</td>
                     <td>{item.relatedCoins.join(", ") || "None"}</td>
                     <td>
-                      <span className="status-chip" data-status={item.analysisState}>
+                      <span className="news-analysis-status" data-status={item.analysisState}>
                         {statusLabel(item.analysisState)}
                       </span>
                     </td>
@@ -199,7 +199,7 @@ export function NewsPage() {
                 ))}
               </tbody>
             </table>
-            <div className="table-footer">
+            <div className="news-pagination">
               <button
                 type="button"
                 onClick={() => setPageNumber((current) => current - 1)}
@@ -207,9 +207,7 @@ export function NewsPage() {
               >
                 Previous page
               </button>
-              <span>
-                Page {items.page.pageNumber} of {pageCount(items)}
-              </span>
+              <span>Page {items.page.pageNumber} of {pageCount(items)}</span>
               <button
                 type="button"
                 onClick={() => setPageNumber((current) => current + 1)}

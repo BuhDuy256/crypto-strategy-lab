@@ -21,6 +21,7 @@ import {
   createOpenAiResponsesClient,
   OpenAiResponsesSentimentAnalyzer
 } from "./infrastructure/openai-responses-sentiment-analyzer.js";
+import { LocalLexiconSentimentAnalyzer } from "./infrastructure/local-lexicon-sentiment-analyzer.js";
 import { PostgresSentimentAnalysisRepository } from "./infrastructure/postgres-sentiment-analysis-repository.js";
 import { PostgresNewsWorkerHeartbeat } from "./infrastructure/postgres-news-worker-heartbeat.js";
 
@@ -45,10 +46,11 @@ const PROCESS_ROLE = "news-worker";
       provide: SENTIMENT_ANALYZER,
       useFactory: (): SentimentAnalyzer => {
         // The credential is deliberately read only in the News-worker composition.
-        // An empty value leaves the worker alive; the adapter records a retryable
-        // analyzer failure when a pending item reaches the analysis stage.
+        // Without a paid credential, use the deterministic local demo adapter.
+        // Both implementations stay behind the same News-owned port.
         const apiKey = process.env.OPENAI_API_KEY ?? "";
-        const client = apiKey.trim() === "" ? undefined : createOpenAiResponsesClient(apiKey);
+        if (apiKey.trim() === "") return new LocalLexiconSentimentAnalyzer();
+        const client = createOpenAiResponsesClient(apiKey);
         return new OpenAiResponsesSentimentAnalyzer(client);
       }
     },

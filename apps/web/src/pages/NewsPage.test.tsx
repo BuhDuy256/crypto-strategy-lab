@@ -81,7 +81,7 @@ describe("NewsPage", () => {
     expect(await screen.findByRole("heading", { name: "News" })).not.toBeNull();
     expect(screen.getByText("Bitcoin reaches a new high")).not.toBeNull();
     expect(screen.getByText("CoinDesk")).not.toBeNull();
-    expect(screen.getByText("Aug 31, 10:30")).not.toBeNull();
+    expect(screen.getByText("Aug 31, 10:30 UTC")).not.toBeNull();
     expect(screen.getByText("BTC, ETH")).not.toBeNull();
     expect(screen.getByText("Analyzed")).not.toBeNull();
 
@@ -93,6 +93,7 @@ describe("NewsPage", () => {
     expect(screen.getByText("Collection: healthy")).not.toBeNull();
     expect(screen.getByText("Analysis: healthy")).not.toBeNull();
     expect(screen.queryByText("coindesk-rss")).toBeNull();
+    expect(screen.getByText("Page 1 of 1")).not.toBeNull();
 
     await waitFor(() => expect(getNewsItems).toHaveBeenCalledWith(1, 10));
     expect(getNewsSentimentDistribution).toHaveBeenCalledWith(NOW - 86_400_000, NOW);

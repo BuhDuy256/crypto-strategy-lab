@@ -24,21 +24,33 @@ export function RealtimePage() {
   const isConnected = connection === "connected";
 
   return (
-    <div className="realtime-page">
+    <section className="realtime-page">
       <div className="realtime-heading">
-        <div>
-          <h1>Realtime Markets</h1>
-          <p>Multi-timeframe market analysis.</p>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <h1 className="text-3xl md:text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400 tracking-tight">Realtime Markets</h1>
+          <div
+            className="flex items-center gap-2 border border-gray-700/60 rounded-full px-3 py-1.5 bg-gray-900"
+            data-realtime-connection={connection}
+          >
+            <span
+              className={`w-2 h-2 rounded-full ${
+                isConnected ? "bg-green-500 animate-pulse" : "bg-yellow-500 animate-pulse"
+              }`}
+            />
+            <span
+              aria-label="Realtime connection status"
+              className={`text-xs font-semibold uppercase tracking-widest ${
+                isConnected ? "text-green-400" : "text-yellow-400"
+              }`}
+            >
+              {isConnected ? "Live" : "Reconnecting"}
+            </span>
+          </div>
         </div>
-        <div className="realtime-connection" data-realtime-connection={connection}>
-          <span className="health-dot" />
-          <span aria-label="Realtime connection status">
-            {isConnected ? "Live" : "Reconnecting"}
-          </span>
-        </div>
+        <p className="text-gray-400 mt-2 text-base md:text-lg font-medium">Multi-timeframe market analysis.</p>
       </div>
 
-      <div className="chart-grid">
+      <div className="realtime-grid">
         {CHART_SLOTS.map((slot) => (
           <ChartWidget
             key={slot.id}
@@ -47,6 +59,6 @@ export function RealtimePage() {
           />
         ))}
       </div>
-    </div>
+    </section>
   );
 }

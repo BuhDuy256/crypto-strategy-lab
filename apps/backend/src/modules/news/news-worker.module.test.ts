@@ -8,18 +8,37 @@ import {
 } from "./news-worker.module.js";
 import type { SentimentAnalyzer } from "./application/sentiment-analyzer.js";
 import { OpenAiResponsesSentimentAnalyzer } from "./infrastructure/openai-responses-sentiment-analyzer.js";
+import { LocalLexiconSentimentAnalyzer } from "./infrastructure/local-lexicon-sentiment-analyzer.js";
 import { FakeConstantSentimentAnalyzer } from "./testing/fake-sentiment-analyzer.js";
 
 describe("NewsWorkerModule analyzer binding", () => {
-  it("binds the OpenAI adapter through only the analyzer token", async () => {
+  it("binds the local fallback when the OpenAI credential is absent", async () => {
+    const original = process.env.OPENAI_API_KEY;
+    process.env.OPENAI_API_KEY = "";
     const moduleRef = await Test.createTestingModule({
       imports: [NewsWorkerModule]
     }).compile();
     try {
       expect(moduleRef.get<SentimentAnalyzer>(SENTIMENT_ANALYZER))
+        .toBeInstanceOf(LocalLexiconSentimentAnalyzer);
+    } finally {
+      await moduleRef.close();
+      if (original === undefined) delete process.env.OPENAI_API_KEY;
+      else process.env.OPENAI_API_KEY = original;
+    }
+  });
+
+  it("binds the OpenAI adapter when a credential is present", async () => {
+    const original = process.env.OPENAI_API_KEY;
+    process.env.OPENAI_API_KEY = "test-key";
+    const moduleRef = await Test.createTestingModule({ imports: [NewsWorkerModule] }).compile();
+    try {
+      expect(moduleRef.get<SentimentAnalyzer>(SENTIMENT_ANALYZER))
         .toBeInstanceOf(OpenAiResponsesSentimentAnalyzer);
     } finally {
       await moduleRef.close();
+      if (original === undefined) delete process.env.OPENAI_API_KEY;
+      else process.env.OPENAI_API_KEY = original;
     }
   });
 

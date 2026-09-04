@@ -29,6 +29,15 @@ Implementation status and current product version are separate facts. The first 
 
 PostgreSQL is authoritative durable truth. BullMQ/Redis carries correctness-relevant asynchronous work; Redis Pub/Sub is only ephemeral notification.
 
+### Sentiment analyzer selection
+
+The News worker selects a sentiment adapter at its composition root:
+
+- When `OPENAI_API_KEY` is set, it uses the OpenAI Responses adapter.
+- When `OPENAI_API_KEY` is empty, it uses `LocalLexiconSentimentAnalyzer`.
+
+The local analyzer is deterministic, free, and intended for development and demos. It scores a fixed English finance-news lexicon and records the exact `local-lexicon-en` model provenance. It is not a replacement for a trained sentiment model and must not be presented as AI analysis. Both adapters implement the same `SentimentAnalyzer` port, so collection, storage, `SentimentFeature`, and strategy code do not change when the adapter changes.
+
 ## High-level project structure
 
 ```text
