@@ -90,6 +90,11 @@ authoritative current-state view.
 
 ## Architecture decisions
 
+**Reading the architecture for the first time? Start with
+[`docs/architecture/architecture-report.md`](docs/architecture/architecture-report.md).**
+It describes the architecture as delivered, marks what is and is not implemented, and
+answers the eight central architecture questions in one place.
+
 The frozen normative source is
 [`docs/architecture/architecture-baseline.md`](docs/architecture/architecture-baseline.md).
 Ten accepted decisions record why it looks the way it does:

@@ -39,6 +39,7 @@ so a reference anywhere in the repository resolves to an obvious file.
 
 | Document | Role |
 |---|---|
+| [`architecture-report.md`](../architecture/architecture-report.md) | **Start here.** The architecture as delivered, with realization status and the eight central architecture questions answered. |
 | [`architecture-baseline.md`](../architecture/architecture-baseline.md) | The frozen normative baseline (v1.2). Implementation must obey it. |
 | [`docs/adr/`](../adr/) | Ten accepted decisions, each with context, options, and consequences |
 | [`docs/diagrams/`](../diagrams/README.md) | Ten views: problem tree, decisions, context, runtime, boundaries, and flows |
