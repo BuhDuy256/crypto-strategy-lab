@@ -75,6 +75,25 @@ function searchConfiguration(stopConditions: SearchStopConditions, maxInFlight: 
   };
 }
 
+// FIN-01: a search space wide enough that random-search must emit a composite
+// candidate (size fixed above one, so every candidate is a composite).
+function compositeSearchConfiguration(stopConditions: SearchStopConditions, maxInFlight: number): SearchConfiguration {
+  return {
+    generator: { id: "random-search", version: "1.0.0" },
+    generatorConfiguration: {},
+    searchSpace: {
+      strategies: [{ id: "rsi", version: "1.0.0" }, { id: "moving-average", version: "1.0.0" }],
+      compositeSizes: [2],
+      policies: [{ id: "majority-vote", version: "1.0.0" }]
+    },
+    seed: "search-composite-test",
+    rankingPolicy: { id: "weighted-return-drawdown", version: "1.0.0" },
+    rankingConfiguration: { weights: { totalReturn: 1, maximumDrawdown: -1 }, minTrades: 1 },
+    stopConditions,
+    maxInFlight
+  };
+}
+
 function draftContent(search: SearchConfiguration): ExperimentDraftContent {
   return {
     schemaVersion: "v1",
@@ -169,6 +188,16 @@ describe("SearchCoordinator", () => {
     const runId = result.rows[0]?.run_id;
     if (runId === undefined) throw new Error(`no candidate at sequence ${sequence}`);
     return runId;
+  }
+
+  async function derivedSpecIdAt(specId: string, sequence: number): Promise<string> {
+    const result = await pool.query<{ derived_spec_id: string }>(
+      "SELECT derived_spec_id FROM experiment.search_candidates WHERE spec_id = $1 AND sequence_number = $2",
+      [specId, sequence]
+    );
+    const derivedSpecId = result.rows[0]?.derived_spec_id;
+    if (derivedSpecId === undefined) throw new Error(`no candidate at sequence ${sequence}`);
+    return derivedSpecId;
   }
 
   async function markCompleted(runId: string, metrics: Record<string, number>): Promise<void> {
@@ -470,6 +499,28 @@ describe("SearchCoordinator", () => {
       [specId]
     );
     expect(new Set(hashes.rows.map((row) => row.content_hash)).size).toBe(2);
+  });
+
+  // FIN-01: a generated composite candidate must be accepted (no
+  // SEARCH_COMPOSITE_UNSUPPORTED) and its inline definition must reach the
+  // frozen derived specification, without any saved-composite lookup.
+  it("accepts a generated composite candidate and carries its inline definition into the frozen specification", async () => {
+    const specId = await createExperiment(compositeSearchConfiguration({ maxCandidates: 10 }, 10));
+    const coordinator = newCoordinator();
+    await coordinator.start(specId, "request-1");
+
+    const outcome = await coordinator.tick(specId);
+    expect(outcome.kind).toBe("submitted");
+
+    const derivedSpecId = await derivedSpecIdAt(specId, 0);
+    const derivedSpec = await specifications.get(derivedSpecId);
+    if (derivedSpec.status !== "frozen") {
+      throw new Error("expected the derived candidate specification to be frozen");
+    }
+    expect(derivedSpec.content.compositeDefinition).toBeDefined();
+    expect(derivedSpec.content.compositeDefinition?.id).toBe(derivedSpec.content.strategy.id);
+    expect(derivedSpec.content.compositeDefinition?.version).toBe(derivedSpec.content.strategy.version);
+    expect(derivedSpec.content.compositeDefinition?.components).toHaveLength(2);
   });
 
   it("resumes from durable state after a coordinator restart without duplicating candidates", async () => {

@@ -391,6 +391,21 @@ export function isApiAnnotation(value: unknown): value is ApiAnnotation {
 export type ApiStrategyParameterValue = string | number | boolean;
 export type ApiStrategyParameters = Readonly<Record<string, ApiStrategyParameterValue>>;
 
+export type ApiSentimentPolicyAction =
+  | { readonly action: "block" }
+  | { readonly action: "degrade" }
+  | { readonly action: "substitute"; readonly substituteValue: number };
+
+/** Explicit immutable News feature policy for a sentiment-dependent candidate only. */
+export interface ApiSentimentInputConfiguration {
+  readonly windowDurationMs: number;
+  readonly policy: {
+    readonly maxAgeMs: number;
+    readonly onMissing: ApiSentimentPolicyAction;
+    readonly onStale: ApiSentimentPolicyAction;
+  };
+}
+
 /**
  * Request body for `POST /specifications`. Configures and freezes the
  * specification of one single-strategy backtest: the dataset window and the
@@ -414,6 +429,8 @@ export interface CreateSpecificationRequest {
     readonly version: string;
     readonly parameters: ApiStrategyParameters;
   };
+  /** Required by the backend only when the chosen descriptor declares sentiment-series. */
+  readonly sentimentInput?: ApiSentimentInputConfiguration;
 }
 
 export interface CreateSpecificationResponse {
@@ -930,4 +947,116 @@ export interface BacktestAnnotationsResponse {
 export function isBacktestAnnotationsResponse(value: unknown): value is BacktestAnnotationsResponse {
   return isRecord(value) && typeof value.runId === "string" &&
     Array.isArray(value.annotations) && value.annotations.every(isApiAnnotation);
+}
+
+// News query surface (NEWS-07): item list, sentiment distribution, and
+// collection/analysis health. Must stay in sync with
+// `apps/backend/src/modules/api/news.controller.ts`.
+
+export const NEWS_ANALYSIS_STATES = ["pending", "analyzing", "analyzed", "degraded"] as const;
+export type NewsAnalysisState = (typeof NEWS_ANALYSIS_STATES)[number];
+
+export interface ApiNewsItemSummary {
+  readonly id: string;
+  readonly title: string;
+  readonly source: string;
+  readonly publishedAt: number;
+  readonly relatedCoins: readonly string[];
+  readonly analysisState: NewsAnalysisState;
+}
+
+/** Response body for `GET /news/items`. */
+export interface NewsItemListResponse {
+  readonly items: readonly ApiNewsItemSummary[];
+  readonly page: { readonly pageNumber: number; readonly pageSize: number; readonly totalCount: number };
+}
+
+function isNewsItemSummary(value: unknown): value is ApiNewsItemSummary {
+  if (!isRecord(value)) return false;
+  return typeof value.id === "string" && typeof value.title === "string" &&
+    typeof value.source === "string" && isFiniteNumber(value.publishedAt) &&
+    Array.isArray(value.relatedCoins) && value.relatedCoins.every((coin) => typeof coin === "string") &&
+    (NEWS_ANALYSIS_STATES as readonly string[]).includes(value.analysisState as string);
+}
+
+export function isNewsItemListResponse(value: unknown): value is NewsItemListResponse {
+  if (!isRecord(value)) return false;
+  if (!Array.isArray(value.items) || !value.items.every(isNewsItemSummary)) return false;
+  const page = value.page;
+  return isRecord(page) && Number.isSafeInteger(page.pageNumber) &&
+    Number.isSafeInteger(page.pageSize) && Number.isSafeInteger(page.totalCount);
+}
+
+/** Response body for `GET /news/sentiment`. Proportions over the requested window. */
+export interface NewsSentimentDistributionResponse {
+  readonly window: { readonly startAt: number; readonly endAt: number };
+  readonly itemCount: number;
+  readonly positive: number;
+  readonly neutral: number;
+  readonly negative: number;
+}
+
+export function isNewsSentimentDistributionResponse(
+  value: unknown
+): value is NewsSentimentDistributionResponse {
+  if (!isRecord(value)) return false;
+  return isRecord(value.window) && isFiniteNumber(value.window.startAt) && isFiniteNumber(value.window.endAt) &&
+    value.window.startAt <= value.window.endAt &&
+    Number.isSafeInteger(value.itemCount) &&
+    isFiniteNumber(value.positive) && isFiniteNumber(value.neutral) && isFiniteNumber(value.negative);
+}
+
+export const NEWS_HEALTH_STATUSES = ["healthy", "degraded", "unavailable"] as const;
+export type NewsHealthStatus = (typeof NEWS_HEALTH_STATUSES)[number];
+
+export interface NewsSourceHealthEntry {
+  readonly status: NewsHealthStatus;
+  readonly checkedAt: number;
+  readonly message?: "worker-stale" | "source-degraded" | "source-unavailable";
+}
+
+export interface NewsAnalysisHealthEntry {
+  readonly status: NewsHealthStatus;
+  readonly message?: "retry-limit-reached" | "retryable-failures" | "no-completed-analysis";
+  readonly pendingCount: number;
+  readonly degradedCount: number;
+  readonly checkedAt: number;
+}
+
+/** Response body for `GET /news/health`. */
+export interface NewsHealthResponse {
+  readonly collection: readonly NewsSourceHealthEntry[];
+  readonly analysis: NewsAnalysisHealthEntry;
+}
+
+function isNewsHealthStatus(value: unknown): value is NewsHealthStatus {
+  return typeof value === "string" && (NEWS_HEALTH_STATUSES as readonly string[]).includes(value);
+}
+
+function hasOnlyKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
+  return Object.keys(value).every((key) => keys.includes(key));
+}
+
+function isNewsSourceHealthEntry(value: unknown): value is NewsSourceHealthEntry {
+  if (!isRecord(value)) return false;
+  return hasOnlyKeys(value, ["status", "checkedAt", "message"]) &&
+    isNewsHealthStatus(value.status) && isFiniteNumber(value.checkedAt) &&
+    (value.message === undefined || value.message === "worker-stale" ||
+      value.message === "source-degraded" || value.message === "source-unavailable");
+}
+
+function isNewsAnalysisHealthEntry(value: unknown): value is NewsAnalysisHealthEntry {
+  if (!isRecord(value)) return false;
+  return hasOnlyKeys(value, ["status", "checkedAt", "message", "pendingCount", "degradedCount"]) &&
+    isNewsHealthStatus(value.status) &&
+    (value.message === undefined || value.message === "retry-limit-reached" ||
+      value.message === "retryable-failures" || value.message === "no-completed-analysis") &&
+    Number.isSafeInteger(value.pendingCount) && Number.isSafeInteger(value.degradedCount) &&
+    isFiniteNumber(value.checkedAt);
+}
+
+export function isNewsHealthResponse(value: unknown): value is NewsHealthResponse {
+  if (!isRecord(value)) return false;
+  return Array.isArray(value.collection) && value.collection.every(isNewsSourceHealthEntry) &&
+    isNewsAnalysisHealthEntry(value.analysis);
 }

@@ -38,7 +38,7 @@ describe("database schemas", () => {
       throw new Error("Database test pool was not initialized");
     }
     const expectedTables: Readonly<Record<(typeof MODULE_SCHEMAS)[number], readonly string[]>> = {
-      market: ["candles", "datasets"],
+      market: ["candles", "datasets", "provider_health"],
       strategy: ["composites"],
       experiment: [
         "backtest_annotations",
@@ -54,7 +54,13 @@ describe("database schemas", () => {
         "search_runs",
         "specifications"
       ],
-      news: []
+      news: [
+        "collection_worker_heartbeat",
+        "items",
+        "sentiment_analysis_attempts",
+        "sentiment_results",
+        "source_health"
+      ]
     };
     for (const schema of MODULE_SCHEMAS) {
       const result = await pool.query<{ table_name: string }>(

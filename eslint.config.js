@@ -8,7 +8,11 @@ export default tseslint.config(
       "**/dist/**",
       "**/node_modules/**",
       "**/coverage/**",
-      "**/*.tsbuildinfo"
+      "**/*.tsbuildinfo",
+      // The scratch area is a developer's own working directory, already kept
+      // out of the repository. Linting it makes the gate fail on throwaway
+      // probe scripts that were never meant to meet repository rules.
+      ".scratch/**"
     ]
   },
   js.configs.recommended,
@@ -23,7 +27,12 @@ export default tseslint.config(
     // globals from @types/node; these do not, so declare the few they use.
     files: ["scripts/**/*.mjs"],
     languageOptions: {
-      globals: { console: "readonly", process: "readonly" }
+      globals: {
+        console: "readonly",
+        process: "readonly",
+        fetch: "readonly",
+        setTimeout: "readonly"
+      }
     }
   }
 );

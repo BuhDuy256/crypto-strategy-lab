@@ -45,7 +45,7 @@ export function ChartWidget({ id, initialTimeframe, symbol = "BTCUSDT" }: ChartW
 
   return (
     <div
-      className="flex flex-col border border-gray-700/50 rounded-xl bg-gray-900 shadow-xl overflow-hidden h-[500px]"
+      className="realtime-chart-card"
       data-chart-id={id}
       data-closed-count={closedCount}
       data-connection={connection}
@@ -60,14 +60,11 @@ export function ChartWidget({ id, initialTimeframe, symbol = "BTCUSDT" }: ChartW
       data-tick-count={tickCount}
       data-timeframe={timeframe}
     >
-      <div className="flex justify-between items-center px-6 py-4 border-b border-gray-700/50 bg-[#1e222d]/80">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
+      <div className="realtime-chart-header">
+        <div className="realtime-chart-meta">
+          <div className="realtime-chart-symbol">
             <div
-              className={`w-2 h-2 rounded-full ${
-                isLive ? "bg-green-500 animate-pulse"
-                  : subscriptionState === "error" ? "bg-red-500" : "bg-yellow-500 animate-pulse"
-              }`}
+              className={`chart-live-dot chart-live-dot-${isLive ? "live" : subscriptionState === "error" ? "error" : "pending"}`}
             />
             <span className="text-gray-100 font-bold text-base tracking-wide">BTC/USDT</span>
           </div>
@@ -84,7 +81,7 @@ export function ChartWidget({ id, initialTimeframe, symbol = "BTCUSDT" }: ChartW
             Live updates: {liveUpdateCount}
           </span>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="realtime-chart-control">
           <label
             className="text-xs text-gray-500 font-semibold uppercase tracking-widest"
             htmlFor={selectId}
@@ -108,7 +105,7 @@ export function ChartWidget({ id, initialTimeframe, symbol = "BTCUSDT" }: ChartW
         </div>
       </div>
 
-      <div className="flex-1 relative w-full h-full bg-[#131722]">
+      <div className="realtime-chart-body">
         {isLoading && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-[#131722]/90 backdrop-blur-sm">
             <div className="animate-pulse flex flex-col items-center gap-4">

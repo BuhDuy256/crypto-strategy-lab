@@ -5,8 +5,9 @@
 #
 #   docker compose up --build
 #
-# The topology is V4's current MKT-06 state: V1-V3, ephemeral Redis Pub/Sub, and
-# the separate market ingest process that holds the Binance kline connection.
+# The topology is V5's current state: V1-V4 plus the separate news worker
+# process, ephemeral Redis Pub/Sub, and the separate market ingest process that
+# holds the Binance kline connection.
 #
 # Host development is a separate, still-supported path that runs the API and
 # SPA as pnpm commands against a PostgreSQL container; see README.md. This file
@@ -159,6 +160,31 @@ services:
       MARKET_INGEST_TIMEFRAMES: ${MARKET_INGEST_TIMEFRAMES:-1m,5m,15m,30m,1h,2h,4h,1d}
       BINANCE_STREAM_URL: ${BINANCE_STREAM_URL:-wss://data-stream.binance.vision}
     command: ["pnpm", "run", "start:market-ingest"]
+    restart: unless-stopped
+
+  # The News worker owns RSS collection, sentiment analysis, and News table writes.
+  # It has no dependency on API, market ingest, Redis, or the backtest runner, so a
+  # provider or analyzer outage stays inside this process role (NEWS-02, NEWS-04).
+  news-worker:
+    build:
+      context: .
+      target: backend
+    image: crypto-strategy-lab-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      <<: *backend-postgres-env
+      NEWS_COINDESK_RSS_URL: ${NEWS_COINDESK_RSS_URL:-https://www.coindesk.com/arc/outboundfeeds/rss/}
+      NEWS_POLL_INTERVAL_MS: ${NEWS_POLL_INTERVAL_MS:-900000}
+      NEWS_REQUEST_TIMEOUT_MS: ${NEWS_REQUEST_TIMEOUT_MS:-10000}
+      NEWS_RETRY_COUNT: ${NEWS_RETRY_COUNT:-2}
+      NEWS_RETRY_DELAY_MS: ${NEWS_RETRY_DELAY_MS:-1000}
+      NEWS_ANALYSIS_BATCH_SIZE: ${NEWS_ANALYSIS_BATCH_SIZE:-10}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    command: ["pnpm", "run", "start:news-worker"]
     restart: unless-stopped
 
   # The React SPA, built and served by Nginx, which proxies /api to the api

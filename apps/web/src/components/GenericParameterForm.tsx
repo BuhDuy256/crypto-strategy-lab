@@ -46,18 +46,21 @@ export function GenericParameterForm({ schema, values, onChange }: GenericParame
   };
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="parameter-form">
       {Object.entries(schema.properties).map(([key, prop]) => (
-        <div key={key} className="flex flex-col gap-1.5">
-          <div className="flex justify-between items-end">
-            <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
-              {prop.label || key} {(schema.required as string[]).includes(key) && <span className="text-red-500">*</span>}
+        <div key={key} className="parameter-field">
+          <div className="parameter-heading">
+            <label className="parameter-label">
+              <span>{prop.label || key}</span>
+              {(schema.required as string[]).includes(key) && (
+                <span className="required-marker" aria-label="required">*</span>
+              )}
             </label>
             {prop.description && (
-              <span className="text-[10px] text-gray-500 italic max-w-[60%] text-right truncate" title={prop.description}>{prop.description}</span>
+              <span className="parameter-description" title={prop.description}>{prop.description}</span>
             )}
           </div>
-          
+
           {prop.type === "enum" && prop.values ? (
             <select
               className="bg-[#181b25] border border-gray-700/80 hover:border-gray-600 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded px-3 py-2 text-sm text-gray-200 outline-none transition-all"

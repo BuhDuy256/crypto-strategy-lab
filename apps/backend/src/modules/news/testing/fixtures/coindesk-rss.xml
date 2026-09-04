@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>CoinDesk RSS fixture</title>
+    <item>
+      <title><![CDATA[  Bitcoin   RSS update  ]]></title>
+      <description><![CDATA[A short RSS summary.]]></description>
+      <link>https://www.coindesk.com/markets/fixture-story/#feed</link>
+      <guid isPermaLink="false">fixture-story-1</guid>
+      <pubDate>Sun, 30 Aug 2026 00:15:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>

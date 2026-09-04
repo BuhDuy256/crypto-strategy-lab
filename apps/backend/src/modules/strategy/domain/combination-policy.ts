@@ -46,13 +46,9 @@ export class MajorityVotePolicy implements CombinationPolicy {
       if (result.signal.action === "sell") sellCount++;
     }
 
-    // Tie rule: if buy and sell counts are equal, or neither has a majority over hold, it defaults to hold.
-    // Technically, it's a simple plurality. 
-    // If buyCount > sellCount && buyCount > holdCount -> buy?
-    // Wait, the official example just says BUY = 2, HOLD = 1 -> BUY.
-    // Tie rule: if buyCount > sellCount -> buy. if sellCount > buyCount -> sell.
-    // If buyCount === sellCount -> hold.
-    
+    // Plurality over buy and sell only; hold is the default rather than a
+    // competing option, so BUY 2 / HOLD 1 resolves to buy. An exact buy/sell
+    // tie has no winner and therefore resolves to hold.
     let action: "buy" | "sell" | "hold" = "hold";
     let reason = "Tie or hold majority";
 

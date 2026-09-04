@@ -19,6 +19,7 @@ import {
   getGenerators,
   getStrategies,
   pauseSearch,
+  resumeSearch,
   startSearch
 } from "../api/client.js";
 import { DiscoveryPage } from "./DiscoveryPage.js";
@@ -71,8 +72,8 @@ function leaderboard(overrides: Partial<LeaderboardResponse> = {}): LeaderboardR
         resultId: "result-1",
         contentHash: "hash-1",
         score: 0.42,
-        strategy: { kind: "single", id: "rsi", version: "1.0.0", parameters: {} },
-        metrics: { totalReturn: 12.5, winRate: 60, maximumDrawdown: 5, numberOfTrades: 8 }
+        strategy: { kind: "single", id: "rsi", version: "1.0.0", parameters: { period: 14 } },
+        metrics: { totalReturn: 0.125, winRate: 0.6, maximumDrawdown: 0.05, numberOfTrades: 8 }
       }
     ],
     ...overrides
@@ -107,7 +108,7 @@ beforeEach(() => {
   });
   vi.mocked(getStrategies).mockResolvedValue({
     strategies: [
-      { id: "rsi", version: "1.0.0", name: "RSI", description: "", category: "momentum", capabilities: ["long"], parameterSchema: { properties: {}, required: [] }, requiredInputs: [] }
+      { id: "rsi", version: "1.0.0", name: "RSI", description: "Momentum strategy based on RSI thresholds.", category: "momentum", capabilities: ["long"], parameterSchema: { properties: {}, required: [] }, requiredInputs: [] }
     ]
   });
 });
@@ -127,7 +128,7 @@ describe("DiscoveryPage read layer", () => {
     expect(source.getProgress).toHaveBeenCalledWith(specId);
     expect(screen.getByText("Completed: 2")).toBeDefined();
     expect(screen.getByText("rsi@1.0.0")).toBeDefined();
-    expect(screen.getByText("12.5")).toBeDefined();
+    expect(screen.getByText("12.50%")).toBeDefined();
   });
 
   it("restores the last run from storage on refresh", async () => {
@@ -150,6 +151,24 @@ describe("DiscoveryPage controls", () => {
 
     await waitFor(() => expect(screen.getByText("Status: pausing")).toBeDefined());
     expect(pauseSearch).toHaveBeenCalledWith(specId);
+  });
+
+  it("allows a pause request to be withdrawn while the run is still pausing", async () => {
+    window.localStorage.setItem("discovery.specId", specId);
+    vi.mocked(pauseSearch).mockResolvedValue(progress({ status: "pausing", inFlight: 1 }));
+    vi.mocked(resumeSearch).mockResolvedValue(progress({ status: "running", inFlight: 1 }));
+    render(<DiscoveryPage dataSource={fakeSource()} pollMs={100000} />);
+
+    await waitFor(() => expect(screen.getByText("Status: running")).toBeDefined());
+    fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+    await waitFor(() => expect(screen.getByText("Status: pausing")).toBeDefined());
+
+    const resumeButton = screen.getByRole("button", { name: "Resume" });
+    expect(resumeButton.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(resumeButton);
+
+    await waitFor(() => expect(screen.getByText("Status: running")).toBeDefined());
+    expect(resumeSearch).toHaveBeenCalledWith(specId);
   });
 });
 
@@ -219,8 +238,25 @@ describe("DiscoveryPage entry detail", () => {
 
     fireEvent.click(screen.getByText("rsi@1.0.0"));
 
+    expect(screen.getByRole("row", { name: /rsi@1\.0\.0/ }).getAttribute("aria-selected"))
+      .toBe("true");
+
     await waitFor(() => expect(getBacktestProvenance).toHaveBeenCalledWith("run-1"));
     expect(getBacktestTrades).toHaveBeenCalledWith("run-1", 1, 20);
+    const strategyDetails = screen.getByRole("region", { name: "Selected strategy details" });
+    expect(within(strategyDetails).getByText("RSI")).toBeDefined();
+    expect(within(strategyDetails).getByText("Momentum strategy based on RSI thresholds.")).toBeDefined();
+    expect(within(strategyDetails).getByText("period")).toBeDefined();
+    expect(within(strategyDetails).getByText("14")).toBeDefined();
+    expect(within(strategyDetails).getByText("0.42")).toBeDefined();
+    const tradeRow = screen.getByRole("row", { name: /long/ });
+    fireEvent.click(tradeRow);
+    expect(tradeRow.getAttribute("aria-selected")).toBe("true");
+    const tradeDetails = screen.getByRole("region", { name: "Selected trade details" });
+    expect(within(tradeDetails).getByText("Gross price return")).toBeDefined();
+    expect(within(tradeDetails).getByText("100.00%")).toBeDefined();
+    expect(within(tradeDetails).getByText("Net PnL")).toBeDefined();
+    expect(within(tradeDetails).getByText("signal")).toBeDefined();
     await waitFor(() => expect(screen.getByText("specification: recorded")).toBeDefined());
   });
 });

@@ -29,6 +29,21 @@ describe("loadConfig", () => {
         symbol: "BTCUSDT",
         timeframes: ["1m", "5m", "15m", "30m", "1h", "2h", "4h", "1d"],
         streamBaseUrl: "wss://data-stream.binance.vision"
+      },
+      news: {
+        coinDeskRss: {
+          feedUrl: "https://www.coindesk.com/arc/outboundfeeds/rss/",
+          pollIntervalMs: 900000,
+          requestTimeoutMs: 10000,
+          retryCount: 2,
+          retryDelayMs: 1000
+        },
+        sentimentAnalysis: {
+          leaseSeconds: 60,
+          maxAttempts: 3,
+          batchSize: 10,
+          pollIntervalMs: 60000
+        }
       }
     });
   });
@@ -58,6 +73,54 @@ describe("loadConfig", () => {
     expect(() => loadConfig({ ...VALID_ENV, BINANCE_STREAM_URL: "https://example.com" })).toThrow(
       /BINANCE_STREAM_URL/
     );
+  });
+
+  it("loads a conservative configurable CoinDesk RSS collection policy", () => {
+    const config = loadConfig({
+      ...VALID_ENV,
+      NEWS_COINDESK_RSS_URL: "https://rss.example.test/news",
+      NEWS_POLL_INTERVAL_MS: "120000",
+      NEWS_REQUEST_TIMEOUT_MS: "5000",
+      NEWS_RETRY_COUNT: "1",
+      NEWS_RETRY_DELAY_MS: "250"
+    });
+
+    expect(config.news.coinDeskRss).toEqual({
+      feedUrl: "https://rss.example.test/news",
+      pollIntervalMs: 120000,
+      requestTimeoutMs: 5000,
+      retryCount: 1,
+      retryDelayMs: 250
+    });
+    expect(() => loadConfig({ ...VALID_ENV, NEWS_COINDESK_RSS_URL: "http://rss.example.test" }))
+      .toThrow(/NEWS_COINDESK_RSS_URL/);
+    expect(() => loadConfig({ ...VALID_ENV, NEWS_POLL_INTERVAL_MS: "59999" }))
+      .toThrow(/NEWS_POLL_INTERVAL_MS/);
+  });
+
+  it("loads and bounds the configurable sentiment analysis lifecycle policy", () => {
+    const config = loadConfig({
+      ...VALID_ENV,
+      NEWS_ANALYSIS_LEASE_SECONDS: "45",
+      NEWS_ANALYSIS_MAX_ATTEMPTS: "4",
+      NEWS_ANALYSIS_BATCH_SIZE: "25",
+      NEWS_ANALYSIS_POLL_INTERVAL_MS: "90000"
+    });
+
+    expect(config.news.sentimentAnalysis).toEqual({
+      leaseSeconds: 45,
+      maxAttempts: 4,
+      batchSize: 25,
+      pollIntervalMs: 90000
+    });
+    expect(() => loadConfig({ ...VALID_ENV, NEWS_ANALYSIS_LEASE_SECONDS: "4" }))
+      .toThrow(/NEWS_ANALYSIS_LEASE_SECONDS/);
+    expect(() => loadConfig({ ...VALID_ENV, NEWS_ANALYSIS_MAX_ATTEMPTS: "0" }))
+      .toThrow(/NEWS_ANALYSIS_MAX_ATTEMPTS/);
+    expect(() => loadConfig({ ...VALID_ENV, NEWS_ANALYSIS_BATCH_SIZE: "0" }))
+      .toThrow(/NEWS_ANALYSIS_BATCH_SIZE/);
+    expect(() => loadConfig({ ...VALID_ENV, NEWS_ANALYSIS_POLL_INTERVAL_MS: "4999" }))
+      .toThrow(/NEWS_ANALYSIS_POLL_INTERVAL_MS/);
   });
 
   it("throws a clear error naming the missing variable", () => {

@@ -11,6 +11,7 @@ import {
   API_TIMEFRAMES,
   LEADERBOARD_SORTS,
   type ApiCandle,
+  type ApiBacktestTrade,
   type ApiGeneratorDescriptor,
   type ApiLeaderboardEntry,
   type ApiStrategyDescriptor,
@@ -40,9 +41,11 @@ import {
   startSearch
 } from "../api/client.js";
 import { CandlestickChart, type ChartState } from "../components/CandlestickChart.js";
+import { formatDateTime } from "../format.js";
 import { pollingSearchDataSource, type SearchDataSource } from "./discovery-data-source.js";
 
 const CHART_CANDLE_COUNT = 200;
+const TRADE_PAGE_SIZE = 20;
 
 // A default search window, derived the same way the Backtest and Realtime pages
 // derive theirs: recent, and aligned to closed candles. A fixed date was used
@@ -89,7 +92,48 @@ function describeStrategy(entry: ApiLeaderboardEntry): string {
   if (entry.strategy.kind === "single") {
     return `${entry.strategy.id}@${entry.strategy.version}`;
   }
-  return `${entry.strategy.composite.name} (composite)`;
+  const components = entry.strategy.composite.components
+    .map(component => component.id)
+    .join(" + ");
+  return `${entry.strategy.composite.name} (${components})`;
+}
+
+function formatRatio(value: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "percent",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(value);
+}
+
+function formatScore(value: number): string {
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 4 }).format(value);
+}
+
+function formatPnl(value: number): string {
+  return new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+    signDisplay: "exceptZero"
+  }).format(value);
+}
+
+function tradePriceReturn(trade: ApiBacktestTrade): number {
+  if (trade.entryPrice === 0) return 0;
+  const priceChange = trade.exitPrice - trade.entryPrice;
+  return trade.direction === "long"
+    ? priceChange / trade.entryPrice
+    : -priceChange / trade.entryPrice;
+}
+
+function formatDuration(durationMs: number): string {
+  const totalMinutes = Math.max(0, Math.round(durationMs / 60_000));
+  const days = Math.floor(totalMinutes / 1_440);
+  const hours = Math.floor((totalMinutes % 1_440) / 60);
+  const minutes = totalMinutes % 60;
+  return [days > 0 ? `${days}d` : "", hours > 0 ? `${hours}h` : "", `${minutes}m`]
+    .filter(Boolean)
+    .join(" ");
 }
 
 // The chart backdrop for an opened entry must match the run's own dataset window,
@@ -133,6 +177,7 @@ export function DiscoveryPage({
   const [endTime, setEndTime] = useState(() => defaultSearchWindow(Date.now()).endTime);
   const [generatorId, setGeneratorId] = useState("");
   const [selectedStrategies, setSelectedStrategies] = useState<readonly string[]>([]);
+  const [compositeSize, setCompositeSize] = useState(1);
   const [seed, setSeed] = useState("discovery-demo");
   const [maxCandidates, setMaxCandidates] = useState(20);
   const [maxDurationMs, setMaxDurationMs] = useState(0);
@@ -148,6 +193,8 @@ export function DiscoveryPage({
   const [selectedEntry, setSelectedEntry] = useState<ApiLeaderboardEntry | null>(null);
   const [detailResult, setDetailResult] = useState<BacktestResultResponse | null>(null);
   const [detailTrades, setDetailTrades] = useState<BacktestTradesResponse | null>(null);
+  const [detailTradePage, setDetailTradePage] = useState(1);
+  const [selectedTradeId, setSelectedTradeId] = useState<number | null>(null);
   const [detailProvenance, setDetailProvenance] = useState<ProvenanceResponse | null>(null);
   const [detailCandles, setDetailCandles] = useState<readonly ApiCandle[]>([]);
   const [chartState, setChartState] = useState<ChartState>("loading");
@@ -224,8 +271,8 @@ export function DiscoveryPage({
           id,
           version: strategies.find((s) => s.id === id)?.version ?? "1.0.0"
         })),
-        compositeSizes: [1],
-        policies: []
+        compositeSizes: [compositeSize],
+        policies: compositeSize > 1 ? [{ id: "majority-vote", version: "1.0.0" }] : []
       },
       seed,
       stopConditions,
@@ -269,11 +316,17 @@ export function DiscoveryPage({
 
   async function openEntry(entry: ApiLeaderboardEntry): Promise<void> {
     setSelectedEntry(entry);
+    setDetailResult(null);
+    setDetailTrades(null);
+    setDetailProvenance(null);
+    setDetailCandles([]);
+    setDetailTradePage(1);
+    setSelectedTradeId(null);
     setChartState("loading");
     try {
       const [result, trades, provenance] = await Promise.all([
         getBacktestResult(entry.runId),
-        getBacktestTrades(entry.runId, 1, 20),
+        getBacktestTrades(entry.runId, 1, TRADE_PAGE_SIZE),
         getBacktestProvenance(entry.runId)
       ]);
       setDetailResult(result);
@@ -298,15 +351,48 @@ export function DiscoveryPage({
     }
   }
 
+  async function showDetailTradePage(pageNumber: number): Promise<void> {
+    if (selectedEntry === null) return;
+    try {
+      const response = await getBacktestTrades(
+        selectedEntry.runId,
+        pageNumber,
+        TRADE_PAGE_SIZE
+      );
+      setDetailTrades(response);
+      setDetailTradePage(pageNumber);
+      setSelectedTradeId(null);
+    } catch (pageError: unknown) {
+      setError(pageError instanceof Error ? pageError.message : "Could not load trades.");
+    }
+  }
+
   const status = progress?.status;
   const canPause = status === "running";
-  const canResume = status === "paused";
+  // The backend supports withdrawing a pause request while in-flight work is
+  // still draining, as well as resuming after the run has fully paused.
+  const canResume = status === "pausing" || status === "paused";
   const canCancel = status !== undefined && status !== "cancelled" && status !== "stopped";
   const entries = leaderboard?.entries ?? [];
   const detailAnnotations =
     detailResult?.status === "completed" ? detailResult.annotations : [];
   const detailTradeRows =
     detailTrades && "trades" in detailTrades ? detailTrades.trades : [];
+  const detailTradeTotal = detailTrades && "trades" in detailTrades
+    ? detailTrades.page.totalCount
+    : 0;
+  const detailTradePageCount = Math.max(1, Math.ceil(detailTradeTotal / TRADE_PAGE_SIZE));
+  const selectedTrade = detailTradeRows.find(
+    (trade) => trade.sequenceNumber === selectedTradeId
+  );
+  const selectedSingleStrategy = selectedEntry?.strategy.kind === "single"
+    ? selectedEntry.strategy
+    : undefined;
+  const selectedDescriptor = selectedSingleStrategy !== undefined
+    ? strategies.find((descriptor) =>
+        descriptor.id === selectedSingleStrategy.id &&
+        descriptor.version === selectedSingleStrategy.version)
+    : undefined;
 
   return (
     <section className="discovery-page">
@@ -378,6 +464,16 @@ export function DiscoveryPage({
             </label>
           ))}
         </fieldset>
+        <label>
+          <span>Composite size</span>
+          <input
+            aria-label="Composite size"
+            type="number"
+            min={1}
+            value={compositeSize}
+            onChange={(e) => setCompositeSize(Math.max(1, Number(e.target.value)))}
+          />
+        </label>
         <label>
           <span>Seed</span>
           <input aria-label="Seed" value={seed} onChange={(e) => setSeed(e.target.value)} />
@@ -451,7 +547,10 @@ export function DiscoveryPage({
       {leaderboard !== null && (
         <div className="leaderboard-panel">
           <div className="leaderboard-heading">
-            <h2>Leaderboard</h2>
+            <div>
+              <h2>Leaderboard</h2>
+              <p>Click a candidate to inspect its chart, trades, metrics, and provenance.</p>
+            </div>
             <label>
               <span>Sort by</span>
               <select
@@ -485,15 +584,23 @@ export function DiscoveryPage({
                   <tr
                     key={entry.runId}
                     onClick={() => void openEntry(entry)}
-                    className={selectedEntry?.runId === entry.runId ? "selected" : ""}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        void openEntry(entry);
+                      }
+                    }}
+                    className={`leaderboard-row${selectedEntry?.runId === entry.runId ? " selected" : ""}`}
+                    tabIndex={0}
+                    aria-selected={selectedEntry?.runId === entry.runId}
                   >
                     <td>{entry.rank}</td>
                     <td>{describeStrategy(entry)}</td>
-                    <td>{entry.metrics.totalReturn}</td>
-                    <td>{entry.metrics.winRate}</td>
-                    <td>{entry.metrics.maximumDrawdown}</td>
+                    <td>{formatRatio(entry.metrics.totalReturn)}</td>
+                    <td>{formatRatio(entry.metrics.winRate)}</td>
+                    <td>{formatRatio(entry.metrics.maximumDrawdown)}</td>
                     <td>{entry.metrics.numberOfTrades}</td>
-                    <td>{entry.score}</td>
+                    <td>{formatScore(entry.score)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -504,14 +611,95 @@ export function DiscoveryPage({
 
       {selectedEntry !== null && (
         <div className="entry-detail">
-          <h2>Entry detail: rank {selectedEntry.rank}</h2>
+          <div className="entry-detail-heading">
+            <div>
+              <span className="entry-rank">Rank #{selectedEntry.rank}</span>
+              <h2>{describeStrategy(selectedEntry)}</h2>
+              <p>Backtest run {selectedEntry.runId}</p>
+            </div>
+            <div className="entry-metrics" aria-label="Selected candidate metrics">
+              <div><span>Total return</span><strong>{formatRatio(selectedEntry.metrics.totalReturn)}</strong></div>
+              <div><span>Win rate</span><strong>{formatRatio(selectedEntry.metrics.winRate)}</strong></div>
+              <div><span>Max drawdown</span><strong>{formatRatio(selectedEntry.metrics.maximumDrawdown)}</strong></div>
+              <div><span>Trades</span><strong>{selectedEntry.metrics.numberOfTrades}</strong></div>
+              <div><span>Score</span><strong>{formatScore(selectedEntry.score)}</strong></div>
+            </div>
+          </div>
+          <section className="strategy-detail-card" aria-label="Selected strategy details">
+            <div className="strategy-detail-summary">
+              <div>
+                <span>Strategy</span>
+                <strong>
+                  {selectedEntry.strategy.kind === "single"
+                    ? selectedDescriptor?.name ?? selectedEntry.strategy.id
+                    : selectedEntry.strategy.composite.name}
+                </strong>
+              </div>
+              <div>
+                <span>Version</span>
+                <strong>
+                  {selectedEntry.strategy.kind === "single"
+                    ? selectedEntry.strategy.version
+                    : selectedEntry.strategy.composite.version}
+                </strong>
+              </div>
+              <div>
+                <span>Type</span>
+                <strong>{selectedEntry.strategy.kind === "single" ? "Single strategy" : "Composite"}</strong>
+              </div>
+              <div>
+                <span>Ranking score</span>
+                <strong>{formatScore(selectedEntry.score)}</strong>
+              </div>
+            </div>
+            <p className="strategy-detail-description">
+              {selectedEntry.strategy.kind === "single"
+                ? selectedDescriptor?.description || "No catalog description is available."
+                : selectedEntry.strategy.composite.description || "No composite description is available."}
+            </p>
+            {selectedEntry.strategy.kind === "single" ? (
+              <div>
+                <h3>Parameters</h3>
+                {Object.keys(selectedEntry.strategy.parameters).length === 0 ? (
+                  <p className="strategy-detail-empty">No runtime parameters.</p>
+                ) : (
+                  <dl className="strategy-parameter-list">
+                    {Object.entries(selectedEntry.strategy.parameters).map(([key, value]) => (
+                      <div key={key}><dt>{key}</dt><dd>{String(value)}</dd></div>
+                    ))}
+                  </dl>
+                )}
+              </div>
+            ) : (
+              <div>
+                <h3>Components and parameters</h3>
+                <div className="strategy-component-list">
+                  {selectedEntry.strategy.composite.components.map((component) => (
+                    <div key={`${component.id}@${component.version}`}>
+                      <strong>{component.id}@{component.version}</strong>
+                      <span>
+                        {Object.entries(component.parameters).length > 0
+                          ? Object.entries(component.parameters)
+                              .map(([key, value]) => `${key}=${String(value)}`)
+                              .join(", ")
+                          : "No runtime parameters"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <p className="strategy-policy">
+                  Policy: {selectedEntry.strategy.composite.policy.id}@{selectedEntry.strategy.composite.policy.version}
+                </p>
+              </div>
+            )}
+          </section>
           <div className="chart-card">
             <CandlestickChart
               state={chartState}
               candles={detailCandles}
               annotations={detailAnnotations}
               trades={detailTradeRows}
-              selectedTradeId={null}
+              selectedTradeId={selectedTradeId}
             />
           </div>
           <div className="detail-trades">
@@ -530,15 +718,74 @@ export function DiscoveryPage({
                 </thead>
                 <tbody>
                   {detailTradeRows.map((trade) => (
-                    <tr key={trade.sequenceNumber}>
-                      <td>{new Date(trade.entryTime).toISOString()}</td>
-                      <td>{new Date(trade.exitTime).toISOString()}</td>
+                    <tr
+                      key={trade.sequenceNumber}
+                      className={`trade-row${selectedTradeId === trade.sequenceNumber ? " selected" : ""}`}
+                      aria-selected={selectedTradeId === trade.sequenceNumber}
+                      tabIndex={0}
+                      onClick={() => setSelectedTradeId(trade.sequenceNumber)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setSelectedTradeId(trade.sequenceNumber);
+                        }
+                      }}
+                    >
+                      <td>{formatDateTime(trade.entryTime)} UTC</td>
+                      <td>{formatDateTime(trade.exitTime)} UTC</td>
                       <td>{trade.direction}</td>
-                      <td>{trade.profitAndLoss}</td>
+                      <td className={trade.profitAndLoss >= 0 ? "positive-value" : "negative-value"}>
+                        {formatPnl(trade.profitAndLoss)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+            )}
+            {selectedTrade !== undefined && (
+              <section className="selected-trade-card" aria-label="Selected trade details">
+                <div className="selected-trade-heading">
+                  <div>
+                    <span>Selected trade</span>
+                    <strong>#{selectedTrade.sequenceNumber + 1} · {selectedTrade.direction.toUpperCase()}</strong>
+                  </div>
+                  <button type="button" onClick={() => setSelectedTradeId(null)}>Clear selection</button>
+                </div>
+                <div className="selected-trade-grid">
+                  <div><span>Entry</span><strong>{formatDateTime(selectedTrade.entryTime)} UTC</strong></div>
+                  <div><span>Entry price</span><strong>{selectedTrade.entryPrice}</strong></div>
+                  <div><span>Exit</span><strong>{formatDateTime(selectedTrade.exitTime)} UTC</strong></div>
+                  <div><span>Exit price</span><strong>{selectedTrade.exitPrice}</strong></div>
+                  <div><span>Gross price return</span><strong>{formatRatio(tradePriceReturn(selectedTrade))}</strong></div>
+                  <div><span>Net PnL</span><strong>{formatPnl(selectedTrade.profitAndLoss)}</strong></div>
+                  <div><span>Quantity</span><strong>{selectedTrade.quantity}</strong></div>
+                  <div><span>Duration</span><strong>{formatDuration(selectedTrade.exitTime - selectedTrade.entryTime)}</strong></div>
+                  <div><span>Entry fee</span><strong>{selectedTrade.entryFee}</strong></div>
+                  <div><span>Exit fee</span><strong>{selectedTrade.exitFee}</strong></div>
+                  <div><span>Slippage</span><strong>{selectedTrade.slippage}</strong></div>
+                  <div><span>Exit reason</span><strong>{selectedTrade.exitReason}</strong></div>
+                </div>
+                <p>Candidate-level Return, Win Rate, Max Drawdown and Number of Trades remain in the metrics summary above.</p>
+              </section>
+            )}
+            {detailTradeTotal > TRADE_PAGE_SIZE && (
+              <div className="news-pagination">
+                <button
+                  type="button"
+                  disabled={detailTradePage === 1}
+                  onClick={() => void showDetailTradePage(detailTradePage - 1)}
+                >
+                  Previous page
+                </button>
+                <span>Page {detailTradePage} of {detailTradePageCount}</span>
+                <button
+                  type="button"
+                  disabled={detailTradePage >= detailTradePageCount}
+                  onClick={() => void showDetailTradePage(detailTradePage + 1)}
+                >
+                  Next page
+                </button>
+              </div>
             )}
           </div>
           {detailProvenance !== null && (

@@ -145,6 +145,34 @@ describe("SingleBacktestExperimentCreationService", () => {
     });
   });
 
+  it("freezes the explicit sentiment window and degradation policy for a sentiment candidate", async () => {
+    const { datasets, specifications, created } = fakes();
+    const service = new SingleBacktestExperimentCreationService(datasets, specifications, provenance);
+    const sentimentInput = {
+      windowDurationMs: 3_600_000,
+      policy: {
+        maxAgeMs: 300_000,
+        onMissing: { action: "substitute" as const, substituteValue: 0 },
+        onStale: { action: "degrade" as const }
+      }
+    };
+
+    await service.create(input({
+      strategy: {
+        id: "news-sentiment",
+        version: "1.0.0",
+        parameters: {
+          positiveThreshold: 0.2,
+          negativeThreshold: -0.2,
+          windowDurationMs: 3_600_000
+        }
+      },
+      sentimentInput
+    }));
+
+    expect(created.content?.sentimentInput).toEqual(sentimentInput);
+  });
+
   it("fills the architecture-owned V1 execution profile and metric set", async () => {
     const { datasets, specifications, created } = fakes();
     const service = new SingleBacktestExperimentCreationService(datasets, specifications, provenance);

@@ -1,5 +1,5 @@
 {
-  "datasetId": "sha256:f5211e8d5bb3ffb312e789a5fe47876e6680b46b681cb956575e641804f8de00",
+  "datasetId": "sha256:1378366542995a572d63039235866f2759f85db32b53f3e338424e6a39d00267",
   "version": 1,
   "manifestVersion": "v1",
   "provider": "binance",
@@ -8,9 +8,9 @@
   ],
   "timeframe": "1m",
   "range": {
-    "startTime": 1788054900000,
-    "endTime": 1788055500000
+    "startTime": 1788058980000,
+    "endTime": 1788059100000
   },
-  "revisionWatermark": 12433,
-  "integrityHash": "f5211e8d5bb3ffb312e789a5fe47876e6680b46b681cb956575e641804f8de00"
+  "revisionWatermark": 12428,
+  "integrityHash": "1378366542995a572d63039235866f2759f85db32b53f3e338424e6a39d00267"
 }

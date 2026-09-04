@@ -63,6 +63,7 @@ page.on("pageerror", (error) => pageErrors.push(error.message));
 
 // One sequence per stream key, because the API tracks sequence per subscription.
 const sequences = new Map<string, number>();
+const liveDeliveryLatencyMs: number[] = [];
 
 function compose(...args: string[]): void {
   execFileSync("docker", ["compose", ...args], { cwd: process.cwd(), stdio: "inherit" });
@@ -159,6 +160,13 @@ function nextSequence(timeframe: string): number {
   return next;
 }
 
+function percentile(values: readonly number[], ratio: number): number {
+  const sorted = [...values].sort((left, right) => left - right);
+  const value = sorted[Math.ceil(sorted.length * ratio) - 1];
+  if (value === undefined) throw new Error("MKT11_SMOKE_LATENCY: no samples captured");
+  return value;
+}
+
 /** The next forming bar after the latest stored candle for a timeframe. */
 async function nextForming(timeframe: string): Promise<Candle> {
   const snapshot = await repository.getLatestSnapshot({
@@ -229,8 +237,10 @@ try {
   for (const entry of CHARTS) {
     const before = await readAll();
     const forming = await nextForming(entry.timeframe);
+    const publishedAt = performance.now();
     await publishTick(forming, Number(chart(before, entry.id).snapshotWatermark));
     await waitForCount(entry.id, "tickCount", chart(before, entry.id).tickCount);
+    liveDeliveryLatencyMs.push(performance.now() - publishedAt);
     const after = await readAll();
 
     check(chart(after, entry.id).formingOpenTime === String(forming.openTime),
@@ -284,8 +294,10 @@ try {
   for (const entry of CHARTS.filter((item) => item.id !== "chart-1")) {
     const before = await readAll();
     const forming = await nextForming(entry.timeframe);
+    const publishedAt = performance.now();
     await publishTick(forming, Number(chart(before, entry.id).snapshotWatermark));
     await waitForCount(entry.id, "tickCount", chart(before, entry.id).tickCount);
+    liveDeliveryLatencyMs.push(performance.now() - publishedAt);
   }
 
   // ---------------------------------------------------------------------- AC5
@@ -302,7 +314,14 @@ try {
     "live at four timeframes, four active server-side subscriptions, a timeframe change " +
     "on chart-1 that reloaded only chart-1 while the other three kept their candles, " +
     "their forming bars, and their live delivery, no page reload, still four " +
-    "subscriptions after the change, and zero after the page closed.\n"
+    "subscriptions after the change, and zero after the page closed. " +
+    `Redis-to-browser delivery latency ms: ${JSON.stringify({
+      samples: liveDeliveryLatencyMs.length,
+      min: Math.min(...liveDeliveryLatencyMs),
+      p50: percentile(liveDeliveryLatencyMs, 0.5),
+      p95: percentile(liveDeliveryLatencyMs, 0.95),
+      max: Math.max(...liveDeliveryLatencyMs)
+    })}.\n`
   );
 } finally {
   await browser.close();

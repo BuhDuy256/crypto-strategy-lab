@@ -10,7 +10,9 @@
 import {
   API_TIMEFRAMES,
   type ApiCandle,
+  type ApiCompositeCatalogEntry,
   type ApiParameterSchema,
+  type ApiSentimentInputConfiguration,
   type ApiStrategyDescriptor,
   type ApiStrategyParameters,
   type ApiStrategyParameterValue,
@@ -40,6 +42,7 @@ const CANDLE_COUNT = 200;
 const TRADE_PAGE_SIZE = 20;
 const POLL_INTERVAL_MS = 2_000;
 const SYMBOLS = ["BTCUSDT"] as const;
+const SENTIMENT_MAX_AGE_MS = 30 * 60 * 1_000;
 type Symbol = (typeof SYMBOLS)[number];
 const TIMEFRAME_MILLISECONDS: Readonly<Record<ApiTimeframe, number>> = {
   "1m": 60_000,
@@ -126,7 +129,39 @@ function parametersForSchema(
   return scoped;
 }
 
+function sentimentInputForStrategy(
+  descriptor: ApiStrategyDescriptor,
+  parameters: ApiStrategyParameters,
+  composites: readonly ApiCompositeCatalogEntry[]
+): ApiSentimentInputConfiguration | undefined {
+  const composite = composites.find(
+    (entry) => entry.id === descriptor.id && entry.version === descriptor.version
+  );
+  const sentimentComponent = composite?.components.find(
+    (component) => component.id === "news-sentiment"
+  );
+  const requiresSentiment = descriptor.requiredInputs.includes("sentiment-series") ||
+    sentimentComponent !== undefined;
+  if (!requiresSentiment) return undefined;
+
+  const configuredWindow = sentimentComponent?.parameters.windowDurationMs ?? parameters.windowDurationMs;
+
+  if (typeof configuredWindow !== "number" || !Number.isSafeInteger(configuredWindow) || configuredWindow <= 0) {
+    throw new Error("The selected sentiment strategy has no valid sentiment window.");
+  }
+
+  return {
+    windowDurationMs: configuredWindow,
+    policy: {
+      maxAgeMs: SENTIMENT_MAX_AGE_MS,
+      onMissing: { action: "substitute", substituteValue: 0 },
+      onStale: { action: "degrade" }
+    }
+  };
+}
+
 export function BacktestPage() {
+  const requestedStrategyId = new URLSearchParams(window.location.search).get("strategyId");
   const [symbol, setSymbol] = useState<Symbol>("BTCUSDT");
   const [timeframe, setTimeframe] = useState<ApiTimeframe>("1h");
   const [range, setRange] = useState<TimeRange>(() => recentRange("1h", Date.now()));
@@ -135,6 +170,7 @@ export function BacktestPage() {
   const [chartError, setChartError] = useState<string | null>(null);
 
   const [strategies, setStrategies] = useState<readonly ApiStrategyDescriptor[]>([]);
+  const [composites, setComposites] = useState<readonly ApiCompositeCatalogEntry[]>([]);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [compositeCatalogError, setCompositeCatalogError] = useState<string | null>(null);
   const [strategyId, setStrategyId] = useState<string | null>(null);
@@ -174,9 +210,14 @@ export function BacktestPage() {
         const compositeDescriptors: ApiStrategyDescriptor[] = composites.map(
           (composite) => composite.descriptor
         );
+        setComposites(composites);
         const options = [...response.strategies, ...compositeDescriptors];
         setStrategies(options);
-        setStrategyId(options[0]?.id ?? null);
+        setStrategyId(
+          options.some((option) => option.id === requestedStrategyId)
+            ? requestedStrategyId
+            : options[0]?.id ?? null
+        );
         setCatalogError(null);
       })
       .catch((error: unknown) => {
@@ -314,6 +355,7 @@ export function BacktestPage() {
     setSelectedTradeId(null);
     setPage(1);
     try {
+      const sentimentInput = sentimentInputForStrategy(selectedStrategy, parameters, composites);
       const specification = await createSpecification({
         schemaVersion: "v1",
         dataset: {
@@ -327,7 +369,8 @@ export function BacktestPage() {
           id: selectedStrategy.id,
           version: selectedStrategy.version,
           parameters
-        }
+        },
+        ...(sentimentInput === undefined ? {} : { sentimentInput })
       });
       setRun(await startBacktest({ specId: specification.specId }));
     } catch (error: unknown) {
@@ -471,6 +514,20 @@ export function BacktestPage() {
               <li>Slippage Rate: {completed.executionAssumptions.slippageRate}</li>
               <li>Fill Rule: {completed.executionAssumptions.fillRule}</li>
               <li>Signal Timing: {completed.executionAssumptions.signalTiming}</li>
+              <li>
+                Allowed Directions: {completed.executionAssumptions.allowedDirections.join(", ")}
+              </li>
+              <li>Position Sizing: {completed.executionAssumptions.positionSizing}</li>
+              <li>
+                Stop Loss: {completed.executionAssumptions.stopLoss.enabled
+                  ? `${completed.executionAssumptions.stopLoss.percentage} per trade`
+                  : "disabled"}
+              </li>
+              <li>
+                Take Profit: {completed.executionAssumptions.takeProfit.enabled
+                  ? `${completed.executionAssumptions.takeProfit.percentage} per trade`
+                  : "disabled"}
+              </li>
             </ul>
             <p>Specification: {completed.specId}</p>
             <p>Specification hash: {completed.specificationHash}</p>

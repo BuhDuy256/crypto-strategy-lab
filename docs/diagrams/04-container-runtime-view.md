@@ -25,15 +25,15 @@ flowchart LR
     API -->|"V6 target: immutable BacktestJob"| Bull[("BullMQ on persistent Redis<br/>DURABLE ASYNC DELIVERY")]
     Bull -->|"V6: at-least-once"| Workers["Node.js / TypeScript<br/>BullMQ backtest worker process(es)"]
     Bull -->|"V6 routed integration work"| NewsWorker
-    Workers -->|"result + trade link + provenance + outbox transaction"| DB
+    Workers -->|"V6: result + trade link + provenance + outbox transaction"| DB
 
-    DB -->|"committed outbox rows"| Dispatcher["Outbox dispatcher process"]
-    Dispatcher -->|"enqueue; mark delivered only after ack"| Bull
-    Bull -->|"event-derived job; at-least-once"| Consumer["Idempotent consumer<br/>/ projector"]
-    Consumer -->|"authoritative state / projection commit"| DB
+    DB -->|"V6: committed outbox rows"| Dispatcher["V6 target:<br/>Outbox dispatcher process"]
+    Dispatcher -->|"V6: enqueue; mark delivered only after ack"| Bull
+    Bull -->|"V6: event-derived job; at-least-once"| Consumer["V6 target:<br/>Idempotent consumer / projector"]
+    Consumer -->|"V6: authoritative state / projection commit"| DB
 
     Market -.->|"BEST-EFFORT live market notification"| PubSub[("Redis Pub/Sub<br/>EPHEMERAL LIVE FAN-OUT")]
-    Consumer -.->|"after authoritative commit"| PubSub
+    Consumer -.->|"V6: after authoritative commit"| PubSub
     PubSub -.->|"may be lost; recover from PostgreSQL"| API
 
     classDef interactive fill:#eef6ff,stroke:#2563eb,color:#172554;
@@ -52,6 +52,10 @@ flowchart LR
   the runner is a separate process and PostgreSQL owns claim/recovery state.
 - BullMQ/Redis is the mandatory V6 correctness delivery path and requires
   persistence/no-arbitrary-eviction configuration.
+- **Every edge and node marked `V6` is target architecture and is not implemented.**
+  That includes BullMQ, the BullMQ worker processes, the outbox dispatcher, and the
+  idempotent consumer/projector. The realized topology is the unmarked edges plus the
+  `V1-V5` runner path. See [`docs/final-defense-notes.md`](../final-defense-notes.md).
 - Redis Pub/Sub never proves durable delivery; PostgreSQL snapshots and projections are recovery truth.
 
 ## References
