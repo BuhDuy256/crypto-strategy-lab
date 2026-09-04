@@ -98,6 +98,65 @@ describe("CoinDeskRssNewsProvider", () => {
     await expect(provider.fetchLatest()).resolves.toHaveLength(1);
   });
 
+  it("uses namespaced RSS content when description is absent", async () => {
+    const withoutDescription = RSS_FIXTURE.replace(
+      "<description><![CDATA[A short RSS summary.]]></description>",
+      "<content:encoded><![CDATA[A namespaced RSS summary.]]></content:encoded>"
+    );
+    const provider = new CoinDeskRssNewsProvider({
+      feedUrl: "https://www.coindesk.com/arc/outboundfeeds/rss/",
+      requestTimeoutMs: 1_000,
+      retryCount: 0,
+      retryDelayMs: 1,
+      fetch: async () => successfulResponse(withoutDescription),
+      now: () => COLLECTED_AT
+    });
+
+    await expect(provider.fetchLatest()).resolves.toMatchObject([
+      { content: "A namespaced RSS summary." }
+    ]);
+  });
+
+  it("uses the normalized title as minimal content when RSS content is absent", async () => {
+    const withoutContent = RSS_FIXTURE.replace(
+      "<description><![CDATA[A short RSS summary.]]></description>",
+      ""
+    );
+    const provider = new CoinDeskRssNewsProvider({
+      feedUrl: "https://www.coindesk.com/arc/outboundfeeds/rss/",
+      requestTimeoutMs: 1_000,
+      retryCount: 0,
+      retryDelayMs: 1,
+      fetch: async () => successfulResponse(withoutContent),
+      now: () => COLLECTED_AT
+    });
+
+    await expect(provider.fetchLatest()).resolves.toMatchObject([
+      { title: "Bitcoin RSS update", content: "Bitcoin RSS update" }
+    ]);
+  });
+
+  it("skips one invalid item without discarding valid feed items", async () => {
+    const mixedFeed = RSS_FIXTURE.replace(
+      "</channel>",
+      `<item>
+        <description>Missing required title.</description>
+        <link>https://www.coindesk.com/markets/invalid-story/</link>
+        <pubDate>Sun, 30 Aug 2026 00:20:00 GMT</pubDate>
+      </item></channel>`
+    );
+    const provider = new CoinDeskRssNewsProvider({
+      feedUrl: "https://www.coindesk.com/arc/outboundfeeds/rss/",
+      requestTimeoutMs: 1_000,
+      retryCount: 0,
+      retryDelayMs: 1,
+      fetch: async () => successfulResponse(mixedFeed),
+      now: () => COLLECTED_AT
+    });
+
+    await expect(provider.fetchLatest()).resolves.toHaveLength(1);
+  });
+
   it("bounds retries and reports an unreachable source", async () => {
     let requests = 0;
     const provider = new CoinDeskRssNewsProvider({

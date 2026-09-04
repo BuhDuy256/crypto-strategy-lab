@@ -32,7 +32,7 @@ so a reference anywhere in the repository resolves to an obvious file.
 | Realtime recovers from a provider outage with no gaps or duplicates | [`PROOF-RT-001`](../validation/evidence/PROOF-RT-001.md) | `reconnect-backoff.ts`, `market-gap-recovery-service.ts`, `missing-intervals.ts` |
 | News worker failure does not stop charts, backtests, or discovery | [`PROOF-ISO-001`](../validation/evidence/PROOF-ISO-001.md) | separate `news-worker` process role, `news-endpoint-isolation.test.ts` |
 | Sentiment model failure does not stop news collection | [`PROOF-ISO-002`](../validation/evidence/PROOF-ISO-002.md) | `SentimentAnalyzer` port, durable attempt/retry records |
-| Heavy work is isolated and the runner scales by configuration | [`evidence-performance-and-scale.md`](evidence-performance-and-scale.md) | separate `runner` process, worker threads, `BACKTEST_RUNNER_CONCURRENCY`, `maxInFlight` |
+| Heavy work is isolated and the runner scales by configuration | [`evidence-performance-and-scale.md`](evidence-performance-and-scale.md), [`SCENARIO-07-SCALE-DEMO`](../validation/evidence/SCENARIO-07-SCALE-DEMO.md) | separate `runner` process, worker threads, `BACKTEST_RUNNER_CONCURRENCY`, `maxInFlight` |
 | Work beyond the minimum requirement | [`evidence-advanced-extensions.md`](evidence-advanced-extensions.md) | six extensions, each with its own evidence |
 
 ## Where the architecture itself is defined

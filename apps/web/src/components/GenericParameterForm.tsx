@@ -48,16 +48,22 @@ export function GenericParameterForm({ schema, values, onChange }: GenericParame
   return (
     <div className="parameter-form">
       {Object.entries(schema.properties).map(([key, prop]) => (
-        <label key={key} className="parameter-field">
-          <span className="parameter-label">
-            {prop.label || key}
-            {(schema.required as string[]).includes(key) && (
-              <span className="parameter-required" aria-hidden="true"> *</span>
+        <div key={key} className="parameter-field">
+          <div className="parameter-heading">
+            <label className="parameter-label">
+              <span>{prop.label || key}</span>
+              {(schema.required as string[]).includes(key) && (
+                <span className="required-marker" aria-label="required">*</span>
+              )}
+            </label>
+            {prop.description && (
+              <span className="parameter-description" title={prop.description}>{prop.description}</span>
             )}
-          </span>
+          </div>
 
           {prop.type === "enum" && prop.values ? (
             <select
+              className="bg-[#181b25] border border-gray-700/80 hover:border-gray-600 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded px-3 py-2 text-sm text-gray-200 outline-none transition-all"
               value={String(values[key] ?? "")}
               onChange={(e) => handleChange(key, e.target.value, prop.type)}
             >
@@ -69,7 +75,8 @@ export function GenericParameterForm({ schema, values, onChange }: GenericParame
               ))}
             </select>
           ) : prop.type === "boolean" ? (
-            <select
+             <select
+              className="bg-[#181b25] border border-gray-700/80 hover:border-gray-600 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded px-3 py-2 text-sm text-gray-200 outline-none transition-all"
               value={String(values[key] ?? "")}
               onChange={(e) => handleChange(key, e.target.value, prop.type)}
             >
@@ -80,15 +87,14 @@ export function GenericParameterForm({ schema, values, onChange }: GenericParame
           ) : (
             <input
               type={prop.type === "number" || prop.type === "integer" ? "number" : "text"}
+              className="bg-[#181b25] border border-gray-700/80 hover:border-gray-600 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded px-3 py-2 text-sm text-gray-200 font-mono outline-none transition-all shadow-inner"
               value={String(values[key] ?? "")}
               onChange={(e) => handleChange(key, e.target.value, prop.type)}
               min={prop.minimum}
               max={prop.maximum}
             />
           )}
-
-          {prop.description && <span className="parameter-hint">{prop.description}</span>}
-        </label>
+        </div>
       ))}
     </div>
   );

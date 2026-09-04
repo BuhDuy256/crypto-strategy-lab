@@ -45,7 +45,19 @@ export function CandlestickChart({ state, candles, annotations = [], trades = []
 
     const chart = createChart(container, {
       width: container.clientWidth,
-      height: 420,
+      height: container.clientHeight || 420,
+      handleScroll: {
+        mouseWheel: true,
+        pressedMouseMove: true,
+        horzTouchDrag: true,
+        vertTouchDrag: true
+      },
+      handleScale: {
+        axisDoubleClickReset: true,
+        axisPressedMouseMove: true,
+        mouseWheel: true,
+        pinch: true
+      },
       layout: {
         background: { type: ColorType.Solid, color: "#ffffff" },
         textColor: "#24292f"
@@ -183,7 +195,10 @@ export function CandlestickChart({ state, candles, annotations = [], trades = []
     }
 
 
-    const resize = () => chart.applyOptions({ width: container.clientWidth });
+    const resize = () => chart.applyOptions({
+      width: container.clientWidth,
+      height: container.clientHeight || 420
+    });
     window.addEventListener("resize", resize);
     return () => {
       window.removeEventListener("resize", resize);

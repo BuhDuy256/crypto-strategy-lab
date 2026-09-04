@@ -56,6 +56,17 @@ See [Current realization and scope](#current-realization-and-scope).
 Five logical modules own their own data and expose ports to each other. A logical module
 is not automatically a deployment boundary.
 
+### Sentiment analyzer selection
+
+The News worker selects a sentiment adapter at its composition root:
+
+- When `OPENAI_API_KEY` is set, it uses the OpenAI Responses adapter.
+- When `OPENAI_API_KEY` is empty, it uses `LocalLexiconSentimentAnalyzer`.
+
+The local analyzer is deterministic, free, and intended for development and demos. It scores a fixed English finance-news lexicon and records the exact `local-lexicon-en` model provenance. It is not a replacement for a trained sentiment model and must not be presented as AI analysis. Both adapters implement the same `SentimentAnalyzer` port, so collection, storage, `SentimentFeature`, and strategy code do not change when the adapter changes.
+
+## High-level project structure
+
 - **ARC-API** — HTTP/WebSocket transport, DTO validation, subscriptions, query composition. No strategy, backtest, ranking, or provider logic.
 - **ARC-MARKET** — provider adapters, normalized candles, ingestion, deduplication, gap recovery, datasets, provider health.
 - **ARC-STRATEGY** — strategy contracts and implementations, registry metadata, signals, composition policies, `StrategyGenerator` contracts.

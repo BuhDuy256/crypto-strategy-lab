@@ -52,10 +52,15 @@ function decodeXmlText(value: string): string {
     .replace(/&amp;/gu, "&");
 }
 
-function requiredRssField(itemXml: string, name: string): string {
+function rssField(itemXml: string, name: string): string | undefined {
   const match = new RegExp(`<${name}\\b[^>]*>([\\s\\S]*?)</${name}>`, "iu").exec(itemXml);
   const value = match?.[1] === undefined ? undefined : decodeXmlText(match[1]).trim();
-  if (value === undefined || value === "") {
+  return value === "" ? undefined : value;
+}
+
+function requiredRssField(itemXml: string, name: string): string {
+  const value = rssField(itemXml, name);
+  if (value === undefined) {
     throw new Error(`COINDESK_RSS_${name.toUpperCase()}: required RSS field is absent`);
   }
   return value;
@@ -82,19 +87,31 @@ function parseRssItems(xml: string, collectedAt: number): readonly NewsItem[] {
   for (const entry of entries) {
     const itemXml = entry[1];
     if (itemXml === undefined) throw new Error("COINDESK_RSS_ITEM: item content is absent");
-    const normalized = normalizeNewsItem({
-      title: requiredRssField(itemXml, "title"),
-      content: requiredRssField(itemXml, "description"),
-      source: PROVIDER_ID,
-      publishedAt: parsePublishedAt(requiredRssField(itemXml, "pubDate")),
-      collectedAt,
-      relatedCoins: [],
-      url: requiredRssField(itemXml, "link")
-    });
-    if (normalized.kind === "rejected") {
-      throw new Error(`COINDESK_RSS_NORMALIZATION: ${normalized.reason}`);
+    try {
+      const title = requiredRssField(itemXml, "title");
+      const normalizedTitle = title.replace(/\s+/gu, " ").trim();
+      const content =
+        rssField(itemXml, "description") ?? rssField(itemXml, "content:encoded") ?? normalizedTitle;
+      const normalized = normalizeNewsItem({
+        title,
+        content,
+        source: PROVIDER_ID,
+        publishedAt: parsePublishedAt(requiredRssField(itemXml, "pubDate")),
+        collectedAt,
+        relatedCoins: [],
+        url: requiredRssField(itemXml, "link")
+      });
+      if (normalized.kind === "rejected") {
+        continue;
+      }
+      items.push(normalized.item);
+    } catch {
+      // One malformed provider item must not discard other valid feed entries.
+      continue;
     }
-    items.push(normalized.item);
+  }
+  if (items.length === 0) {
+    throw new Error("COINDESK_RSS_ITEMS: feed contains no valid RSS items");
   }
   return deduplicateNewsItems(items);
 }
