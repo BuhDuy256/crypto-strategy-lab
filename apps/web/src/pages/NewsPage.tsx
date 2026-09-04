@@ -31,6 +31,7 @@ function pageCount(list: NewsItemListResponse): number {
 
 export function NewsPage() {
   const [pageNumber, setPageNumber] = useState(1);
+  const [refreshVersion, setRefreshVersion] = useState(0);
   const [items, setItems] = useState<NewsItemListResponse | null>(null);
   const [sentiment, setSentiment] = useState<NewsSentimentDistributionResponse | null>(null);
   const [health, setHealth] = useState<NewsHealthResponse | null>(null);
@@ -52,7 +53,7 @@ export function NewsPage() {
     return () => {
       active = false;
     };
-  }, [pageNumber]);
+  }, [pageNumber, refreshVersion]);
 
   useEffect(() => {
     let active = true;
@@ -69,7 +70,7 @@ export function NewsPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [refreshVersion]);
 
   useEffect(() => {
     let active = true;
@@ -85,7 +86,17 @@ export function NewsPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [refreshVersion]);
+
+  const refresh = (): void => {
+    setItems(null);
+    setSentiment(null);
+    setHealth(null);
+    setItemsUnavailable(false);
+    setSentimentUnavailable(false);
+    setHealthUnavailable(false);
+    setRefreshVersion((current) => current + 1);
+  };
 
   return (
     <section className="news-page">
@@ -94,6 +105,9 @@ export function NewsPage() {
           <h1>News</h1>
           <p>Collected news and sentiment health.</p>
         </div>
+        <button type="button" className="news-refresh" onClick={refresh}>
+          Refresh data
+        </button>
       </div>
 
       <div className="news-summary-grid">

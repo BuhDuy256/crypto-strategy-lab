@@ -4,12 +4,19 @@
 //
 // The page holds no combination logic. It collects choices and posts them; the
 // backend validates the components, owns the policy semantics, and produces the
-// evaluated action shown after a save.
+// evaluated action shown only after an explicit evaluation request.
 
 import { useEffect, useRef, useState } from "react";
-import { createComposite, evaluateComposite, getStrategies } from "../api/client.js";
+import {
+  createComposite,
+  evaluateComposite,
+  getComposite,
+  getStrategies,
+  listComposites
+} from "../api/client.js";
 import {
   API_TIMEFRAMES,
+  type ApiCompositeCatalogEntry,
   type ApiStrategyDescriptor,
   type ApiTimeframe
 } from "@crypto-strategy-lab/api-contracts";
@@ -46,6 +53,9 @@ const MINIMUM_COMPONENTS = 2;
 export function StrategyEnginePage() {
   const nextComponentId = useRef(0);
   const [strategies, setStrategies] = useState<ApiStrategyDescriptor[]>([]);
+  const [savedComposites, setSavedComposites] = useState<ApiCompositeCatalogEntry[]>([]);
+  const [selectedCompositeId, setSelectedCompositeId] = useState("");
+  const [savedCompositeError, setSavedCompositeError] = useState<string | null>(null);
   const [components, setComponents] = useState<ComponentState[]>([]);
   const [policyId, setPolicyId] = useState<"majority-vote" | "weighted-score">("majority-vote");
   const [threshold, setThreshold] = useState<number>(0.5);
@@ -57,13 +67,52 @@ export function StrategyEnginePage() {
   const [compositeDesc, setCompositeDesc] = useState("");
 
   const [combinedSignal, setCombinedSignal] = useState<string | null>(null);
+  const [evaluationState, setEvaluationState] = useState<"idle" | "evaluating" | "success" | "error">("idle");
+  const [evaluationError, setEvaluationError] = useState<string | null>(null);
+  const [evaluationTime, setEvaluationTime] = useState<number | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     getStrategies().then(res => setStrategies(res.strategies as ApiStrategyDescriptor[])).catch(err => setError(err.message));
+    listComposites()
+      .then(entries => {
+        setSavedComposites(entries);
+        setSelectedCompositeId(entries[0]?.id ?? "");
+      })
+      .catch((loadError: unknown) => {
+        setSavedCompositeError(loadError instanceof Error ? loadError.message : String(loadError));
+      });
   }, []);
+
+  const selectedComposite = savedComposites.find(
+    composite => composite.id === selectedCompositeId
+  ) ?? null;
+
+  const runEvaluation = async (compositeId: string): Promise<void> => {
+    setCombinedSignal(null);
+    setEvaluationError(null);
+    setEvaluationTime(null);
+    setEvaluationState("evaluating");
+    try {
+      const evaluation = await evaluateComposite(compositeId, {
+        provider: "binance",
+        symbol: "BTCUSDT",
+        timeframe,
+        startTime,
+        endTime
+      });
+      setCombinedSignal(evaluation.action);
+      setEvaluationTime(evaluation.effectiveTime);
+      setEvaluationState("success");
+    } catch (evaluationFailure: unknown) {
+      setEvaluationError(
+        evaluationFailure instanceof Error ? evaluationFailure.message : String(evaluationFailure)
+      );
+      setEvaluationState("error");
+    }
+  };
 
   const addComponent = (strategy: ApiStrategyDescriptor) => {
     setComponents([
@@ -90,6 +139,8 @@ export function StrategyEnginePage() {
     setIsSaving(true);
     setError(null);
     setSaveSuccess(null);
+    setEvaluationState("idle");
+    setCombinedSignal(null);
     try {
       const weights: Record<string, number> = {};
       components.forEach((c, i) => {
@@ -111,22 +162,9 @@ export function StrategyEnginePage() {
         }
       });
       setSaveSuccess(`Saved successfully! ID: ${res.id}`);
-      try {
-        const evaluation = await evaluateComposite(res.id, {
-          provider: "binance",
-          symbol: "BTCUSDT",
-          timeframe,
-          startTime,
-          endTime
-        });
-        setCombinedSignal(evaluation.action);
-      } catch (evaluationError: unknown) {
-        setError(
-          `Composite saved, but evaluation failed: ${
-            evaluationError instanceof Error ? evaluationError.message : String(evaluationError)
-          }`
-        );
-      }
+      const saved = await getComposite(res.id);
+      setSavedComposites(current => [saved, ...current.filter(item => item.id !== saved.id)]);
+      setSelectedCompositeId(saved.id);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -334,16 +372,50 @@ export function StrategyEnginePage() {
               </div>
             </section>
 
-            <section className="form-section">
-              <h3 className="section-title"><span className="step">4</span> Evaluation window</h3>
-              <p className="section-note">
-                After saving, the backend evaluates the composite once over this window and returns
-                its combined action.
-              </p>
-              <div className="field-grid field-grid-3">
+          </div>
+        </section>
+      </div>
+
+      <section className="panel saved-composites-panel" aria-labelledby="saved-composites-heading">
+        <header className="panel-header">
+          <div>
+            <h2 id="saved-composites-heading">Saved composites & evaluation</h2>
+            <p>Choose a saved definition and market window, then evaluate it.</p>
+          </div>
+          {selectedComposite !== null && (
+            <a className="button-primary" href={`/backtest?strategyId=${encodeURIComponent(selectedComposite.id)}`}>
+              Use in Backtest
+            </a>
+          )}
+        </header>
+        <div className="panel-body">
+          {savedCompositeError !== null ? (
+            <p className="banner banner-error" role="alert">{savedCompositeError}</p>
+          ) : savedComposites.length === 0 ? (
+            <p className="empty-state">No saved composites yet.</p>
+          ) : (
+            <>
+              <div className="field-grid field-grid-4">
+                <label className="field">
+                  <span className="field-label">Saved composite</span>
+                  <select
+                    aria-label="Saved composite"
+                    value={selectedCompositeId}
+                    onChange={event => {
+                      setSelectedCompositeId(event.target.value);
+                      setEvaluationState("idle");
+                      setCombinedSignal(null);
+                    }}
+                  >
+                    {savedComposites.map(composite => (
+                      <option key={composite.id} value={composite.id}>{composite.name}</option>
+                    ))}
+                  </select>
+                </label>
                 <label className="field">
                   <span className="field-label">Evaluation timeframe</span>
                   <select
+                    aria-label="Evaluation timeframe"
                     value={timeframe}
                     onChange={e => setTimeframe(e.target.value as ApiTimeframe)}
                   >
@@ -377,15 +449,43 @@ export function StrategyEnginePage() {
                   />
                 </label>
               </div>
-
-              <div className="combined-output" data-signal={combinedSignal ?? "none"}>
-                <span className="combined-output-label">Combined action</span>
-                <span className="combined-output-value">{combinedSignal ?? "Not evaluated yet"}</span>
+              {selectedComposite !== null && (
+                <p className="section-note">
+                  {selectedComposite.components.length} components · {selectedComposite.policy.id} · {selectedComposite.version}
+                </p>
+              )}
+              <div className="evaluation-actions">
+                <button
+                  type="button"
+                  className="button-accent"
+                  disabled={selectedComposite === null || evaluationState === "evaluating"}
+                  onClick={() => {
+                    if (selectedComposite !== null) void runEvaluation(selectedComposite.id);
+                  }}
+                >
+                  {evaluationState === "evaluating" ? "Evaluating..." : "Evaluate selected"}
+                </button>
+                {evaluationState !== "idle" && (
+                  <div className="combined-output" data-signal={combinedSignal ?? "none"}>
+                    <span className="combined-output-label">Latest combined signal</span>
+                    <span className="combined-output-value">
+                      {evaluationState === "evaluating"
+                        ? "Evaluating..."
+                        : evaluationState === "error"
+                          ? "Evaluation failed"
+                          : combinedSignal}
+                    </span>
+                    {evaluationError !== null && <span className="field-hint">{evaluationError}</span>}
+                    {evaluationTime !== null && (
+                      <span className="field-hint">At {new Date(evaluationTime).toLocaleString()}</span>
+                    )}
+                  </div>
+                )}
               </div>
-            </section>
-          </div>
-        </section>
-      </div>
+            </>
+          )}
+        </div>
+      </section>
     </section>
   );
 }

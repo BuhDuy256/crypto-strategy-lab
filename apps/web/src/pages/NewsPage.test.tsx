@@ -156,4 +156,15 @@ describe("NewsPage", () => {
     expect(getNewsHealth).toHaveBeenCalledTimes(1);
     expect(getNewsSentimentDistribution).toHaveBeenCalledTimes(1);
   });
+
+  it("refreshes items, sentiment, and health on demand", async () => {
+    render(<NewsPage />);
+
+    await screen.findByText("Bitcoin reaches a new high");
+    fireEvent.click(screen.getByRole("button", { name: "Refresh data" }));
+
+    await waitFor(() => expect(getNewsItems).toHaveBeenCalledTimes(2));
+    expect(getNewsSentimentDistribution).toHaveBeenCalledTimes(2);
+    expect(getNewsHealth).toHaveBeenCalledTimes(2);
+  });
 });
