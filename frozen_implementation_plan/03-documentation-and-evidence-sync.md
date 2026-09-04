@@ -7,7 +7,7 @@ Read [README.md](README.md) first.
 
 ## FIN-04 - Canonical demo flow
 
-**Status:** NOT STARTED · **Priority:** MUST · **Reasoning level:** Medium
+**Status:** DONE · **Priority:** MUST · **Reasoning level:** Medium
 
 ### Problem
 
@@ -74,7 +74,7 @@ One real rehearsal, during `FIN-06`. That is the validation. No test.
 
 ## FIN-05 - Truthfulness synchronization
 
-**Status:** NOT STARTED · **Priority:** MUST · **Reasoning level:** Medium,
+**Status:** DONE · **Priority:** MUST · **Reasoning level:** Medium,
 High only if a truthfulness question needs cross-file reasoning
 
 ### Problem

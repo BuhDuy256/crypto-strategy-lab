@@ -7,12 +7,12 @@ newest capability — produces a leaderboard entry whose provenance can be trace
 back to a frozen specification. News and sentiment are demonstrated separately,
 as an isolated capability, at the end.
 
-Certified baseline: **V1 through V5**, tag `v5.0-demo`, commit `2b751f0`.
-Generated-composite execution (`FIN-01`) and its Discovery exposure (`FIN-02`)
-close the one functional gap that baseline had; presentation hardening (`FIN-03`)
-is the demo-visible state below. **V6** (BullMQ-based execution, the
-transactional outbox, and the scale/retry/duplicate/observability proofs) is not
-implemented and is not part of this demo.
+Certified baseline: **V1 through V5**, frozen at tag `v5.1-demo`. Generated-composite
+execution (`FIN-01`) and its Discovery exposure (`FIN-02`) closed the one functional
+gap the earlier `v5.0-demo` baseline had; presentation hardening (`FIN-03`) and the
+later presentation pass are the demo-visible state below. **V6** (BullMQ-based
+execution, the transactional outbox, and the scale/retry/duplicate/observability
+proofs) is not implemented and is not part of this demo.
 
 Architecture statements below are limited to the claimable set in
 [`frozen_implementation_plan/README.md`](../frozen_implementation_plan/README.md#c-architecture-demoable)
@@ -214,6 +214,38 @@ the demo.
   (`PROOF-ISO-002`) — failures are recorded with a generic reason, never a raw
   provider/model detail.
 
+## Architecture scenarios a reviewer may ask about
+
+These are the "what if you had to change X" questions. Each already has recorded
+evidence, so answer from the evidence rather than improvising a design on the spot.
+
+| Scenario | Short answer | Evidence |
+|---|---|---|
+| Add a new strategy, for example MACD | New file implementing the `Strategy` contract, one registry line. Backtester, Evaluator, ranking, persistence, and frontend unchanged. | [`PROOF-EXT-001`](validation/evidence/PROOF-EXT-001.md) |
+| Replace Random Search with another search method | New `StrategyGenerator` implementation, one registry line. `grid-search` already exists and is selectable in the UI. | [`PROOF-REPLACE-001`](validation/evidence/PROOF-REPLACE-001.md) |
+| Add a second market data provider | New adapter behind `MarketDataProvider`, passing the common provider contract suite. No strategy or frontend change. | [`PROOF-PROVIDER-001`](validation/evidence/PROOF-PROVIDER-001.md) |
+| Binance disconnects | Backoff reconnect, missing closed intervals computed, REST recovery through the same append-only writer. No gaps, no duplicates. | [`PROOF-RT-001`](validation/evidence/PROOF-RT-001.md), step 1 |
+| News or the sentiment model fails | Separate worker process; News degrades, charts and backtests keep working. Demonstrated live in step 8. | [`PROOF-ISO-001`](validation/evidence/PROOF-ISO-001.md), [`PROOF-ISO-002`](validation/evidence/PROOF-ISO-002.md) |
+| Trace a leaderboard row back to its inputs | Provenance resolves the frozen specification; re-running it reproduces the same trades. Demonstrated live in step 7. | [`PROOF-REP-001`](validation/evidence/PROOF-REP-001.md) |
+| Scale the number of backtests | Backtest execution is a separate process behind a port. `docker compose up -d --scale runner=3` adds replicas with no code change; three replicas were observed sharing one PostgreSQL queue. **Say measured, small-scale — never claim linear scaling or a throughput number.** | [`evidence-performance-and-scale.md`](evidence/evidence-performance-and-scale.md) |
+
+*If asked to show one live,* the cheapest is the scale scenario: `docker compose up -d
+--scale runner=3`, then `docker compose ps` shows three runner containers, and a
+Discovery run distributes across them.
+
+### Sentiment as a strategy
+
+`news-sentiment` is a real `Strategy` that declares
+`requiredInputs: ["sentiment-series"]`, so it composes with technical strategies
+through the ordinary combination policies. It is **not** offered on the Backtest page,
+because that page can only supply price bars and the backend correctly refuses a
+specification whose declared inputs are not satisfied.
+
+State this as a deliberate boundary, not a missing feature: a control that cannot
+satisfy its own contract is worse than an honest absence. The capability itself is
+evidenced by `news-sentiment-strategy.ts`, `backtest-runner-sentiment.test.ts`, and
+[`PROOF-ISO-002`](validation/evidence/PROOF-ISO-002.md).
+
 ## When you are done
 
 ```powershell
@@ -224,6 +256,9 @@ Data persists in the `postgres_data` volume across `down`/`up`; add `-v` only to
 delete it.
 
 ## Further evidence
+
+The reviewer-facing index of every architecture claim and its evidence is
+[`docs/evidence/README.md`](evidence/README.md).
 
 Full commands and durable identities for the proofs referenced above are in
 [`validation/evidence/PROOF-REP-001.md`](validation/evidence/PROOF-REP-001.md)

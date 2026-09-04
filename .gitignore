@@ -12,3 +12,6 @@ coverage/
 # Local environment values (copy from .env.example)
 .env
 .scratch/ui-rescue/
+
+# External submission artifacts (grading workbook), not project evidence
+docs/score/

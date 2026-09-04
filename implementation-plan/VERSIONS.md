@@ -94,56 +94,6 @@ work. Evidence is recorded in `DEMO-01`'s Evidence cell in
 [`TRACKING.md`](TRACKING.md) and, when it produced durable history, in
 [`JOURNAL.md`](JOURNAL.md).
 
-## Compose integration gate (every version)
-
-This condition is part of **every** Definition of Demoable below. It is stated once
-here rather than repeated six times, so there is one place to read it and one place
-to change it.
-
-> A version is not integration-demo ready merely because its host-based tests pass.
-> The process topology that version requires must also come up from a clean checkout
-> through the documented Docker Compose path, and the version's demo scenario must be
-> walked on that assembled topology.
-
-What the gate requires:
-
-1. One documented command brings up the version's required topology from a clean
-   checkout - infrastructure services, backend process roles, and the frontend - with
-   the environment and configuration wiring already in place.
-2. Startup dependencies and health checks exist where they genuinely help, and nowhere
-   else.
-3. The topology contains **no service that belongs only to a later version**. The
-   version tables below are the only source for which roles a version requires.
-4. The version's demo scenario runs end to end on that topology.
-
-What the gate does **not** do. It complements, and never replaces, unit and
-integration tests, the architecture boundary tests, the rest of each Definition of
-Demoable, and the `PROOF-*` architecture evidence. Host-based development stays the
-normal way to build a slice; see "Local development and full-system integration" in
-[`AGENTS.md`](../AGENTS.md).
-
-Which roles each version needs:
-
-| Version | Topology the gate must bring up | Introduced by |
-|---|---|---|
-| V1 | PostgreSQL, API process, backtest runner process, SPA | `SETUP-02`, `SETUP-03`, `EXP-05`, `SETUP-06` |
-| V2 | V1's topology, unchanged | - |
-| V3 | V1's topology, unchanged | - |
-| V4 | plus Redis and the market ingest process | `WS-03`, `MKT-06` |
-| V5 | plus the news worker process | `NEWS-02` |
-| V6 | plus the outbox dispatcher and BullMQ backtest workers, on persistence-configured Redis | `SETUP-08`, `EXP-08`, `EXP-12` |
-
-That table follows the roadmap; it does not define it. If the review of
-[The one open architecture question](#the-one-open-architecture-question) rejects the
-deviation, `SETUP-08`, `WS-02`, and `EXP-12` move into V1, and V1's row gains Redis
-along with them. Read the version's own slice table before trusting this summary.
-
-[`DEMO-01`](06-ui-and-demo-integration.md) owns building the Compose path in V1 and
-updating it in each later version, as part of that version's final documentation
-work. Evidence is recorded in `DEMO-01`'s Evidence cell in
-[`TRACKING.md`](TRACKING.md) and, when it produced durable history, in
-[`JOURNAL.md`](JOURNAL.md).
-
 ---
 
 ## V1 - Backtesting Lab

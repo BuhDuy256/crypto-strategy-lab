@@ -1,6 +1,6 @@
 # FIN-06 - Final gate and freeze
 
-**Status:** NOT STARTED · **Priority:** MUST · **Reasoning level:** Medium,
+**Status:** DONE · **Priority:** MUST · **Reasoning level:** Medium,
 rising to High for real failures. XHigh only for a semantic regression inside
 `FIN-01` — that is, one whose cause is in immutable specification content,
 provenance, canonical hashing, or composite resolution.

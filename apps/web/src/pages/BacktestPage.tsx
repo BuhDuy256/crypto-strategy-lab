@@ -48,6 +48,8 @@ const CANDLE_COUNT = 200;
 const TRADE_PAGE_SIZE = 20;
 const POLL_INTERVAL_MS = 2_000;
 const SYMBOLS = ["BTCUSDT"] as const;
+/** The analysis input kinds this page is able to supply from its own form. */
+const SUPPLIABLE_INPUTS: readonly string[] = ["price-bars"];
 type Symbol = (typeof SYMBOLS)[number];
 const TIMEFRAME_MILLISECONDS: Readonly<Record<ApiTimeframe, number>> = {
   "1m": 60_000,
@@ -177,7 +179,15 @@ export function BacktestPage() {
         const compositeDescriptors: ApiStrategyDescriptor[] = composites.map(
           (composite) => composite.descriptor
         );
-        const options = [...response.strategies, ...compositeDescriptors];
+        // This page collects a dataset window, so it can supply price bars and
+        // nothing else. A strategy that also needs a sentiment series (or any
+        // later input kind) would be rejected at freeze with
+        // EXPERIMENT_FIELD_REQUIRED, so it must not be offered here. The filter
+        // reads the descriptor's declared inputs rather than naming a strategy,
+        // so a new price-bar strategy still appears with no change to this file.
+        const options = [...response.strategies, ...compositeDescriptors].filter((descriptor) =>
+          descriptor.requiredInputs.every((kind) => SUPPLIABLE_INPUTS.includes(kind))
+        );
         setStrategies(options);
         setStrategyId(options[0]?.id ?? null);
         setCatalogError(null);

@@ -1,6 +1,6 @@
 # FIN-03 - Demo-surface presentation hardening
 
-**Status:** NOT STARTED · **Priority:** MUST, observed breakage only ·
+**Status:** DONE · **Priority:** MUST, observed breakage only ·
 **Reasoning level:** Medium
 
 Read [README.md](README.md) first. This is demo hardening, not frontend cleanup.
